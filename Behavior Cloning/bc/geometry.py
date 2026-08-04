@@ -1,0 +1,180 @@
+"""Posen- und Quaternion-Mathematik.
+
+Hintergrund (siehe AP 2.4): Die realen Arbeitsposen liegen mit Roll = Yaw =
+-3.1416 rad exakt am +/-pi-Umschlagpunkt der RPY-Darstellung. Lineare
+Interpolation, Delta-Bildung und das Daempfen des Rauschens brechen dort,
+weil zwei physikalisch identische Orientierungen numerisch um 2*pi
+auseinanderliegen koennen.
+
+Deshalb wird der Rotationsanteil projektweit in **Quaternionen** gerechnet
+und nur an der Schnittstelle zu NeuraPy bei Bedarf konvertiert.
+
+Posen-Konventionen (wie NeuraPy):
+    RPY-Pose  : [X, Y, Z, R, P, Y]        -- 6 Werte, Winkel in rad
+    Quat-Pose : [X, Y, Z, QW, QX, QY, QZ] -- 7 Werte (NeuraPy: XYZQWQ1Q2Q3)
+"""
+
+import math
+
+import numpy as np
+
+__all__ = [
+    "quat_normalize",
+    "quat_multiply",
+    "quat_conjugate",
+    "quat_from_rpy",
+    "quat_to_rpy",
+    "quat_from_axis_angle",
+    "quat_angle_between",
+    "slerp",
+    "pose_rpy_to_quat",
+    "pose_quat_to_rpy",
+    "pose_interpolate",
+    "pose_path",
+]
+
+
+def quat_normalize(q):
+    """Normiert ein Quaternion [w, x, y, z]."""
+    q = np.asarray(q, dtype=float)
+    n = np.linalg.norm(q)
+    if n < 1e-12:
+        raise ValueError("Quaternion mit Norm 0 kann nicht normiert werden")
+    return q / n
+
+
+def quat_multiply(q1, q2):
+    """Hamilton-Produkt zweier Quaternionen [w, x, y, z]."""
+    w1, x1, y1, z1 = q1
+    w2, x2, y2, z2 = q2
+    return np.array(
+        [
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+        ]
+    )
+
+
+def quat_conjugate(q):
+    w, x, y, z = q
+    return np.array([w, -x, -y, -z])
+
+
+def quat_from_rpy(roll, pitch, yaw):
+    """RPY (ZYX-Konvention) -> Quaternion [w, x, y, z]."""
+    cr, sr = math.cos(roll * 0.5), math.sin(roll * 0.5)
+    cp, sp = math.cos(pitch * 0.5), math.sin(pitch * 0.5)
+    cy, sy = math.cos(yaw * 0.5), math.sin(yaw * 0.5)
+    return np.array(
+        [
+            cr * cp * cy + sr * sp * sy,
+            sr * cp * cy - cr * sp * sy,
+            cr * sp * cy + sr * cp * sy,
+            cr * cp * sy - sr * sp * cy,
+        ]
+    )
+
+
+def quat_to_rpy(q):
+    """Quaternion [w, x, y, z] -> (roll, pitch, yaw) in ZYX-Konvention."""
+    w, x, y, z = quat_normalize(q)
+    roll = math.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
+    sinp = max(-1.0, min(1.0, 2.0 * (w * y - z * x)))
+    pitch = math.asin(sinp)
+    yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+    return roll, pitch, yaw
+
+
+def quat_from_axis_angle(axis, angle_rad):
+    """Drehachse (3er-Vektor) + Winkel -> Quaternion."""
+    axis = np.asarray(axis, dtype=float)
+    n = np.linalg.norm(axis)
+    if n < 1e-12:
+        return np.array([1.0, 0.0, 0.0, 0.0])
+    axis = axis / n
+    s = math.sin(angle_rad * 0.5)
+    return np.array([math.cos(angle_rad * 0.5), axis[0] * s, axis[1] * s, axis[2] * s])
+
+
+def quat_angle_between(q1, q2):
+    """Kleinster Drehwinkel zwischen zwei Orientierungen in rad.
+
+    Beruecksichtigt die Doppeldeutigkeit q und -q (gleiche Orientierung).
+    """
+    q1 = quat_normalize(q1)
+    q2 = quat_normalize(q2)
+    dot = abs(float(np.dot(q1, q2)))
+    dot = max(-1.0, min(1.0, dot))
+    return 2.0 * math.acos(dot)
+
+
+def slerp(q1, q2, t):
+    """Sphaerische Interpolation zwischen zwei Quaternionen.
+
+    Waehlt automatisch den kuerzeren Weg (Vorzeichenflip bei negativem
+    Skalarprodukt) -- genau das, was lineare RPY-Interpolation am
+    +/-pi-Umschlagpunkt falsch macht.
+    """
+    q1 = quat_normalize(q1)
+    q2 = quat_normalize(q2)
+    dot = float(np.dot(q1, q2))
+    if dot < 0.0:
+        q2 = -q2
+        dot = -dot
+    if dot > 0.9995:
+        # Nahezu identisch -> lineare Interpolation ist numerisch stabiler
+        return quat_normalize(q1 + t * (q2 - q1))
+    theta = math.acos(max(-1.0, min(1.0, dot)))
+    sin_theta = math.sin(theta)
+    a = math.sin((1.0 - t) * theta) / sin_theta
+    b = math.sin(t * theta) / sin_theta
+    return quat_normalize(a * q1 + b * q2)
+
+
+def pose_rpy_to_quat(pose):
+    """[X,Y,Z,R,P,Y] -> [X,Y,Z,QW,QX,QY,QZ]."""
+    pose = list(pose)
+    if len(pose) != 6:
+        raise ValueError("RPY-Pose braucht 6 Werte, bekam %d" % len(pose))
+    q = quat_from_rpy(pose[3], pose[4], pose[5])
+    return np.array([pose[0], pose[1], pose[2], q[0], q[1], q[2], q[3]])
+
+
+def pose_quat_to_rpy(pose):
+    """[X,Y,Z,QW,QX,QY,QZ] -> [X,Y,Z,R,P,Y]."""
+    pose = list(pose)
+    if len(pose) != 7:
+        raise ValueError("Quaternion-Pose braucht 7 Werte, bekam %d" % len(pose))
+    roll, pitch, yaw = quat_to_rpy(pose[3:7])
+    return np.array([pose[0], pose[1], pose[2], roll, pitch, yaw])
+
+
+def pose_interpolate(pose_a, pose_b, t):
+    """Interpoliert zwei Quaternion-Posen: linear in XYZ, SLERP in Rotation."""
+    pose_a = np.asarray(pose_a, dtype=float)
+    pose_b = np.asarray(pose_b, dtype=float)
+    pos = pose_a[:3] + t * (pose_b[:3] - pose_a[:3])
+    rot = slerp(pose_a[3:7], pose_b[3:7], t)
+    return np.concatenate([pos, rot])
+
+
+def pose_path(waypoints_quat, steps_per_segment):
+    """Erzeugt eine dichte Posenbahn durch die Wegpunkte.
+
+    Bewusst simpel (segmentweise linear + SLERP) -- die weiche Spline-Bahn
+    aus AP 2.4 gehoert in den Trajektorienplaner (Phase 3). Hier geht es
+    nur darum, eine pruefbare Bahn fuer Kinematik und Kollision zu haben.
+
+    Rueckgabe: Array (N, 7).
+    """
+    waypoints_quat = [np.asarray(w, dtype=float) for w in waypoints_quat]
+    if len(waypoints_quat) < 2:
+        raise ValueError("Mindestens zwei Wegpunkte noetig")
+
+    out = [waypoints_quat[0]]
+    for a, b in zip(waypoints_quat[:-1], waypoints_quat[1:]):
+        for i in range(1, steps_per_segment + 1):
+            out.append(pose_interpolate(a, b, i / steps_per_segment))
+    return np.array(out)
