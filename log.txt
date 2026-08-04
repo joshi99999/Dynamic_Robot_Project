@@ -1,0 +1,221 @@
+Pose-Quelle: compute_forward_kinematics(representation='rpy')
+
+Aktuelle Pose (XYZRPY): [ 0.4366 -0.0885  0.4345 -3.1416 -0.     -3.1416]
+Aktuelle Gelenkwinkel : [-0.2001  0.067   1.5017 -0.      1.5729 -0.2001]
+
+============================================================
+Vorpruefung: Liefert der Controller echte Werte?
+============================================================
+Abstand TCP vom Roboterursprung: 0.622 m
+is_robot_in_simulation(): False
+OK: Werte wirken plausibel.
+
+============================================================
+0. Tool-/TCP-Kalibrierung (Voraussetzung)
+============================================================
+Flansch-Pose : [ 0.4366 -0.0885  0.4345 -3.1416 -0.     -3.1416]
+TCP-Pose     : [ 0.4366 -0.0885  0.4345 -0.     -0.      1.     -0.    ]
+Translations-Offset Flansch->TCP: 0.0000 m
+
+WARNUNG: Offset ~0 -> vermutlich ist kein Tool/Greifer-Offset
+         im Controller hinterlegt (Tool-DB zeigt evtl. 'NoTool').
+         Alle nachfolgenden IK-Ziele wuerden sich auf den Flansch,
+         nicht auf die Greiferspitze beziehen. Vor dem Fortfahren
+         die Greifer-Geometrie im Tool-GUI eintragen.
+
+============================================================
+1. Erreichbarkeit im Rausch-Korridor (+-20 mm)
+============================================================
+Erfolgreich: 100 / 100 (100.0%)
+
+============================================================
+2. Seed-Konsistenz entlang eines dichten Pfads
+============================================================
+Max. |Delta q| pro Schritt: 0.0031 rad
+OK: keine auffaelligen Spruenge.
+
+============================================================
+3. Singularitaetsnaehe an der aktuellen (Greif-)Pose
+============================================================
+Test-Auslenkung: 2.0 mm
+  Richtung +X : |Delta q|max = 0.0055 rad  (Verhaeltnis dq/dx = 2.7)
+  Richtung -X : |Delta q|max = 0.0055 rad  (Verhaeltnis dq/dx = 2.7)
+  Richtung +Y : |Delta q|max = 0.0044 rad  (Verhaeltnis dq/dx = 2.2)
+  Richtung -Y : |Delta q|max = 0.0044 rad  (Verhaeltnis dq/dx = 2.2)
+  Richtung +Z : |Delta q|max = 0.0048 rad  (Verhaeltnis dq/dx = 2.4)
+  Richtung -Z : |Delta q|max = 0.0048 rad  (Verhaeltnis dq/dx = 2.4)
+
+============================================================
+4. Repraesentations-Vergleich (RPY vs. Quaternion)
+============================================================
+Max. Differenz RPY- vs. Quaternion-Loesung: 0.00000 rad
+OK: beide Repraesentationen konsistent.
+
+============================================================
+5. Laufzeit pro IK-/FK-Aufruf (TCP-Roundtrip inklusive)
+============================================================
+compute_inverse_kinematics: 2.2 ms/Aufruf
+compute_forward_kinematics: 1.9 ms/Aufruf
+
+Hinweis: Fuer eine Trajektorie mit z.B. 150 Zeitschritten und etwas Rejection Sampling ergibt sich daraus die zu erwartende Generierungsdauer (unkritisch, da offline, aber relevant fuers Iterationstempo beim Parameter-Tuning).
+
+============================================================
+Fertig
+============================================================
+Wichtig: Diese Tests an der AKTUELLEN Pose sagen nur etwas ueber
+diese eine Konfiguration aus. Fuer aussagekraeftige Ergebnisse den
+Roboter (per Gamepad/Freidrehen) nacheinander in die tatsaechlich
+geteachten Wegpunkte fahren (Anfahrt, Greifpose, Hebepose, Ziel)
+und das Skript an jedem davon erneut ausfuehren - insbesondere an
+der Greifpose (Test 3, Singularitaetsnaehe) ist das entscheidend.
+
+
+
+###########################################################################
+Neue Pose
+###########################################################################
+Pose-Quelle: compute_forward_kinematics(representation='rpy')
+
+Aktuelle Pose (XYZRPY): [ 0.4366 -0.0885  0.1621 -3.1416 -0.     -3.1416]
+Aktuelle Gelenkwinkel : [-0.2001  0.2995  1.9253 -0.      0.9168 -0.2   ]
+
+============================================================
+Vorpruefung: Liefert der Controller echte Werte?
+============================================================
+Abstand TCP vom Roboterursprung: 0.474 m
+is_robot_in_simulation(): False
+OK: Werte wirken plausibel.
+
+============================================================
+0. Tool-/TCP-Kalibrierung (Voraussetzung)
+============================================================
+Flansch-Pose : [ 0.4366 -0.0885  0.1621 -3.1416 -0.     -3.1416]
+TCP-Pose     : [ 0.4366 -0.0885  0.1621 -0.     -0.      1.     -0.    ]
+Translations-Offset Flansch->TCP: 0.0000 m
+
+WARNUNG: Offset ~0 -> vermutlich ist kein Tool/Greifer-Offset
+         im Controller hinterlegt (Tool-DB zeigt evtl. 'NoTool').
+         Alle nachfolgenden IK-Ziele wuerden sich auf den Flansch,
+         nicht auf die Greiferspitze beziehen. Vor dem Fortfahren
+         die Greifer-Geometrie im Tool-GUI eintragen.
+
+============================================================
+1. Erreichbarkeit im Rausch-Korridor (+-20 mm)
+============================================================
+Erfolgreich: 100 / 100 (100.0%)
+
+============================================================
+2. Seed-Konsistenz entlang eines dichten Pfads
+============================================================
+Max. |Delta q| pro Schritt: 0.0031 rad
+OK: keine auffaelligen Spruenge.
+
+============================================================
+3. Singularitaetsnaehe an der aktuellen (Greif-)Pose
+============================================================
+Test-Auslenkung: 2.0 mm
+  Richtung +X : |Delta q|max = 0.0058 rad  (Verhaeltnis dq/dx = 2.9)
+  Richtung -X : |Delta q|max = 0.0058 rad  (Verhaeltnis dq/dx = 2.9)
+  Richtung +Y : |Delta q|max = 0.0044 rad  (Verhaeltnis dq/dx = 2.2)
+  Richtung -Y : |Delta q|max = 0.0044 rad  (Verhaeltnis dq/dx = 2.2)
+  Richtung +Z : |Delta q|max = 0.0049 rad  (Verhaeltnis dq/dx = 2.4)
+  Richtung -Z : |Delta q|max = 0.0049 rad  (Verhaeltnis dq/dx = 2.4)
+
+============================================================
+4. Repraesentations-Vergleich (RPY vs. Quaternion)
+============================================================
+Max. Differenz RPY- vs. Quaternion-Loesung: 0.00000 rad
+OK: beide Repraesentationen konsistent.
+
+============================================================
+5. Laufzeit pro IK-/FK-Aufruf (TCP-Roundtrip inklusive)
+============================================================
+compute_inverse_kinematics: 2.2 ms/Aufruf
+compute_forward_kinematics: 2.1 ms/Aufruf
+
+Hinweis: Fuer eine Trajektorie mit z.B. 150 Zeitschritten und etwas Rejection Sampling ergibt sich daraus die zu erwartende Generierungsdauer (unkritisch, da offline, aber relevant fuers Iterationstempo beim Parameter-Tuning).
+
+============================================================
+Fertig
+============================================================
+Wichtig: Diese Tests an der AKTUELLEN Pose sagen nur etwas ueber
+diese eine Konfiguration aus. Fuer aussagekraeftige Ergebnisse den
+Roboter (per Gamepad/Freidrehen) nacheinander in die tatsaechlich
+geteachten Wegpunkte fahren (Anfahrt, Greifpose, Hebepose, Ziel)
+und das Skript an jedem davon erneut ausfuehren - insbesondere an
+der Greifpose (Test 3, Singularitaetsnaehe) ist das entscheidend.
+
+
+###########################################################################
+Neue Pose
+###########################################################################
+Pose-Quelle: compute_forward_kinematics(representation='rpy')
+
+Aktuelle Pose (XYZRPY): [ 0.5662 -0.0893  0.0595 -3.1416 -0.     -3.1416]
+Aktuelle Gelenkwinkel : [-0.1564  0.7401  1.5464 -0.      0.855  -0.1564]
+
+============================================================
+Vorpruefung: Liefert der Controller echte Werte?
+============================================================
+Abstand TCP vom Roboterursprung: 0.576 m
+is_robot_in_simulation(): False
+OK: Werte wirken plausibel.
+
+============================================================
+0. Tool-/TCP-Kalibrierung (Voraussetzung)
+============================================================
+Flansch-Pose : [ 0.5662 -0.0893  0.0595 -3.1416 -0.     -3.1416]
+TCP-Pose     : [ 0.5662 -0.0893  0.0595 -0.     -0.      1.     -0.    ]
+Translations-Offset Flansch->TCP: 0.0000 m
+
+WARNUNG: Offset ~0 -> vermutlich ist kein Tool/Greifer-Offset
+         im Controller hinterlegt (Tool-DB zeigt evtl. 'NoTool').
+         Alle nachfolgenden IK-Ziele wuerden sich auf den Flansch,
+         nicht auf die Greiferspitze beziehen. Vor dem Fortfahren
+         die Greifer-Geometrie im Tool-GUI eintragen.
+
+============================================================
+1. Erreichbarkeit im Rausch-Korridor (+-20 mm)
+============================================================
+Erfolgreich: 100 / 100 (100.0%)
+
+============================================================
+2. Seed-Konsistenz entlang eines dichten Pfads
+============================================================
+Max. |Delta q| pro Schritt: 0.0039 rad
+OK: keine auffaelligen Spruenge.
+
+============================================================
+3. Singularitaetsnaehe an der aktuellen (Greif-)Pose
+============================================================
+Test-Auslenkung: 2.0 mm
+  Richtung +X : |Delta q|max = 0.0071 rad  (Verhaeltnis dq/dx = 3.6)
+  Richtung -X : |Delta q|max = 0.0071 rad  (Verhaeltnis dq/dx = 3.5)
+  Richtung +Y : |Delta q|max = 0.0034 rad  (Verhaeltnis dq/dx = 1.7)
+  Richtung -Y : |Delta q|max = 0.0034 rad  (Verhaeltnis dq/dx = 1.7)
+  Richtung +Z : |Delta q|max = 0.0035 rad  (Verhaeltnis dq/dx = 1.8)
+  Richtung -Z : |Delta q|max = 0.0035 rad  (Verhaeltnis dq/dx = 1.8)
+
+============================================================
+4. Repraesentations-Vergleich (RPY vs. Quaternion)
+============================================================
+Max. Differenz RPY- vs. Quaternion-Loesung: 0.00000 rad
+OK: beide Repraesentationen konsistent.
+
+============================================================
+5. Laufzeit pro IK-/FK-Aufruf (TCP-Roundtrip inklusive)
+============================================================
+compute_inverse_kinematics: 2.2 ms/Aufruf
+compute_forward_kinematics: 2.0 ms/Aufruf
+
+Hinweis: Fuer eine Trajektorie mit z.B. 150 Zeitschritten und etwas Rejection Sampling ergibt sich daraus die zu erwartende Generierungsdauer (unkritisch, da offline, aber relevant fuers Iterationstempo beim Parameter-Tuning).
+
+============================================================
+Fertig
+============================================================
+Wichtig: Diese Tests an der AKTUELLEN Pose sagen nur etwas ueber
+diese eine Konfiguration aus. Fuer aussagekraeftige Ergebnisse den
+Roboter (per Gamepad/Freidrehen) nacheinander in die tatsaechlich
+geteachten Wegpunkte fahren (Anfahrt, Greifpose, Hebepose, Ziel)
+und das Skript an jedem davon erneut ausfuehren - insbesondere an
+der Greifpose (Test 3, Singularitaetsnaehe) ist das entscheidend.
