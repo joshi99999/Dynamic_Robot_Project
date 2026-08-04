@@ -16,6 +16,7 @@ Dieses Dokument dient der präzisen Erfassung aller technischen, infrastrukturel
 * **Kamera-SDK:** Geklärt — die VEN-161-61U3C ist eine **USB3-Vision-/GenICam**-Kamera und **nicht** über `cv2.VideoCapture` ansprechbar. Der Zugriff erfolgt über das **Daheng Galaxy SDK mit der Python-API `gxipy`** (siehe AP 1.1). Intel RealSense bzw. `pyrealsense2` wird im Projekt **nicht** verwendet.
 * **Aufzeichnungsrate:** Festgelegt — **15 Hz** als gemeinsame Zielrate für alle Datenquellen (siehe AP 1.3).
 * **Trainings-Hardware:** Bestätigt — **NVIDIA RTX 5070 Ti (16 GB VRAM)** für das Training; zusätzlich stehen Laptops mit NVIDIA-GPU bereit, die für die Inferenz vorgesehen sind (siehe AP 3.1).
+* **IK-Tauglichkeit für die Rauscheinspielung:** Bestätigt — Vortest an drei realen Posen bestanden (100 % Erreichbarkeit im ±20-mm-Korridor, keine Konfigurationssprünge, großer Singularitätsabstand, 2,2 ms/Aufruf). Details und Folgemaßnahmen in AP 2.4; Rohdaten in `tools/log.txt`.
 * **Aufnahmemodus der Datenerfassung:** **Endgültig festgelegt** — automatisierte Trajektorien mit **Action Noise Injection** (siehe AP 2.2 / 2.4). Ablauf: Per Gamepad werden für den Griff einige wenige Wegpunkte (Posen) definiert; diese werden anschließend **automatisiert und mit Rauschen** abgefahren, während synchron aufgezeichnet wird. Die Gamepad-Teleoperation dient damit **nur** dem Teachen der Wegpunkte, nicht der Aufzeichnung selbst. Zusätzliche Demonstrationsdaten entstehen langfristig aus der Übernahme des klassischen CV-Datensatzes (siehe AP 5.1). Mit dieser Entscheidung entfällt das Geschwindigkeits-/Stalling-Risiko aus AP 2.6 weitgehend, da die Ausführungsgeschwindigkeit über den Pfadplaner definiert und konstant ist statt vom menschlichen Tempo abzuhängen.
 
 ### Noch offen (bei physischem Aufbau zwingend zu ergänzen)
@@ -224,6 +225,26 @@ Erzeugtes Vektorfeld durch Noise Injection (Trichter-Effekt):
    3. **Singularitätsnähe genau an der Greifpose** (wichtigster Punkt): Ein senkrecht von oben greifender Endeffektor ist bei vielen 6-Achs-Robotern strukturell nah an der Handgelenk-Singularität — dort kann eine kleine kartesische Auslenkung eine unverhältnismäßig große Gelenkbewegung erzeugen, genau an der Stelle, wo die Trichter-Dämpfung eigentlich zur Ruhe kommen soll.
    4. RPY- vs. Quaternion-Repräsentation vergleichen (Gimbal-Lock-Risiko bei Pitch ≈ ±90°, typisch bei senkrechter Greif-Orientierung).
    5. Laufzeit pro IK-/FK-Aufruf (unkritisch für Echtzeit, relevant fürs Iterationstempo bei der Trajektoriengenerierung).
+
+   **✅ Ergebnis des Vortests (durchgeführt an 3 realen Posen, `tools/log.txt`, `is_robot_in_simulation() == False`):**
+   Getestete Posen (XYZRPY): `[0.437, -0.089, 0.435, -π, 0, -π]`, `[0.437, -0.089, 0.162, …]`, `[0.566, -0.089, 0.060, …]`.
+
+   | Test | Ergebnis | Bewertung |
+   |---|---|---|
+   | 1 Erreichbarkeit (±20 mm) | 100 / 100 an allen drei Posen | unkritisch |
+   | 2 Seed-Konsistenz | max. \|Δq\| = 0,0031–0,0039 rad pro 1-mm-Schritt, keine Sprünge | Warm-Start funktioniert wie erwartet |
+   | 3 Singularitätsnähe | dq/dx = **1,7–3,6** (Warnschwelle 20) | großer Abstand zur Singularität |
+   | 4 RPY vs. Quaternion | Differenz 0,00000 rad | Solver-seitig kein Gimbal-Lock |
+   | 5 Laufzeit | IK 2,2 ms, FK ≈ 2,0 ms pro Aufruf | ~0,33 s für 150 Schritte |
+
+   **Schlussfolgerung: Die IK-basierte Rauschumrechnung ist tragfähig.** Der Ansatz aus 1.5.2/2.4 kann unverändert umgesetzt werden; die Absicherungen bleiben als Sicherheitsnetz bestehen, sind aber im getesteten Bereich nicht limitierend.
+
+   **Einschränkungen und Folgemaßnahmen aus dem Vortest:**
+   * **⚠️ RPY liegt exakt am ±π-Umschlagpunkt.** Alle drei Posen haben Roll ≈ Yaw ≈ −3,1416 rad. Die IK selbst toleriert das (Test 1 hat auch Werte jenseits −π erfolgreich gelöst), aber **die eigene Planer-Arithmetik nicht**: Spline-Interpolation zwischen Wegpunkten, Delta-Berechnung und die Trichter-Dämpfung des Rauschens brechen, sobald zwei Werte auf entgegengesetzten Seiten des Umschlagpunkts landen (+π vs. −π ⇒ scheinbarer Sprung um 2π bei physikalisch identischer Orientierung). **Konsequenz: Trajektoriengenerierung und Rauschaufprägung im Rotationsanteil in Quaternion-Darstellung rechnen** (`representation='quaternion'`, SLERP statt linearer RPY-Interpolation) oder Winkel-Wrapping explizit behandeln. Test 4 deckt diesen Fall *nicht* ab — er vergleicht nur IK-Lösungen für dieselbe Pose.
+   * **Nur eine Orientierung getestet.** Die drei Posen unterscheiden sich ausschließlich in der Position (Z von 0,435 m auf 0,060 m, X von 0,437 m auf 0,566 m); die Orientierung ist in allen dreien identisch (Greifer senkrecht nach unten). Sollte ein Wegpunkt eine **gekippte** Anfahrt verwenden, ist der Test dort zu wiederholen.
+   * **Werte sind flanschbezogen.** Der Tool-Offset ist an allen drei Posen 0,0000 m — im Controller ist weiterhin kein Greifer-Tool hinterlegt (bekannt, wird später nachgeholt). Nach Eintragen der Greifer-Geometrie verschiebt sich der TCP um die Greiferlänge nach außen, wodurch sich der Hebelarm und damit die dq/dx-Werte ändern. **Test 3 nach der Tool-Konfiguration wiederholen.** Zudem ist zu prüfen, ob die Greifposen dann noch erreichbar sind und der Rausch-Korridor genügend Abstand zur Tischplatte behält — bei Pose 3 liegt bereits der *Flansch* nur 0,060 m über der Basisebene.
+   * *Nebenbeobachtung:* In allen drei Posen ist q4 exakt 0,000 und q1 = q6. Das ist keine Singularität (q5 liegt mit 0,86–1,57 rad weit von 0 entfernt, bestätigt durch die niedrigen dq/dx-Werte), deutet aber darauf hin, dass die Posen numerisch/aus der Datenbank stammen und nicht per Handführung geteacht wurden. Bei den später tatsächlich geteachten Wegpunkten ist der Test erneut zu fahren.
+   * *Positiver Nebenbefund:* Bei 2,2 ms pro IK-Aufruf wäre selbst eine **Online**-IK in der 15-Hz-Schleife (66 ms Budget) machbar. Die Offline-Berechnung bleibt trotzdem die Wahl, da sie für die Kollisions-Vorabprüfung ohnehin nötig ist — die Reserve ist aber ein nützlicher Rückfallpfad.
 3. **Dynamische Dämpfung (Trichter-Verengung):** Je näher sich der Greifer dem eigentlichen Greifpunkt am Objekt nähert, desto stärker wird das Rauschen $N_t$ softwareseitig gegen $0$ gedämpft, um eine präzise Kollision mit dem Objekt und einen sauberen Griff zu gewährleisten.
 4. **Die asymmetrische Datenaufzeichnung im `LeRobotDataset`:**
    Um dem neuronalen Netz Korrekturverhalten beizubringen, werden die Daten asymmetrisch im Datensatz gepaart:
