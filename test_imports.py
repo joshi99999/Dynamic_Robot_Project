@@ -12,4 +12,13 @@ print(f"Prettytable       : {prettytable.__version__}")
 print(f"NeuraPy SDK       : {VERSION}")
 #Robot() und der print kann nur dann erfolgreich ausgefuehrt werden, wenn der Roboter über Ethernet verbuden ist, die 
 r = Robot()
-print(r.robot_name)
+print(f"Robot Name        : {r.robot_name}")
+
+'''
+OUTPUT muss so aussehen, Python-Version natürlich ggf. anders:
+#WICHTIG: robot_name muss "lara5" sein, sonst ist die Verbindung nicht korrekt aufgebaut!
+Python Version    : 3.14.0
+Prettytable       : 3.18.0
+NeuraPy SDK       : v5.0.8
+Robot Name        : lara5
+'''
