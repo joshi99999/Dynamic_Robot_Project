@@ -25,6 +25,9 @@ __all__ = [
     "quat_from_rpy",
     "quat_to_rpy",
     "quat_from_axis_angle",
+    "quat_to_matrix",
+    "matrix_to_quat",
+    "quat_rotate",
     "quat_angle_between",
     "slerp",
     "pose_rpy_to_quat",
@@ -96,6 +99,54 @@ def quat_from_axis_angle(axis, angle_rad):
     axis = axis / n
     s = math.sin(angle_rad * 0.5)
     return np.array([math.cos(angle_rad * 0.5), axis[0] * s, axis[1] * s, axis[2] * s])
+
+
+def quat_to_matrix(q):
+    """Quaternion [w, x, y, z] -> 3x3-Rotationsmatrix."""
+    w, x, y, z = quat_normalize(q)
+    return np.array(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+            [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+            [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
+        ]
+    )
+
+
+def matrix_to_quat(R):
+    """3x3-Rotationsmatrix -> Quaternion [w, x, y, z] (Shepperd-Methode)."""
+    R = np.asarray(R, dtype=float)
+    tr = R[0, 0] + R[1, 1] + R[2, 2]
+    if tr > 0.0:
+        s = math.sqrt(tr + 1.0) * 2.0
+        q = np.array(
+            [0.25 * s, (R[2, 1] - R[1, 2]) / s, (R[0, 2] - R[2, 0]) / s,
+             (R[1, 0] - R[0, 1]) / s]
+        )
+    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+        s = math.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2.0
+        q = np.array(
+            [(R[2, 1] - R[1, 2]) / s, 0.25 * s, (R[0, 1] + R[1, 0]) / s,
+             (R[0, 2] + R[2, 0]) / s]
+        )
+    elif R[1, 1] > R[2, 2]:
+        s = math.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2.0
+        q = np.array(
+            [(R[0, 2] - R[2, 0]) / s, (R[0, 1] + R[1, 0]) / s, 0.25 * s,
+             (R[1, 2] + R[2, 1]) / s]
+        )
+    else:
+        s = math.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2.0
+        q = np.array(
+            [(R[1, 0] - R[0, 1]) / s, (R[0, 2] + R[2, 0]) / s,
+             (R[1, 2] + R[2, 1]) / s, 0.25 * s]
+        )
+    return quat_normalize(q)
+
+
+def quat_rotate(q, v):
+    """Dreht den Vektor ``v`` mit dem Quaternion ``q``."""
+    return quat_to_matrix(q) @ np.asarray(v, dtype=float)
 
 
 def quat_angle_between(q1, q2):

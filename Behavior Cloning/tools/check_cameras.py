@@ -6,33 +6,110 @@ Bildrate zu pruefen. Das richtige Dashboard (NiceGUI) kommt in Phase 2,
 wenn es einen Recorder zu steuern gibt.
 
 Ausfuehren (aus dem Ordner "Behavior Cloning"):
-    python tools/check_cameras.py
+    python tools/check_cameras.py --list           # welche Geraete sind da?
+    python tools/check_cameras.py --backend sim    # Werkzeug ohne Hardware
+    python tools/check_cameras.py                  # beide Kameras
     python tools/check_cameras.py --only scene     # nur eine Kamera
+    python tools/check_cameras.py --only scene --device 1   # anderer Index
     python tools/check_cameras.py --no-display     # nur Ratenmessung
 
 Tasten im Fenster: q oder ESC beendet, s speichert einen Schnappschuss.
+
+Reihenfolge bei der Inbetriebnahme (AP 0.6 Punkt 7/8):
+    1. --list       -> wird die Kamera ueberhaupt gefunden?
+    2. --only <cam> -> liefert sie Bilder, in welcher Aufloesung?
+    3. ohne --only  -> beide zusammen: Rate und Zeitversatz gegen das
+                       30-ms-Budget (AP 1.3).
 """
 
 import argparse
 import time
+from dataclasses import replace
 
 import _bootstrap  # noqa: F401
 
 import numpy as np
 
-from bc import cameras, config
+from bc import capture, config
+from bc.adapters import open_camera
 
 
-def build_configs(only):
-    if only is None:
-        return list(config.CAMERAS)
-    selected = [c for c in config.CAMERAS if c.name == only]
-    if not selected:
-        raise SystemExit(
-            "Unbekannte Kamera '%s'. Bekannt: %s"
-            % (only, ", ".join(c.name for c in config.CAMERAS))
+def build_configs(only, backend=None, device=None):
+    if backend == "sim":
+        base = list(config.SIM_CAMERAS)
+    else:
+        base = list(config.CAMERAS)
+
+    if only is not None:
+        base = [c for c in base if c.name == only]
+        if not base:
+            raise SystemExit(
+                "Unbekannte Kamera '%s'. Bekannt: %s"
+                % (only, ", ".join(c.name for c in config.CAMERAS))
+            )
+
+    if device is not None:
+        if len(base) != 1:
+            raise SystemExit("--device nur zusammen mit --only sinnvoll")
+        base = [replace(base[0], device=device)]
+    return base
+
+
+def list_devices():
+    """Sucht nach angeschlossenen Kameras -- erster Schritt der Inbetriebnahme.
+
+    UVC: es gibt keine saubere Enumeration in OpenCV, daher werden die
+    Indizes 0..5 probeweise geoeffnet. Daheng: ueber das Galaxy SDK.
+    """
+    print("== UVC / Webcams (OpenCV) ==")
+    try:
+        import cv2
+    except ImportError:
+        print("  opencv-python nicht installiert")
+        return
+
+    found_uvc = False
+    for index in range(6):
+        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+        if cap.isOpened():
+            ok, frame = cap.read()
+            shape = frame.shape if ok and frame is not None else None
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            print(
+                "  Index %d: %s, gemeldete FPS %.1f"
+                % (index, shape if shape else "geoeffnet, aber kein Bild", fps)
+            )
+            found_uvc = True
+        cap.release()
+    if not found_uvc:
+        print("  keine UVC-Kamera gefunden (Indizes 0-5 geprueft)")
+
+    print("\n== Daheng / USB3-Vision (gxipy) ==")
+    try:
+        import gxipy as gx
+    except ImportError:
+        print(
+            "  gxipy nicht installiert -- Daheng Galaxy SDK installieren und\n"
+            "  daraus das Python-Paket einrichten (siehe README/AP 1.1).\n"
+            "  Die Wrist-Kamera ist NICHT ueber OpenCV erreichbar."
         )
-    return selected
+        return
+
+    manager = gx.DeviceManager()
+    count, info_list = manager.update_device_list()
+    if count == 0:
+        print("  keine Daheng-Kamera gefunden (USB3-Kabel/Treiber pruefen,")
+        print("  Gegenprobe mit dem Galaxy Viewer)")
+        return
+    for info in info_list:
+        print(
+            "  %s  SN=%s  Vendor=%s"
+            % (
+                info.get("model_name", "?"),
+                info.get("sn", "?"),
+                info.get("vendor_name", "?"),
+            )
+        )
 
 
 def side_by_side(frames, height=480):
@@ -59,15 +136,47 @@ def main():
         "--seconds", type=float, default=0.0,
         help="nach N Sekunden automatisch beenden (0 = unbegrenzt)",
     )
+    parser.add_argument(
+        "--list", action="store_true",
+        help="angeschlossene Kameras suchen und beenden",
+    )
+    parser.add_argument(
+        "--backend", default=None, choices=("sim",),
+        help="'sim' testet das Werkzeug ohne Hardware",
+    )
+    parser.add_argument(
+        "--device", default=None,
+        help="Geraet ueberschreiben (UVC: Index, Daheng: Seriennummer)",
+    )
     args = parser.parse_args()
 
-    configs = build_configs(args.only)
+    if args.list:
+        list_devices()
+        return
+
+    device = args.device
+    if device is not None and device.isdigit():
+        device = int(device)
+
+    configs = build_configs(args.only, backend=args.backend, device=device)
     print("Oeffne Kameras: %s" % ", ".join(c.name for c in configs))
     for cfg in configs:
-        print("  %-6s backend=%-7s %dx%d device=%s"
-              % (cfg.name, cfg.backend, cfg.width, cfg.height, cfg.device))
+        size = (
+            "%sx%s" % (cfg.width, cfg.height)
+            if cfg.width and cfg.height
+            else "voller Sensor"
+        )
+        binning = " binning=%dx%d" % (cfg.binning, cfg.binning) if cfg.binning > 1 else ""
+        print("  %-6s backend=%-7s %-13s device=%s%s"
+              % (cfg.name, cfg.backend, size, cfg.device, binning))
 
-    cams = cameras.open_all(configs, threaded=True)
+    try:
+        cams = capture.start_all([open_camera(cfg) for cfg in configs], threaded=True)
+    except Exception as exc:
+        raise SystemExit(
+            "\nKamera liess sich nicht oeffnen:\n  %s\n\n"
+            "Naechster Schritt: 'python tools/check_cameras.py --list'" % exc
+        )
     for cam in cams:
         cam.wait_for_frame(timeout=10.0)
     print("Alle Kameras liefern Bilder.\n")

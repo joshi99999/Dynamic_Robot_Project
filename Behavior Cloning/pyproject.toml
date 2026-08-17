@@ -1,0 +1,47 @@
+# Abhaengigkeits-Deklaration der BC-Pipeline (AP 0.9 Punkt 9 / 0.10).
+#
+# Festlegung AP 0.10: Abhaengigkeiten werden hier nur DEKLARIERT und
+# gepinnt, nicht automatisch installiert. Die hardwarefreien Tests kommen
+# mit dem Kern (numpy/opencv/scipy) aus.
+#
+# WICHTIG (Training, AP 3.1): torch MUSS als cu128-Build installiert
+# werden, sonst fehlt sm_120 fuer die RTX 5070 Ti:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+# Anschliessend mit tools/check_gpu.py verifizieren (get_arch_list()
+# muss sm_120 enthalten). Der Index-URL kann nicht in pyproject.toml
+# stehen, daher ist torch bewusst NICHT unter dependencies gelistet.
+
+[project]
+name = "bc-pipeline"
+version = "0.1.0"
+description = "Behavior Cloning (Diffusion Policy) fuer den Neura LARA 5 -- lokale, autarke Pipeline"
+requires-python = ">=3.11"
+dependencies = [
+    # Kern -- reicht fuer alle hardwarefreien Module und Tests
+    "numpy>=1.26,<3",
+    "opencv-python>=4.8,<5",     # inkl. cv2.aruco (Rektifizierung AP 1.4)
+    "scipy>=1.13,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+]
+gamepad = [
+    # Teachen der Wegpunkte (AP 2.2); nur am Steuerungsrechner noetig
+    "pygame>=2.5,<3",
+]
+train = [
+    # OFFEN (AP 0.9 Punkt 6): LeRobot-Version VOR der ersten echten
+    # Datenaufzeichnung pinnen -- das Datensatzformat haengt daran.
+    # torch: siehe Hinweis oben (cu128-Index, nicht ueber PyPI-Default).
+    # "lerobot==<VERSION-PINNEN>",
+]
+
+# Hardware-SDKs ohne PyPI-Paket (manuell zu installieren):
+#   gxipy    -- aus dem Daheng Galaxy SDK (Wrist-Kamera, AP 1.1)
+#   neurapy  -- liegt in der Repo-Wurzel (Dynamic_Robot_Project/neurapy)
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

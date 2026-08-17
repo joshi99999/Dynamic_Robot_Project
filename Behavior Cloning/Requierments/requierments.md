@@ -24,6 +24,8 @@ Dieses Dokument dient der präzisen Erfassung aller technischen, infrastrukturel
 2. **Montage-Stabilität der Top-View-Kamera:** Bewertung und Absicherung der Frage, wie stark sich die Szenenkamera im Betrieb verschieben kann (siehe AP 1.4) — inklusive der Entscheidung Wrist+Top vs. Wrist-only.
 3. **Hardware-Ressourcen der Inferenz-Laptops:** GPU-Modell/VRAM, RAM und CPU der bereitgestellten Laptops dokumentieren, sobald bekannt; Inferenz-Durchsatz messen (siehe AP 3.1 / AP 4.1).
 4. **Massenspeicher:** Prüfen, ob der Steuerungs-Laptop eine NVMe-SSD mit ausreichend freiem Speicher besitzt (siehe AP 2.3).
+5. **Gelenkwinkel-Konvention NeuraPy ↔ URDF:** Ein Satz realer `(Gelenkwinkel → TCP/Flansch-Pose)`-Paare ist aufzuzeichnen, um das offline-Kinematikmodell gegen den Controller zu kalibrieren (siehe AP 0.4). Reines Auslesen, bewegt den Roboter nicht.
+6. **Achsgrenzen (`config.JOINT_LIMITS_RAD`):** Kandidatenwerte liegen aus dem URDF vor, die Zuordnung zum LARA 5 ist aber unbestätigt (siehe AP 0.4). Gegen Datenblatt/Controller verifizieren.
 
 ### Zwingend vor Beginn der Datenaufzeichnung zu entscheiden
 *(Diese Punkte lassen sich nachträglich nicht oder nur mit Neuaufnahme korrigieren.)*
@@ -31,6 +33,162 @@ Dieses Dokument dient der präzisen Erfassung aller technischen, infrastrukturel
 2. **Ausführungsgeschwindigkeit:** Zielgeschwindigkeit der Planer-Trajektorie festlegen, einheitlich über alle Datenquellen inkl. der später übernommenen CV-Demos (siehe AP 2.6) — legt die spätere Ausführungsgeschwindigkeit der Policy unveränderlich fest. *Mechanismus bereits identifiziert:* NeuraPy stellt globale Regler bereit (`set_joint_speed` 0–100 %, `set_linear_speed` 0–1.0 m/s, `set_linear_acceleration`, `set_joint_acceleration`), die von `move_joint`/`move_linear` genutzt werden — der konkrete Wert ist aber noch zu wählen.
 3. ~~**Bildvorverarbeitung:** ArUco-Homographie-Rektifizierung ja/nein~~ — **entschieden: ja.** Die Top-View wird per ArUco-Homographie auf eine kanonische Draufsicht rektifiziert (siehe AP 1.4). Muss bei Aufzeichnung und Inferenz identisch implementiert werden.
 4. ~~**Kamerakonfiguration:** Wrist + Top vs. Wrist-only~~ — **entschieden: Wrist + Top.** Da feststeht, dass sich die Top-Kamera in der Praxis bewegen kann, ist die in AP 1.4 beschriebene **bewusste Posenvariation im Datensatz zwingend** (nicht optional) einzuplanen — die Homographie-Rektifizierung (Punkt 3) reduziert den nötigen Umfang dieser Variation, ersetzt sie aber nicht (siehe Grenzen der Rektifizierung, insbesondere Parallaxe bei Kiste/Objekt).
+
+---
+
+## AP 0: Software-Architektur, Adapter-Schicht und hardwarefreie Testbarkeit
+*Querschnitts-Arbeitspaket — Voraussetzung für AP 1 bis AP 5. Status: **umgesetzt** im Umfang von 0.10; die hardwarefreie Testsuite (75 Tests, `python tests/run_all.py`) und der End-to-End-Lauf (`python apps/record.py --sim`) sind lauffähig. Offen bleiben die in 0.9 markierten Entscheidungen, soweit nicht in 0.10 vorläufig festgelegt.*
+
+### 0.1 Zielsetzung
+Zum Zeitpunkt der Implementierung besteht **kein Zugang zu Roboter und Kameras**. Daraus ergeben sich zwei Anforderungen, die dieselbe Lösung haben:
+
+1. **Austauschbarkeit:** Roboter oder Kamera sollen ersetzbar sein, ohne dass Recorder, Planer, Datensatz, Training oder Inferenz angefasst werden müssen.
+2. **Hardwarefreie Entwicklung und Absicherung:** Alles, was nicht zwingend an der Hardware hängt, soll ohne Hardware lauffähig und getestet sein. Beim späteren Hardwarezugang bleibt idealerweise nur die Abnahme der Adapter übrig.
+
+Der zugrundeliegende Zweck ist ausdrücklich **Risikominimierung**: Ein konzeptioneller Fehler, der sich erst nach Beginn der Datenaufzeichnung zeigt, entwertet den gesamten Datensatz (vgl. die Liste „Zwingend vor Beginn der Datenaufzeichnung zu entscheiden").
+
+### 0.2 Was dieses Vorgehen leistet — und was ausdrücklich nicht
+Die Trennung ist tragfähig, aber ihre Reichweite muss realistisch benannt werden, sonst erzeugt sie eine falsche Sicherheit:
+
+* **Was abgesichert wird:** die *Logik* — Synchronisationsregeln, Label-Zuordnung inkl. Greifer-Dwell, Trajektorien- und Rauschmathematik, Rejection Sampling, Kollisions- und Geofence-Logik, Datensatz-Schema, Trainings- und Inferenzschleife, Fehler- und Abbruchpfade.
+* **Was nicht abgesichert wird:** die *Physik und die Schnittstellenrealität* — reale Latenzen und Jitter, USB3-Bandbreite, tatsächlich erreichte 15 Hz, `servo_j`-Roundtrip, exakte Rückgabeformate und Einheiten von NeuraPy, Verhalten von `gxipy`, Greifer-Totzeit, Verhalten des Controller-IK-Solvers, Bildstatistik und damit die erreichbare Policy-Qualität.
+* **Wichtige Konsequenz:** Ein Mock kodiert stets *unsere Annahme* über die Hardware. Stimmt die Annahme nicht, ist der Code korrekt gegen ein falsches Modell getestet. Das Risiko verschwindet nicht, es **verlagert sich in die Adapter** — deshalb sind die Gegenmaßnahmen in 0.5 (Contract-Tests, Fehlerinjektion) kein Beiwerk, sondern der eigentliche Kern des Ansatzes.
+
+### 0.3 Schichtenmodell
+```
+Anwendungen     teach.py   record.py   train.py   infer.py   eval.py   dashboard/
+                                                                      (AP 1.2)
+--------------------------------------------------------------------------------
+Pipeline        sync   recorder   dataset   trajectory   noise   rectify
+(hardwarefrei)  collision   safety   policy   metrics
+--------------------------------------------------------------------------------
+Ports (ABC)     RobotPort | CameraPort | TeleopPort | ClockPort
+--------------------------------------------------------------------------------
+Adapter         NeuraRobot   DahengCamera   UvcCamera   GamepadTeleop   RealClock
+                SimRobot     SimCamera / SyntheticScene / FileCamera
+                             ScriptedTeleop  SimClock
+```
+
+**Verbindliche Regel:** Die Pipeline-Schicht importiert weder `neurapy` noch `gxipy` — auch nicht verzögert innerhalb einer Funktion. Das wird durch einen automatischen Test abgesichert (Import-Scan über die Pipeline-Module), nicht nur durch Disziplin.
+
+### 0.4 Kinematik — der kritische Punkt der Architektur
+**Befund:** Im derzeitigen Stand liegen IK und FK vollständig im Controller (`compute_inverse_kinematics` / `compute_forward_kinematics` über die NeuraPy-Socket-Verbindung). Damit sind **Trajektorienplanung, Rauscheinspielung, Kollisions-Vorabprüfung und Rejection Sampling — also AP 2.4, der aufwändigste und riskanteste Teil des Projekts — ohne Roboter überhaupt nicht ausführbar.** Genau das Modul, das am dringendsten hardwarefreie Absicherung bräuchte, hätte keine.
+
+**Vorhandene Grundlage:** Das ausgelieferte Deployment enthält URDF-Modelle
+(`10_Neura/.../DEP_Deployment/hrg_urdf-v5.0.8-Linux.deb` → `usr/local/share/ELFIN_Model/`:
+`elfin5.urdf`, `elfin10.urdf`, `lara8.urdf`, `model.urdf`). Daraus sind Kinematikkette, Linkgeometrie und Achsgrenzen direkt entnehmbar; `elfin5.urdf` nennt als Grenzen
+`±3,14 / ±2,35 / ±2,61 / ±3,14 / ±2,56 / ±3,14 rad`.
+
+**Einschränkung — nicht überspringen:** Eine Gegenprobe mit dem einzigen real gemessenen Wertepaar aus dem Vortest (`tools/log.txt`: `q = [-0,2001, 0,067, 1,5017, 0, 1,5729, -0,2001]` → Flanschpose `[0,4366, -0,0885, 0,4345]`) reproduziert die gemessene Pose **mit keinem der vier URDF-Modelle**. Bester Rest­fehler: `elfin5` mit ca. **83 mm**, auch nach Absuchen der naheliegenden Vorzeichen- und ±90°/180°-Offset-Konventionen. Mögliche Ursachen: abweichende Nullstellungs-/Vorzeichenkonvention von NeuraPy, abweichender Basis-Bezugspunkt, oder das Modell entspricht schlicht nicht der ausgelieferten LARA 5. **Das URDF ist damit als Strukturquelle brauchbar, als numerisch verbindliches Modell aber unbestätigt.**
+
+**Daraus abgeleitetes Zweigleisiges Vorgehen:**
+* **Gleis A — `SimRobot` mit eigener Kinematik (jetzt, hardwarefrei):** FK analytisch aus der URDF-Kette, IK numerisch (gedämpfte Pseudoinverse) mit derselben Seed-Semantik wie `reference_joint`. Damit laufen Planer, Rauschen, Kollisionsprüfung und Rejection Sampling vollständig offline. **Der Zweck ist die Prüfung der Logik, nicht der Geometrie:** Erreichbarkeitsquoten, Freiraum-Werte und dq/dx-Zahlen aus der Simulation sind **nicht** auf die Anlage übertragbar und dürfen nicht als Nachweis geführt werden.
+* **Gleis B — Kalibrierung und Golden Traces (beim Hardwarezugang):** Ein Skript loggt ca. 30–50 `(q → Pose)`-Paare über den gesamten Arbeitsraum (reines Auslesen, keine Bewegung). Damit wird (a) die Konvention NeuraPy↔URDF bestimmt bzw. die Modellzuordnung geklärt und (b) ein Referenzdatensatz erzeugt, gegen den `SimRobot` in der Testsuite dauerhaft geprüft wird.
+
+Bis Gleis B abgeschlossen ist, gilt: **Alle geometrischen Grenzwerte (Achsgrenzen, Sicherheitsabstände, Rauschkorridor) sind vorläufig und vor der ersten physischen Ausführung an der Anlage zu verifizieren.**
+
+**Virtuelle Steuerung (angekündigt, Material folgt):** Neura stellt eine virtuelle Steuerung bereit. Sofern diese dieselbe NeuraPy-Schnittstelle über TCP/IP bedient, verschiebt sie einen erheblichen Teil der Abnahmeliste 0.6 nach vorn — ohne physische Anlage:
+* **Gleis B wird vorziehbar:** Die Kinematik-Kalibrierung (`compute_forward_kinematics`/`compute_inverse_kinematics`) lässt sich gegen die virtuelle Steuerung fahren. Damit klärt sich die Konvention NeuraPy↔URDF und die Frage, welches URDF-Modell der LARA 5 entspricht (Punkt 4 der Abnahmeliste).
+* **Contract-Tests gegen `--robot=neura`** werden ausführbar: Rückgabeformate, Einheiten, Bezugsframes und das Verhalten der `*_with_timestamp`-Varianten (Punkt 2) sind prüfbar, ohne die Anlage zu belegen.
+* **Weiterhin nur an der realen Anlage prüfbar:** tatsächlich erreichte Rate und Jitter, `servo_j`-Roundtrip über das reale Netz (Punkt 1/3), Greifer-Totzeit (Punkt 5), Tool-Geometrie (Punkt 6), Kameras (Punkt 7/8), Kollisionsmodell (Punkt 9), Not-Halt (Punkt 10).
+* **Vorsicht bei einer Falle:** `is_robot_in_simulation()` muss in der Auswertung mitgeführt werden — Vortest-Ergebnisse aus der virtuellen Steuerung dürfen nicht versehentlich als Anlagenmessung protokolliert werden (der bestehende Vortest in `tools/log.txt` weist diesen Wert bewusst mit aus).
+* **Benötigt wird dafür:** Zugangsdaten/Host+Port der virtuellen Steuerung, die zugehörige NeuraPy-Version und die Info, ob Servo-Interface und Greiferbefehle dort ebenfalls bedient werden.
+
+### 0.5 Testkonzept
+Drei Stufen, die aufeinander aufbauen:
+
+1. **Unit-Tests (hardwarefrei, deterministisch):** Geometrie, Rauschprozess, Sync-Regeln, Kollisionsmodell, Datensatz-Schema. Voraussetzung dafür ist, dass Zeit und Zufall **injizierbar** sind — feste Seeds und eine `ClockPort` statt direkter `time.time()`-Aufrufe. Sonst sind die Tests weder reproduzierbar noch schneller als Echtzeit.
+2. **Contract-Tests (der zentrale Baustein):** *Eine* Testsuite je Port, die gegen **beide** Implementierungen läuft — `pytest --robot=sim` heute, `pytest --robot=neura` am Hardwaretag. Sie prüft die Zusagen des Ports: Wertebereiche, Einheiten, Reihenfolge, Bezugsframe, Zeitstempelverhalten, Verhalten im Fehlerfall. Damit wird aus „der Adapter ist noch ungetestet" eine **abhakbare Abnahmeliste** statt einer offenen Baustelle.
+3. **End-to-End in Simulation:** Wegpunkte → Planer + Rauschen → Aufzeichnung → `LeRobotDataset` → Kurztraining → geschlossene Inferenzschleife, komplett ohne Hardware. Dieser Durchlauf ist der eigentliche Nachweis, dass die Kette in sich konsistent ist — insbesondere, dass State-/Action-Raum bei Aufzeichnung und Inferenz identisch sind (AP 1.5.1).
+
+**Fehlerinjektion (zwingend, sonst beweisen die Sim-Adapter nur „stürzt nicht ab"):** Die Sim-Adapter müssen konfigurierbar fehlerhaft sein — Latenz und Jitter, Frame-Drops, veraltete Frames, `IKNotFound`, leere Socket-Antwort (der in `robot_adapter._unwrap_neurapy_error` behandelte NeuraPy-Fall), ausgelöster Schutzstopp, Kameraverschiebung. Erst damit werden das Latenzbudget aus AP 1.3, das Verwerfen von Episoden aus AP 5.2 und die Not-Halt-Pfade aus AP 4.2 tatsächlich geprüft.
+
+### 0.6 Abnahmeliste Hardware (was am Anlagentag zwingend offen bleibt)
+Diese Punkte sind hardwarefrei **nicht** absicherbar und bilden die Prüfliste für den ersten Zugang:
+1. Tatsächlich erreichte Rate und Zeitversatz je Quelle gegen das 30-ms-Budget (AP 1.3).
+2. Rückgabeformat, Einheiten und Bezugsframe aller genutzten NeuraPy-Funktionen, insbesondere der `*_with_timestamp`-Varianten (Zeitbasis UTC vs. Hostzeit).
+3. `servo_j`-Roundtrip und Jitter bei 15 Hz.
+4. Kinematik-Kalibrierung nach 0.4, Gleis B.
+5. Greifer-Totzeit messen (Arbeitswert 500 ms, AP 2.1).
+6. Tool/TCP-Geometrie im Controller eintragen und Vortest Nr. 3 wiederholen (AP 2.4).
+7. Daheng-Kamera: ROI, Belichtung, Debayering, Durchsatz über `gxipy`.
+8. Szenenkamera: Modell, Auflösung, FPS, Shutter-Typ.
+9. Kollisionsmodell gegen den realen Aufbau vermessen.
+10. Not-Halt-Pfade real auslösen.
+
+### 0.7 Notwendige Anpassungen an den bestehenden Phase-0-Modulen
+Die vorhandenen Module sind inhaltlich brauchbar, verletzen die Schichtentrennung aus 0.3 aber an mehreren Stellen:
+
+* `kinematics.py` ruft `adapter._call("compute_forward_kinematics", …)` mit Neura-spezifischen Argumentnamen auf — die Neura-Kopplung liegt damit in einer eigentlich generischen Schicht. Auflösung: `RobotPort.fk()` / `RobotPort.ik()` als Portmethoden.
+* `collision.py` arbeitet über `ArmPoint.frame` direkt mit den Neura-Framenamen `tool`/`wrist`/`elbow`. Auflösung: `RobotPort.link_positions(joints) -> dict[str, ndarray]`; das Kollisionsmodell kennt dann nur noch Namen und Punkte.
+* `robot_adapter.py` vermischt Transport/Lebenszyklus (Neura-spezifisch) mit der semantischen Roboterschnittstelle (generisch). Auflösung: Aufteilung in `ports.RobotPort` (ABC), `adapters/neura.py`, `adapters/sim.py`.
+* Der Greifer-Dwell ist als `time.sleep()` im Adapter implementiert. Das blockiert den aufrufenden Thread — bei 15 Hz Aufzeichnung stehen dadurch 7–8 Frames still — und ist in schnellen Tests nicht simulierbar. Auflösung: Dwell über die `ClockPort` und als Zustandsautomat, nicht als Blockade.
+* Zeitstempel werden durchgängig über `time.time()` gebildet. Für deterministische Tests ist eine injizierbare Zeitquelle nötig.
+* Konvention festhalten: `Frame.timestamp` ist die Hostzeit **nach** dem Abgriff und enthält damit die Übertragungslatenz. Das ist vertretbar, muss aber verbindlich dokumentiert sein, weil die gesamte Synchronisation darauf beruht.
+
+### 0.8 Geplante Modulübersicht
+```
+bc/
+  ports.py            RobotPort, CameraPort, TeleopPort, ClockPort (ABCs)
+  clock.py            RealClock / SimClock (injizierbare Zeit)
+  config.py           zentrale Konstanten inkl. Schema-Festlegungen
+  geometry.py         Quaternionen/Posen (+/-pi-Problem)
+  urdf.py             URDF-Parser für die Offline-Kinematik
+  capture.py          Threaded/Direct-Frame-Bereitstellung (AP 1.3)
+  adapters/
+    neura.py          NeuraPy-Adapter (aus robot_adapter.py)
+    sim_robot.py      URDF-Kinematik (FK analytisch, IK per DLS), Fehlerinjektion
+    cam_daheng.py     gxipy
+    cam_uvc.py        OpenCV
+    cam_sim.py        Platzhalter-Frames mit Fehlerinjektion
+    teleop_gamepad.py Wegpunkte teachen (AP 2.2, pygame optional)
+    teleop_script.py  skriptgesteuert, für Tests
+  kinematics.py       IK/FK-Absicherungen, portbasiert
+  collision.py        Quadermodell + Geofence, portbasiert
+  trajectory.py       Wegpunkte -> Soll-Bahn, Dwell, Trichter-Distanz (AP 2.4)
+  noise.py            Ornstein-Uhlenbeck, Trichter-Dämpfung, asymm. Grenzen,
+                      Rejection Sampling
+  sync.py             15-Hz-Taktgeber + Latenzbudget (AP 1.3)
+  recorder.py         Episodenaufzeichnung, asymmetrische Paarung (AP 2.1/2.4)
+  dataset.py          Schema + neutrale Ablage (npz/json); LeRobot-Konvertierung
+                      folgt nach Versions-Pinning (AP 2.3/5.2)
+  rectify.py          ArUco-Homographie + Posenüberwachung, inkl. synthetischer
+                      Marker-Szene für Tests (AP 1.4)
+  safety.py           Watchdog, Geofence-Wächter, Not-Halt (AP 4.2)
+  policy.py           PolicyPort, ChunkExecutor, HoldPolicy; Diffusion = Gerüst
+  metrics.py          Datensatz-Auswertung; Benchmark folgt mit AP 5
+apps/                 teach, record (--sim lauffähig), train/infer/eval
+                      (infer --sim lauffähig mit HoldPolicy); dashboard folgt
+tests/                unit + contract (--robot=sim|neura, --camera=...) +
+                      run_all.py (läuft ohne pytest)
+tools/                check_gpu, check_ik, check_cameras, selftest
+```
+
+### 0.9 Offene Entscheidungen dieses Arbeitspakets
+Die folgenden Punkte sind vor bzw. während der Umsetzung zu entscheiden; die mit **⛔** markierten sind nachträglich nicht ohne Neuaufnahme korrigierbar:
+
+1. **⛔ Datensatz-Schema:** Feature-Namen, Reihenfolge, Datentypen und Einheiten von `observation.state`, `observation.images.*` und `action`. Insbesondere: Wie wird der binäre Greifer im Action-Vektor geführt (eigene Dimension, Kodierung, Schwellwert bei der Inferenz)?
+2. **⛔ Zusätzliche Kanäle für die asymmetrische Label-Logik:** Nach AP 2.4 ist die Action die *ideale* Sollpose, der State die *verrauschte* Istpose. Damit die Zuordnung später überprüf- und umlabelbar bleibt, sollten Soll- und Ist-Trajektorie **beide** gespeichert werden, nicht nur ihre Kombination.
+3. **⛔ Absolute vs. relative Aktionen** (offen aus AP 1.5.2; absolute Sollposen sind nahegelegt, aber nicht festgelegt).
+4. **⛔ Bildgröße und Rektifizierungs-Ausgabe:** Auflösung und Bildausschnitt nach der Homographie, identisch für Aufzeichnung und Inferenz.
+5. **⛔ Planer-Zielgeschwindigkeit** (offen aus AP 2.6).
+6. **LeRobot-Version:** Das `LeRobotDataset`-Format hat mehrere inkompatible Versionen. Die verwendete Version ist zu pinnen und im Datensatz zu vermerken.
+7. **Action-Chunk-Länge und ausgeführter Anteil `n`** (AP 4.1) — kein Datensatz-Risiko, aber Voraussetzung für die Inferenzschleife.
+8. **Zykluszeit als Metrik ja/nein** (offen aus AP 5.1).
+9. **Abhängigkeiten und Umgebung:** Aktuell sind lediglich `numpy`, `opencv-python` und `scipy` unter Python 3.11.9 installiert; `torch`, `lerobot` und `pytest` fehlen. Festzulegen sind Paketmanager, Versionspinning (inkl. PyTorch cu128 wegen sm_120, siehe AP 3.1) und die Aufteilung Windows/WSL2.
+
+### 0.10 Festlegungen für die erste Umsetzungsstufe
+* **Datensatz-Schema (vorläufige Festlegung zu 0.9 Punkt 1–4, umgesetzt in `bc/dataset.py` / `bc/config.py`):**
+  * `observation.state` (14, float32) = 6 Gelenkwinkel [rad] + TCP-Position [m] + TCP-Quaternion [qw,qx,qy,qz] + Greifer (kommandiert, 0.0/1.0).
+  * `action` (7, float32) = 6 Gelenkwinkel der **idealen** Soll-Bahn bei t+1 (absolut, keine Deltas) + Greifer; Inferenz-Schwelle 0.5.
+  * Zusatzkanäle `aux.joints_ideal`, `aux.pose_ideal`, `aux.pose_noisy`, `aux.sync_ok` — Soll- und Ist-Bahn werden beide gespeichert (Überprüf-/Umlabelbarkeit).
+  * Bildgröße 240 × 320 RGB, identisch für Aufzeichnung und Inferenz.
+  * Jede Änderung ⇒ `config.SCHEMA_VERSION` hochzählen; Versionen nie mischen.
+* **Planer-Geschwindigkeit (Startwert zu 0.9 Punkt 5):** 0,15 m/s Transit, 0,05 m/s Endanflug (`config.TRANSIT_SPEED_MS` / `APPROACH_SPEED_MS`) — **provisorisch**, Festlegung vor der echten Datenaufzeichnung.
+* **Ablageort:** `Behavior Cloning/` im bestehenden Repo `Dynamic_Robot_Project`; das vorhandene `bc/` wird gemäß 0.7 umstrukturiert, nicht ersetzt.
+* **Abhängigkeiten:** werden nur deklariert und gepinnt, nicht installiert. Die Test- und Simulationsstufen der hardwarefreien Module kommen mit `numpy`/`opencv-python`/`scipy` aus.
+* **Kamera-Simulation:** Platzhalter-Frames mit Fehlerinjektion (Latenz, Jitter, Drops, veraltete Frames). Bewusste Konsequenz: Die ArUco-Rektifizierung aus AP 1.4 und die inhaltliche Trainings-/Inferenzkette werden dadurch **nicht** hardwarefrei abgesichert und wandern in die Abnahmeliste 0.6. Der Recorder, die Synchronisation und alle Zeit-/Label-Regeln sind davon nicht betroffen und bleiben vollständig testbar.
+* **Umfang:** AP 0 bis AP 2 vollständig inklusive Tests; AP 3 bis AP 5 als Gerüst mit festgelegten Schnittstellen. Das Konsistenzrisiko State/Action zwischen Aufzeichnung und Inferenz (AP 1.5.1) bleibt damit vorerst offen und wird über das Datensatz-Schema (0.9 Punkt 1) und einen dedizierten Schema-Test abgesichert, nicht über einen durchgehenden Lauf.
 
 ---
 
@@ -46,8 +204,17 @@ Dieses Dokument dient der präzisen Erfassung aller technischen, infrastrukturel
   * *Auswirkung auf die Architektur — bewusst gering gehalten:* `gxipy` liefert die Frames als **NumPy-Array**, d. h. ab dem Frame-Abgriff ist die Verarbeitung identisch zu OpenCV (Resize, Farbraum, LeRobot, PyTorch). Die Kamera liefert **Bayer RG8/RG10**, das Debayering erfolgt entweder über `raw.convert("RGB")` des SDK oder über `cv2.cvtColor(..., cv2.COLOR_BAYER_RG2RGB)`. Beide Kameras werden hinter einer **gemeinsamen Kamera-Schnittstelle** (`read() -> (frame_rgb, timestamp)`) gekapselt, sodass Recorder und Inferenzschleife den Kameratyp nicht kennen müssen.
 * **Welche Auflösung und Bildwiederholrate (FPS) liefern die Kameras nativ?**
   Wrist-Kamera: **1440 (H) × 1080 (V) bei 61,2 fps** (Sony IMX296, **Global Shutter**, 1/2.9", 8/10 bit). Datenblatt: `../20_Dokumentation/WristKamera-VEN-161-61U3MC-Datasheet.pdf`.
-  Da nur mit 15 Hz aufgezeichnet wird (siehe 1.3), wird die Auflösung bereits **kameraseitig per ROI/Skalierung reduziert**, statt volle Frames zu übertragen und später in Python zu verkleinern — das spart USB-Bandbreite und CPU-Last.
+  Da nur mit 15 Hz aufgezeichnet wird (siehe 1.3), wird die Datenmenge bereits **kameraseitig reduziert**, statt volle Frames zu übertragen und später in Python zu verkleinern — das spart USB-Bandbreite und CPU-Last.
+  **Präzisierung nach der Objektiventscheidung (Fisheye, siehe unten): Die Reduktion erfolgt über Binning, nicht über einen ROI-Ausschnitt.** `Width`/`Height` sind bei GenICam-Kameras ein **Ausschnitt** des Sensors, keine Skalierung — ein kleinerer ROI verkleinert also das Sichtfeld, und genau das Sichtfeld ist beim Fisheye der Grund für die Objektivwahl. Festgelegt: voller Sensor mit **2 × 2-Binning** (720 × 540, halbe Datenrate, besserer Rauschabstand), Skalierung auf die Schemagröße 240 × 320 in Software. Das Seitenverhältnis bleibt durchgehend 4:3. Wird doch einmal ein kleinerer ROI gebraucht, muss er **zentriert** gesetzt werden (`OffsetX/Y` ≠ 0) — bei Offset 0 schneidet man die linke obere Sensorecke aus und damit das optische Zentrum weg.
   Die native Auflösung/FPS der Szenenkamera ist noch zu ermitteln.
+* **Objektiv der Wrist-Kamera — entschieden: Fisheye 1,85 mm, Bildkreis für 1/1.8", 12 MP.**
+  Zur Wahl standen ein rektilineares Objektiv mit festem Fokus (scharf nur im Endanflug) und das Fisheye (durchgehend scharf, dafür verzeichnet). **Begründung:** Unschärfe ist unwiederbringlicher Informationsverlust, Verzeichnung dagegen eine statische, in jedem Bild identische Abbildung, die das Netz mitlernt — solange Aufzeichnung und Inferenz dieselbe Optik verwenden. Hinzu kommt, dass das Festfokus-Objektiv ausgerechnet im Endanflug scharf wäre, also dort, wo Backen und Kistenwand das Wrist-Bild ohnehin weitgehend verdecken (siehe 1.4), und während des Anflugs unscharf — genau in der Phase, in der das Korrektursignal aus der Rauscheinspielung (AP 2.4) den Wert hat.
+  **Konsequenzen, die daraus zwingend folgen:**
+  * *Effektive Auflösung statt Verzeichnung ist der reale Preis.* Das Fisheye verteilt ein weites Feld auf dieselben Pixel; nach dem Skalieren auf 240 × 320 belegt das Zielobjekt entsprechend wenige Pixel. Die Beurteilung von Objektgröße und Schärfe muss deshalb **am 240 × 320-Bild** erfolgen, nicht am Vollbild.
+  * *Der kleinere Sensor hilft dabei.* Der Bildkreis ist für 1/1.8" ausgelegt, der IMX296 ist 1/2.9" — genutzt wird also nur der zentrale Teil des Bildkreises (Diagonale ca. 70 %). Das reduziert die extremste Randverzeichnung und die Auflösungsungleichverteilung; das reale Sichtfeld ist entsprechend deutlich kleiner als der Datenblattwert für 1/1.8" und **am Aufbau zu messen statt aus dem Datenblatt zu übernehmen**.
+  * *Das Objektiv überauflöst den Sensor deutlich* (12 MP auf 1/1.8" ≈ 1,85 µm Pixel gegenüber 3,45 µm des IMX296). Die Schärfe ist damit nicht objektivbegrenzt.
+  * *Random-Crop-Augmentierung* (siehe 1.4, Maßnahme 3) ist beim Fisheye weniger aussagekräftig: Ein Crop verschiebt das optische Zentrum, was keiner realen Kamerabewegung entspricht. Kein Ausschlusskriterium, aber der Nutzen der Augmentierung sinkt.
+  * *Fixierung ist kritischer als bei rektilinearer Optik*, da die Verzeichnung zentriert ist — siehe die Montageanforderungen in 1.4.
 * **Wie sind die Kameras physikalisch montiert?**
   Die Kameras werden fest verbaut: Die Szenenkamera an der Decke (Top) und die Wrist-Kamera starr am Effektor/Flansch des Roboterarms. Zur Stabilität der Kamerapose und den Konsequenzen einer Verschiebung siehe **AP 1.4**.
 * **Shutter-Typ und Konsequenz für die Datenqualität**

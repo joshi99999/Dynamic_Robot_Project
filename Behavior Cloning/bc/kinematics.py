@@ -1,24 +1,26 @@
 """Kinematik mit Absicherungen fuer die Rauscheinspielung (AP 2.4).
 
-Baut auf den im Vortest bestaetigten NeuraPy-Funktionen auf
-(``compute_inverse_kinematics`` / ``compute_forward_kinematics``, siehe
-tools/log.txt) und ergaenzt sie um die vier im Requirements-Dokument
-geforderten Absicherungen:
+Arbeitet ausschliesslich gegen :class:`bc.ports.RobotPort` -- laeuft also
+identisch gegen den NeuraPy-Adapter (Controller-IK, siehe Vortest in
+tools/log.txt) und gegen den SimRobot (URDF-Kinematik, hardwarefrei).
 
-1. ``IKNotFound`` abfangen  -> zugleich Erreichbarkeitspruefung
+Ergaenzt die Port-IK um die vier im Requirements-Dokument geforderten
+Absicherungen:
+
+1. IKError abfangen         -> zugleich Erreichbarkeitspruefung
 2. |Delta q|-Schranke       -> erkennt Konfigurationsspruenge/Singularitaeten
 3. FK-Rueckprobe            -> IK-Loesung muss die Sollpose reproduzieren
-4. Achsgrenzen              -> sofern in config.JOINT_LIMITS_RAD hinterlegt
+4. Achsgrenzen              -> gemaess config.JOINT_LIMITS_RAD
 
 Zentrale Designentscheidung: Zielposen werden intern als **Quaternion**
-gefuehrt und auch so an die IK uebergeben. Grund siehe geometry.py --
-die realen Arbeitsposen liegen am +/-pi-Umschlagpunkt der RPY-Darstellung.
+gefuehrt. Grund siehe geometry.py -- die realen Arbeitsposen liegen am
++/-pi-Umschlagpunkt der RPY-Darstellung.
 """
 
 import numpy as np
 
 from . import config, geometry
-from .robot_adapter import RobotError
+from .ports import IKError, RobotError
 
 
 class IKFailure(RobotError):
@@ -31,34 +33,22 @@ class IKFailure(RobotError):
 
 
 class Kinematics(object):
-    """Kinematik-Fassade auf Basis eines :class:`RobotAdapter`."""
+    """Kinematik-Fassade auf Basis eines :class:`RobotPort`."""
 
-    def __init__(self, adapter, joint_limits=config.JOINT_LIMITS_RAD):
-        self.adapter = adapter
+    def __init__(self, robot, joint_limits=config.JOINT_LIMITS_RAD):
+        self.robot = robot
         self.joint_limits = joint_limits
         self._warned_no_limits = False
 
     # -- Vorwaertskinematik ------------------------------------------------
 
-    def fk_rpy(self, joints, frame="tool"):
-        """Gelenkwinkel -> [X,Y,Z,R,P,Y] fuer den gewuenschten Frame."""
-        pose = self.adapter._call(
-            "compute_forward_kinematics",
-            joint_angles=list(joints),
-            target_frame=frame,
-            representation="rpy",
-        )
-        if not pose:
-            raise IKFailure("compute_forward_kinematics lieferte keine Pose")
-        return np.asarray(pose, dtype=float)
-
     def fk_quat(self, joints, frame="tool"):
-        """Gelenkwinkel -> [X,Y,Z,QW,QX,QY,QZ]."""
-        return geometry.pose_rpy_to_quat(self.fk_rpy(joints, frame=frame))
+        """Gelenkwinkel -> [X,Y,Z,QW,QX,QY,QZ] fuer den gewuenschten Frame."""
+        return np.asarray(self.robot.fk(joints, frame=frame), dtype=float)
 
     def fk_position(self, joints, frame="tool"):
-        """Nur die kartesische Position -- fuer die Kollisionspruefung."""
-        return self.fk_rpy(joints, frame=frame)[:3]
+        """Nur die kartesische Position."""
+        return self.fk_quat(joints, frame=frame)[:3]
 
     # -- Inverskinematik ---------------------------------------------------
 
@@ -73,20 +63,13 @@ class Kinematics(object):
         if pose_quat.shape[-1] != 7:
             raise ValueError("ik() erwartet eine Quaternion-Pose mit 7 Werten")
         try:
-            sol = self.adapter._call(
-                "compute_inverse_kinematics",
-                target_pose=list(pose_quat),
-                reference_joint=list(reference_joint),
-                representation="quaternion",
-            )
-        except Exception as exc:
+            sol = self.robot.ik(pose_quat, reference_joint)
+        except IKError as exc:
             raise IKFailure(
                 "IK ohne Loesung fuer Pose %s (%s)"
                 % (np.round(pose_quat, 4).tolist(), exc),
-                reason="ik_not_found",
+                reason=exc.reason or "ik_not_found",
             ) from exc
-        if not sol:
-            raise IKFailure("IK lieferte eine leere Antwort", reason="empty")
         return np.asarray(sol, dtype=float)
 
     # -- Pruefungen --------------------------------------------------------
@@ -96,16 +79,15 @@ class Kinematics(object):
         if self.joint_limits is None:
             if not self._warned_no_limits:
                 print(
-                    "[kinematics] WARNUNG: config.JOINT_LIMITS_RAD ist nicht "
-                    "gesetzt -- Achsgrenzenpruefung wird uebersprungen. "
-                    "Grenzen aus dem LARA-5-Datenblatt eintragen."
+                    "[kinematics] WARNUNG: Achsgrenzen sind nicht gesetzt -- "
+                    "Grenzpruefung wird uebersprungen."
                 )
                 self._warned_no_limits = True
             return []
         bad = []
         for i, q in enumerate(joints):
             lo, hi = self.joint_limits[i]
-            if q < lo or q > hi:
+            if lo is not None and (q < lo or q > hi):
                 bad.append(i)
         return bad
 
@@ -147,7 +129,11 @@ class Kinematics(object):
         solutions = np.empty((len(poses_quat), len(reference)), dtype=float)
 
         for i, pose in enumerate(poses_quat):
-            sol = self.ik(pose, reference)
+            try:
+                sol = self.ik(pose, reference)
+            except IKFailure as exc:
+                exc.index = i
+                raise
 
             delta = float(np.max(np.abs(sol - reference)))
             if i > 0 and delta > max_delta_q:

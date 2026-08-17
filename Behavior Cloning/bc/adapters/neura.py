@@ -1,58 +1,25 @@
-"""NeuraPy-Adapter fuer den LARA 5 (AP 1.5).
+"""NeuraPy-Adapter fuer den LARA 5 (AP 1.5) -- Implementierung des RobotPort.
 
-Kapselt Verbindung, Lebenszyklus, State-Abgriff und Greifer hinter einer
-schmalen Schnittstelle. Wird sowohl bei der Datenaufzeichnung als auch bei
-der Live-Inferenz benutzt und ist damit die zentrale Bruecke zwischen
-KI-Framework und Hardware.
+Kapselt Verbindung, Lebenszyklus, State-Abgriff, Kinematik-Aufrufe und
+Greifer hinter der Port-Schnittstelle. Wird sowohl bei der Datenaufzeichnung
+als auch bei der Live-Inferenz benutzt und ist damit die zentrale Bruecke
+zwischen KI-Framework und Hardware.
 
-Bewusst NICHT enthalten: Bewegungsplanung und Rauscheinspielung (Phase 3)
-sowie das Servo-Streaming der Inferenz (Phase 6) -- hier steht nur, was
-Aufzeichnung und Sicherheit brauchen.
+Dieser Adapter ist gegen die NeuraPy-API geschrieben, aber ohne Anlage
+nicht abnehmbar -- die Abnahme erfolgt ueber die Contract-Tests
+(``pytest --robot=neura``, siehe AP 0.5/0.6).
+
+Import von ``neurapy`` erfolgt bewusst erst beim Verbinden, damit sich das
+Modul ohne installierte SDKs importieren laesst.
 """
 
 import threading
 import time
 
-from . import config
+import numpy as np
 
-
-class RobotError(RuntimeError):
-    """Fehler in der Kommunikation mit der Control-Box."""
-
-
-class NotConnectedError(RobotError):
-    pass
-
-
-class RobotState(object):
-    """Ein zeitgestempelter Roboterzustand.
-
-    ``gripper_closed`` ist der KOMMANDIERTE Zustand -- NeuraPy liefert keine
-    Ist-Rueckmeldung der Greiferweite (AP 2.1).
-    """
-
-    __slots__ = ("t", "joints", "tcp_rpy", "gripper_closed", "t_joints", "t_pose")
-
-    def __init__(self, t, joints, tcp_rpy, gripper_closed, t_joints, t_pose):
-        self.t = t
-        self.joints = joints
-        self.tcp_rpy = tcp_rpy
-        self.gripper_closed = gripper_closed
-        self.t_joints = t_joints
-        self.t_pose = t_pose
-
-    @property
-    def skew(self):
-        """Zeitversatz zwischen Gelenk- und Posenmessung in Sekunden."""
-        return abs(self.t_joints - self.t_pose)
-
-    def __repr__(self):
-        return "RobotState(t=%.3f, joints=%s, skew=%.4fs, gripper=%s)" % (
-            self.t,
-            ["%.4f" % j for j in self.joints],
-            self.skew,
-            "zu" if self.gripper_closed else "auf",
-        )
+from .. import config, geometry
+from ..ports import IKError, NotConnectedError, RobotError, RobotPort, RobotState
 
 
 def _unwrap_neurapy_error(exc, function_name):
@@ -75,14 +42,8 @@ def _unwrap_neurapy_error(exc, function_name):
     return None
 
 
-class RobotAdapter(object):
+class NeuraRobot(RobotPort):
     """Schmale, robuste Huelle um ``neurapy.robot.Robot``.
-
-    Nutzung als Context-Manager stellt sicher, dass das Servo-Interface
-    deaktiviert und ``stop()`` aufgerufen wird -- auch bei Exceptions::
-
-        with RobotAdapter() as bot:
-            print(bot.read_state())
 
     Thread-Sicherheit: NeuraPy oeffnet pro Aufruf einen eigenen Socket
     (siehe ``generate_function`` in neurapy/robot.py), daher sind Aufrufe aus
@@ -96,7 +57,12 @@ class RobotAdapter(object):
         self._gripper_closed = False
         self._servo_active = False
         self._stop_requested = threading.Event()
-        self._warned_no_joint_limits = False
+
+    # -- Eigenschaften -----------------------------------------------------
+
+    @property
+    def dof(self):
+        return int(getattr(self.robot, "dof", 6))
 
     # -- Lebenszyklus ------------------------------------------------------
 
@@ -125,15 +91,6 @@ class RobotAdapter(object):
             self._call_safe("deactivate_servo_interface")
             self._servo_active = False
         self._call_safe("stop")
-
-    def __enter__(self):
-        if self._robot is None:
-            self.connect()
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        self.close()
-        return False
 
     # -- Aufruf-Helfer -----------------------------------------------------
 
@@ -170,63 +127,40 @@ class RobotAdapter(object):
         """Alle vom Controller angebotenen Funktionen (Diagnose)."""
         return self.robot.list_methods()
 
-    @property
-    def dof(self):
-        return int(getattr(self.robot, "dof", 6))
-
     # -- Zustand -----------------------------------------------------------
 
     def get_joint_angles(self):
         return list(self._call("get_current_joint_angles"))
 
     def get_joint_angles_ts(self):
-        """(joints, timestamp). Faellt auf Host-Zeit zurueck, falls noetig."""
+        """(joints, timestamp). Faellt auf Host-Zeit zurueck, falls noetig.
+
+        ACHTUNG (Abnahmeliste AP 0.6): Die Zeitbasis der
+        ``*_with_timestamp``-Funktionen (UTC der Control-Box vs. Host-Uhr)
+        ist am Geraet zu verifizieren, bevor die Synchronisation darauf
+        vertraut.
+        """
         try:
             result = self._call("get_current_joint_angles_with_timestamp")
             return _split_timestamped(result)
         except Exception:
             return self.get_joint_angles(), time.time()
 
-    def get_tcp_pose_rpy(self):
-        """TCP-Pose als [X, Y, Z, R, P, Y].
-
-        Bevorzugt ``compute_forward_kinematics``, weil das exakt dieselbe
-        Winkelkonvention wie ``compute_inverse_kinematics`` liefert. Erst
-        danach die direkten Getter (siehe tools/check_ik.py).
-        """
-        joints = self.get_joint_angles()
-        pose = self._call_safe(
-            "compute_forward_kinematics", joint_angles=joints, representation="rpy"
-        )
-        if pose:
-            return list(pose)
-        pose = self._call_safe("get_tcp_pose")
-        if pose and len(pose) == 6:
-            return list(pose)
-        raise RobotError(
-            "Konnte keine RPY-TCP-Pose ermitteln (weder "
-            "compute_forward_kinematics noch get_tcp_pose lieferten Daten)"
-        )
+    def get_flange_pose(self):
+        return list(self._call("get_flange_pose"))
 
     def get_tcp_pose_quaternion(self):
         return list(self._call("get_tcp_pose_quaternion"))
-
-    def get_flange_pose(self):
-        return list(self._call("get_flange_pose"))
 
     def read_state(self):
         """Vollstaendiger, zeitgestempelter Zustand fuer den Recorder."""
         joints, t_joints = self.get_joint_angles_ts()
         t_pose = time.time()
-        tcp_rpy = self._call_safe(
-            "compute_forward_kinematics", joint_angles=joints, representation="rpy"
-        )
-        if not tcp_rpy:
-            tcp_rpy = self.get_tcp_pose_rpy()
+        tcp_quat = self.fk(joints, frame="tool")
         return RobotState(
             t=time.time(),
-            joints=list(joints),
-            tcp_rpy=list(tcp_rpy),
+            joints=np.asarray(joints, dtype=float),
+            tcp_quat=tcp_quat,
             gripper_closed=self._gripper_closed,
             t_joints=t_joints,
             t_pose=t_pose,
@@ -243,36 +177,69 @@ class RobotAdapter(object):
         dist = sum((flange[i] - tcp[i]) ** 2 for i in range(3)) ** 0.5
         return dist > tol
 
-    def pose_is_plausible(self, pose_rpy):
+    def pose_is_plausible(self, pose):
         """Erkennt Platzhalterwerte (Pose ausserhalb der Reichweite)."""
-        dist = sum(v * v for v in pose_rpy[:3]) ** 0.5
+        dist = sum(v * v for v in list(pose)[:3]) ** 0.5
         return dist <= config.MAX_REACH_M
 
-    # -- Greifer -----------------------------------------------------------
+    # -- Kinematik ---------------------------------------------------------
 
-    @property
-    def gripper_closed(self):
-        """Kommandierter Greiferzustand (keine Ist-Rueckmeldung verfuegbar)."""
-        return self._gripper_closed
+    def fk(self, joints, frame="tool"):
+        """Gelenkwinkel -> Pose [X,Y,Z,QW,QX,QY,QZ].
 
-    def gripper_close(self, wait=True):
-        """Schliesst den Greifer und wartet die Totzeit ab.
-
-        Das Warten ist zwingend: ohne Dwell setzt die Folgebewegung ein,
-        bevor die Backen wirklich geschlossen sind (AP 2.1).
+        Bevorzugt ``compute_forward_kinematics``, weil das exakt dieselbe
+        Winkelkonvention wie ``compute_inverse_kinematics`` verwendet
+        (siehe tools/check_ik.py). Rueckgabe projektweit als Quaternion,
+        da die Arbeitsposen am +/-pi-Umschlagpunkt der RPY-Darstellung
+        liegen (geometry.py).
         """
-        self._call("grasp")
-        self._gripper_closed = True
-        if wait:
-            time.sleep(config.GRIPPER_DWELL_S)
+        pose = self._call(
+            "compute_forward_kinematics",
+            joint_angles=list(joints),
+            target_frame=frame,
+            representation="rpy",
+        )
+        if not pose:
+            raise RobotError("compute_forward_kinematics lieferte keine Pose")
+        return geometry.pose_rpy_to_quat(list(pose))
 
-    def gripper_open(self, wait=True):
-        self._call("release")
-        self._gripper_closed = False
-        if wait:
-            time.sleep(config.GRIPPER_DWELL_S)
+    def ik(self, pose_quat, reference_joint):
+        """Pose [X,Y,Z,QW,QX,QY,QZ] -> Gelenkwinkel, geseedet.
 
-    # -- Servo-Interface ---------------------------------------------------
+        Uebergibt die Pose in Quaternion-Darstellung an den Controller
+        (``representation='quaternion'``) -- nie RPY, siehe AP 2.4.
+        """
+        pose_quat = np.asarray(pose_quat, dtype=float)
+        if pose_quat.shape[-1] != 7:
+            raise ValueError("ik() erwartet eine Quaternion-Pose mit 7 Werten")
+        try:
+            sol = self._call(
+                "compute_inverse_kinematics",
+                target_pose=list(pose_quat),
+                reference_joint=list(reference_joint),
+                representation="quaternion",
+            )
+        except Exception as exc:
+            raise IKError(
+                "IK ohne Loesung fuer Pose %s (%s)"
+                % (np.round(pose_quat, 4).tolist(), exc),
+                reason="ik_not_found",
+            ) from exc
+        if not sol:
+            raise IKError("IK lieferte eine leere Antwort", reason="empty")
+        return np.asarray(sol, dtype=float)
+
+    def link_positions(self, joints):
+        """Stuetzpunkte via ``compute_forward_kinematics(target_frame=...)``.
+
+        Kostet einen TCP-Roundtrip (~2 ms) je Frame, siehe tools/log.txt.
+        """
+        out = {}
+        for frame in config.COLLISION_CHECK_FRAMES:
+            out[frame] = np.asarray(self.fk(joints, frame=frame)[:3], dtype=float)
+        return out
+
+    # -- Bewegung ----------------------------------------------------------
 
     def activate_servo(self, mode="position"):
         self._call("activate_servo_interface", mode)
@@ -284,10 +251,31 @@ class RobotAdapter(object):
             self._servo_active = False
 
     def servo_j(self, joint_angles):
-        """Sendet Zielgelenkwinkel (rad) an das Servo-Interface."""
         if not self._servo_active:
             raise RobotError("Servo-Interface ist nicht aktiv")
-        return self._call("servo_j", joint_angles)
+        return self._call("servo_j", list(joint_angles))
+
+    def set_speed(self, joint_percent=None, linear_ms=None):
+        """Setzt die globalen Geschwindigkeitsregler (AP 2.6)."""
+        if joint_percent is not None:
+            self._call("set_joint_speed", joint_percent)
+        if linear_ms is not None:
+            self._call("set_linear_speed", linear_ms)
+
+    # -- Greifer -----------------------------------------------------------
+
+    @property
+    def gripper_closed(self):
+        return self._gripper_closed
+
+    def gripper_command(self, close):
+        """Setzt den Greiferbefehl ab, OHNE zu warten (Dwell macht der
+        Planer als Halte-Schritte in der Trajektorie, AP 2.1)."""
+        if close:
+            self._call("grasp")
+        else:
+            self._call("release")
+        self._gripper_closed = bool(close)
 
     # -- Sicherheit --------------------------------------------------------
 
@@ -309,13 +297,6 @@ class RobotAdapter(object):
 
     def clear_stop(self):
         self._stop_requested.clear()
-
-    def set_speed(self, joint_percent=None, linear_ms=None):
-        """Setzt die globalen Geschwindigkeitsregler (AP 2.6)."""
-        if joint_percent is not None:
-            self._call("set_joint_speed", joint_percent)
-        if linear_ms is not None:
-            self._call("set_linear_speed", linear_ms)
 
 
 def _split_timestamped(result):

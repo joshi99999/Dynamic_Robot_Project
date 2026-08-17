@@ -8,9 +8,9 @@ muss daher hier abgebildet werden -- und zwar mit demselben Modell:
   physisch ausgefuehrt wird (Rejection Sampling),
 * **online** als Geofencing-Waechter waehrend Aufzeichnung und Inferenz.
 
-Die Roboterseite braucht kein eigenes Kinematikmodell: ueber
-``compute_forward_kinematics(target_frame=...)`` lassen sich Stuetzpunkte
-entlang des Arms abgreifen, die hier mit Huellkugeln versehen werden.
+Die Stuetzpunkte entlang des Arms liefert ``RobotPort.link_positions()`` --
+das Modell selbst kennt keine Roboter-API, nur Namen, Punkte und Radien
+(Schichtentrennung AP 0.3).
 """
 
 import numpy as np
@@ -73,7 +73,7 @@ class Box(object):
 
 
 class ArmPoint(object):
-    """Ein Stuetzpunkt am Arm: NeuraPy-Frame plus Huellkugelradius."""
+    """Ein Stuetzpunkt am Arm: Name aus link_positions() plus Huellradius."""
 
     __slots__ = ("frame", "radius")
 
@@ -139,17 +139,23 @@ class CollisionModel(object):
 
     # -- Pruefungen --------------------------------------------------------
 
-    def check_joints(self, kin, joints, index=None):
-        """Prueft eine einzelne Gelenkkonfiguration.
+    def check_positions(self, positions, index=None):
+        """Prueft einen Satz benannter Punkte (Kern der Pruefung).
 
-        Kostet einen FK-Aufruf je Stuetzpunkt (~2 ms), also bei drei Punkten
-        rund 6 ms pro Konfiguration.
+        ``positions``: dict Name -> Punkt(3,), z. B. das Ergebnis von
+        ``RobotPort.link_positions()``. Es werden nur die Namen geprueft,
+        fuer die ein :class:`ArmPoint` konfiguriert ist.
 
         Rueckgabe: Liste von :class:`Violation` (leer = frei).
         """
         violations = []
         for point in self.arm_points:
-            pos = kin.fk_position(joints, frame=point.frame)
+            pos = positions.get(point.frame)
+            if pos is None:
+                raise KeyError(
+                    "link_positions() liefert keinen Punkt '%s' "
+                    "(vorhanden: %s)" % (point.frame, sorted(positions))
+                )
             for box in self.boxes:
                 clearance = box.clearance(pos, point.radius) - self.margin
                 if clearance < 0.0:
@@ -158,7 +164,15 @@ class CollisionModel(object):
                     )
         return violations
 
-    def check_path(self, kin, joint_path, stop_at_first=True, stride=1):
+    def check_joints(self, robot, joints, index=None):
+        """Prueft eine Gelenkkonfiguration ueber ``robot.link_positions()``.
+
+        Beim NeuraPy-Adapter kostet das einen FK-Roundtrip je Stuetzpunkt
+        (~2 ms, tools/log.txt), also rund 6 ms pro Konfiguration.
+        """
+        return self.check_positions(robot.link_positions(joints), index=index)
+
+    def check_path(self, robot, joint_path, stop_at_first=True, stride=1):
         """Prueft eine ganze Gelenkraum-Trajektorie.
 
         ``stride`` erlaubt Grobpruefung mit anschliessender Feinpruefung --
@@ -170,15 +184,15 @@ class CollisionModel(object):
         joint_path = np.asarray(joint_path, dtype=float)
         found = []
         for i in range(0, len(joint_path), stride):
-            violations = self.check_joints(kin, joint_path[i], index=i)
+            violations = self.check_joints(robot, joint_path[i], index=i)
             if violations:
                 found.extend(violations)
                 if stop_at_first:
                     return found
         return found
 
-    def is_path_free(self, kin, joint_path, stride=1):
-        return not self.check_path(kin, joint_path, stop_at_first=True, stride=stride)
+    def is_path_free(self, robot, joint_path, stride=1):
+        return not self.check_path(robot, joint_path, stop_at_first=True, stride=stride)
 
 
 def default_workspace(table_height_m, geofence=None):
