@@ -188,13 +188,20 @@ class CameraConfig:
     height: int = IMAGE_HEIGHT
     #: Nur "daheng": kameraseitiges Binning (1 = aus, 2 = 2x2). Reduziert
     #: die Datenmenge OHNE Sichtfeldverlust -- beim Fisheye der richtige
-    #: Weg, im Gegensatz zum ROI-Crop.
+    #: Weg, im Gegensatz zum ROI-Crop. ACHTUNG: die VEN-161-61U3C
+    #: unterstuetzt KEIN Binning (Feature nicht schreibbar).
     binning: int = 1
     #: Nur "daheng": Belichtungszeit in Mikrosekunden. None = Automatik.
     exposure_us: float = None
     #: Nur "daheng": Gain in dB. None = Automatik.
     gain_db: float = None
-    #: Nur "uvc"/"sim": angeforderte Kamera-FPS.
+    #: Nur "daheng": feste Weissabgleich-Ratios (Rot, Gruen, Blau).
+    #: None = einmaliger Auto-Abgleich beim Oeffnen. Vor der echten
+    #: Datenaufzeichnung messen und pinnen, sonst driftet die Farbstatistik
+    #: zwischen Sessions (AP 0.6).
+    white_balance_ratios: tuple = None
+    #: Angeforderte Kamerarate. Bei "daheng" None = native Rate (frischere
+    #: Frames, mehr CPU-Last durchs Debayering).
     fps: float = 30.0
 
 
@@ -202,21 +209,32 @@ class CameraConfig:
 #: Objektiv: Fisheye 1.85 mm, Bildkreis fuer 1/1.8" -- der kleinere Sensor
 #: nutzt also nur den zentralen Teil des Bildkreises.
 #:
-#: VOLLER SENSOR (width/height = None): Beim Fisheye ist das Sichtfeld der
-#: Grund fuer die Objektivwahl -- ein ROI-Crop wuerde genau das wegschneiden.
-#: Die Datenreduktion laeuft stattdessen ueber 2x2-Binning (720x540, halbe
-#: Datenrate, besserer Rauschabstand), die Skalierung auf die Schemagroesse
-#: 240x320 dann in Software. Seitenverhaeltnis bleibt durchgehend 4:3.
+#: VOLLER SENSOR (width/height = None -> 1440x1080): Beim Fisheye ist das
+#: Sichtfeld der Grund fuer die Objektivwahl -- ein ROI-Crop wuerde genau
+#: das wegschneiden. Binning waere die elegante Datenreduktion, wird von
+#: diesem Modell aber NICHT unterstuetzt (Feature nicht schreibbar), also
+#: bleibt es beim vollen Frame: 1440x1080 Bayer8 @ 15 Hz ~ 23 MB/s, fuer
+#: USB3 unkritisch. Skalierung auf die Schemagroesse 240x320 in Software,
+#: Seitenverhaeltnis durchgehend 4:3.
+#: fps=None -> native Rate (~61 fps): frischere Frames im Latenzbudget
+#: (gemessen: 4-9 ms Alter), dafuer mehr CPU-Last durchs Debayering.
 WRIST_CAMERA = CameraConfig(
     name="wrist",
     backend="daheng",
+    device="EBK24100633",  # Seriennummer -- bei zwei Daheng zwingend
     width=None,
     height=None,
-    binning=2,
     exposure_us=8000.0,
+    fps=None,
 )
 
-#: Szenen-/Top-View-Kamera. Modell noch offen -- Index ggf. anpassen.
+#: Szenen-/Top-View-Kamera -- MODELL NOCH NICHT ENTSCHIEDEN.
+#:
+#: ACHTUNG: Diese Konfiguration ist ein PLATZHALTER und zeigt auf
+#: OpenCV-Index 0. Auf einem Laptop ist das die eingebaute Webcam --
+#: damit aufgezeichnete Daten waeren wertlos, faellt aber im Datensatz
+#: nicht auf. Vor der ersten Aufzeichnung durch die reale Kamera
+#: ersetzen (Konsistenzpruefung: bc.config.check_cameras_configured()).
 SCENE_CAMERA = CameraConfig(
     name="scene",
     backend="uvc",
@@ -225,8 +243,53 @@ SCENE_CAMERA = CameraConfig(
     height=480,
     fps=30.0,
 )
+SCENE_CAMERA_CONFIRMED = False
+
+#: Vorbereitete Alternative: zweite Daheng VEN-161 mit dem zweiten
+#: Objektiv (rektilinear). Vorteile gegenueber einer UVC-Webcam:
+#:   * gleiche Bildkette, gleiches Debayering, gleiche Steuerbarkeit
+#:     (Belichtung/Gain/Weissabgleich fest pinnbar -- bei UVC oft nicht)
+#:   * Global Shutter auch fuer die Top-View
+#:   * beide Kameras sind hardware-triggerfaehig -> echte getriggerte
+#:     Synchronisation statt zeitstempelbasiertem Sampling moeglich
+#:     (siehe AP 1.1/1.3)
+#: Seriennummer eintragen, sobald das Geraet vorliegt.
+SCENE_CAMERA_DAHENG = CameraConfig(
+    name="scene",
+    backend="daheng",
+    device=None,  # TODO: Seriennummer der zweiten Kamera
+    width=None,
+    height=None,
+    exposure_us=8000.0,
+    #: Bei zwei USB3-Kameras an einem Controller die Rate begrenzen, statt
+    #: beide mit 61 fps frei laufen zu lassen (2 x 95 MB/s waeren knapp).
+    #: 30 fps reichen fuer 15-Hz-Sampling mit Reserve im Latenzbudget.
+    fps=30.0,
+)
 
 CAMERAS = (WRIST_CAMERA, SCENE_CAMERA)
+
+
+def check_cameras_configured(cameras=CAMERAS):
+    """Warnt vor Aufzeichnungen mit noch nicht bestaetigter Kamera.
+
+    Rueckgabe: Liste von Warnungen (leer = alles bestaetigt).
+    """
+    warnings = []
+    for cfg in cameras:
+        if cfg.name == "scene" and not SCENE_CAMERA_CONFIRMED:
+            warnings.append(
+                "Szenenkamera ist noch ein Platzhalter (backend=%s, device=%s). "
+                "Auf einem Laptop ist OpenCV-Index 0 die eingebaute Webcam!"
+                % (cfg.backend, cfg.device)
+            )
+        if cfg.backend == "daheng" and not cfg.device:
+            warnings.append(
+                "Kamera '%s': keine Seriennummer konfiguriert -- bei mehreren "
+                "Daheng-Geraeten ist die Zuordnung dann nicht eindeutig."
+                % cfg.name
+            )
+    return warnings
 
 #: Hardwarefreie Variante derselben Konfiguration (AP 0.5).
 SIM_CAMERAS = (

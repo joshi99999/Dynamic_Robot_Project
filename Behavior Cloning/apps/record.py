@@ -95,6 +95,18 @@ def main():
     robot_kind = args.robot or ("sim" if args.sim else "neura")
     use_sim = robot_kind == "sim"
 
+    cam_cfgs = config.SIM_CAMERAS if use_sim else config.CAMERAS
+    if not use_sim:
+        # VOR jeder Hardware-Aktion: eine falsch konfigurierte Kamera faellt
+        # im fertigen Datensatz nicht auf, deshalb hier hart nachfragen.
+        warnings = config.check_cameras_configured(cam_cfgs)
+        if warnings:
+            print("\n!! KAMERA-KONFIGURATION UNBESTAETIGT:")
+            for warning in warnings:
+                print("   - %s" % warning)
+            if input("Trotzdem aufzeichnen? [j/N] ").strip().lower() != "j":
+                raise SystemExit("Abgebrochen.")
+
     clock = SimClock() if use_sim else RealClock()
     robot = open_robot("sim", clock=clock, seed=args.seed) if use_sim else open_robot("neura")
     robot.connect()
@@ -112,7 +124,6 @@ def main():
     workspace = default_workspace(table_height_m=table_z)
     print("Kollisionsmodell: Tischhoehe z = %.3f m" % table_z)
 
-    cam_cfgs = config.SIM_CAMERAS if use_sim else config.CAMERAS
     if use_sim:
         from bc.adapters.cam_sim import SimCamera
 

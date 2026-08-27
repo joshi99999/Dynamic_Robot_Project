@@ -85,15 +85,15 @@ def list_devices():
         print("  keine UVC-Kamera gefunden (Indizes 0-5 geprueft)")
 
     print("\n== Daheng / USB3-Vision (gxipy) ==")
+    from bc.adapters.cam_daheng import import_gxipy
+    from bc.ports import CameraError
+
     try:
-        import gxipy as gx
-    except ImportError:
-        print(
-            "  gxipy nicht installiert -- Daheng Galaxy SDK installieren und\n"
-            "  daraus das Python-Paket einrichten (siehe README/AP 1.1).\n"
-            "  Die Wrist-Kamera ist NICHT ueber OpenCV erreichbar."
-        )
+        gx = import_gxipy()
+    except CameraError as exc:
+        print("  %s" % exc)
         return
+    print("  gxipy: %s" % gx.__file__)
 
     manager = gx.DeviceManager()
     count, info_list = manager.update_device_list()

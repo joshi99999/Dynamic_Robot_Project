@@ -2,8 +2,10 @@
 
 Lokale, autarke Pipeline für Imitation Learning am Neura LARA 5:
 automatisierte Datenaufzeichnung mit Action Noise Injection, Training
-einer Diffusion Policy, Live-Inferenz. Anforderungen und Entscheidungen:
-[Requierments/requierments.md](Requierments/requierments.md).
+einer Diffusion Policy, Live-Inferenz.
+
+* **Anforderungen und Entscheidungen:** [Requierments/requierments.md](Requierments/requierments.md)
+* **Kameras — Inbetriebnahme, Hardware, Mechanik:** [Dokumentation/Kamera-Inbetriebnahme.md](Dokumentation/Kamera-Inbetriebnahme.md)
 
 ## Architektur (AP 0)
 
@@ -50,9 +52,16 @@ python tools/check_cameras.py --only scene    # eine Kamera, Live-Vorschau
 python tools/check_cameras.py                 # beide: Rate + Zeitversatz
 ```
 
-Die **Szenenkamera** (UVC) braucht nur `opencv-python`. Die **Wrist-Kamera**
-(Daheng VEN-161-61U3C) ist USB3-Vision/GenICam und über OpenCV *nicht*
-erreichbar — sie braucht das Daheng Galaxy SDK inkl. `gxipy`.
+Die **Wrist-Kamera** (Daheng VEN-161-61U3C) ist USB3-Vision/GenICam und über
+OpenCV *nicht* erreichbar — sie braucht das Daheng Galaxy SDK. `gxipy` ist
+dort nicht installierbar, der Adapter findet es selbst; Details und die
+beiden klassischen Stolpersteine in
+[Dokumentation/Kamera-Inbetriebnahme.md](Dokumentation/Kamera-Inbetriebnahme.md).
+
+> ⚠️ Die **Szenenkamera** ist noch nicht entschieden. `config.SCENE_CAMERA`
+> zeigt bis dahin auf OpenCV-Index 0 — auf einem Laptop die eingebaute
+> Webcam. `apps/record.py` fragt deshalb nach, solange
+> `SCENE_CAMERA_CONFIRMED = False` ist.
 
 ## Am Hardwaretag (Abnahmeliste AP 0.6)
 
