@@ -75,7 +75,10 @@ def teach_loop(robot, teleop, poll_sleep=0.02, clock=None):
                 except IKFailure as exc:
                     print("Jog nicht erreichbar: %s" % exc)
                     continue
-                robot.servo_j(joints)
+                # Jog = Sprung auf ein neues Ziel, an dem der Arm stehen
+                # bleibt: Geschwindigkeit/Beschleunigung 0 sind hier korrekt.
+                hold = [0.0] * robot.dof
+                robot.servo_j(joints, hold, hold)
                 target_pose = candidate
 
             elif event.kind == "gripper":
@@ -108,10 +111,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--robot", choices=("sim", "neura"), default="sim")
     parser.add_argument("--out", default="waypoints.json")
+    parser.add_argument(
+        "--real-robot", action="store_true",
+        help="reale Anlage freigeben (sonst verweigert der Adapter jede Bewegung)",
+    )
     args = parser.parse_args()
 
-    robot = open_robot(args.robot)
-    robot.connect()
+    if args.robot == "neura":
+        # Sicherheitssperre im Adapter: ohne is_robot_in_simulation() == True
+        # nur mit ausdruecklicher Freigabe (VM und Anlage teilen eine IP).
+        robot = open_robot("neura", allow_real=args.real_robot)
+        robot.connect(power_on=True)
+    else:
+        robot = open_robot("sim")
+        robot.connect()
 
     if args.robot == "sim":
         print("SIM-Modus: Ereignisse kommen aus einem Demo-Skript.")

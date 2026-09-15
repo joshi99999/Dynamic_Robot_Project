@@ -24,7 +24,10 @@ def make_robot(kind="sim", clock=None, **kwargs):
     if kind == "neura":
         from bc.adapters.neura import NeuraRobot
 
-        return NeuraRobot(**kwargs).connect()
+        # power_on: servo_j/move_to_joints brauchen einen bestromten Arm.
+        # Die Adapter-Sperre verweigert das, solange der Controller nicht
+        # is_robot_in_simulation() == True meldet (reale Anlage: allow_real).
+        return NeuraRobot(**kwargs).connect(power_on=True)
     raise ValueError(kind)
 
 

@@ -69,6 +69,9 @@ def inference_loop(robot, captures, policy, clock, steps, table_z):
             pacer.tick()
             obs = build_observation(robot, captures)
             action = executor.next_action(obs)
+            # Nur SimRobot (siehe main): der Neura-Adapter verlangt zusaetzlich
+            # Geschwindigkeit/Beschleunigung -- mit AP 4 aus dem Action-Chunk
+            # ableiten (trajectory.joint_derivatives).
             robot.servo_j(action[:6])
             robot.gripper_command(dataset.gripper_from_action(action))
             executed += 1

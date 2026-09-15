@@ -66,3 +66,15 @@ def test_pose_interpolation():
     path = geometry.pose_path([p0, p1], steps_per_segment=10)
     assert path.shape == (11, 7)
     assert np.allclose(np.linalg.norm(path[:, 3:7], axis=1), 1.0, atol=1e-9)
+
+
+def test_quat_canonical_prefers_reference_hemisphere():
+    ref = (0.0, 0.0, 1.0, 0.0)  # Greifer nach unten
+    # Kleine Kippung um den Umschlagpunkt w = 0 herum: "w >= 0" wuerde hier
+    # das Vorzeichen wechseln, die Referenz-Wahl nicht.
+    for pitch in (-0.05, 0.0, 0.05):
+        q = geometry.quat_from_rpy(math.pi, pitch, math.pi)
+        for candidate in (q, -q):
+            c = geometry.quat_canonical(candidate, ref)
+            assert c[2] > 0.9
+            assert geometry.quat_angle_between(c, q) < 1e-12

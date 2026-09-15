@@ -30,14 +30,17 @@ import _paths  # noqa: F401
 import _fixtures
 
 MODULES = [
+    "test_clock",
     "test_geometry",
     "test_urdf_kinematics",
     "test_collision",
     "test_trajectory",
     "test_noise",
+    "test_sequence",
     "test_sync",
     "test_dataset",
     "test_recorder",
+    "test_neura_adapter",
     "test_rectify",
     "test_safety",
     "test_policy",

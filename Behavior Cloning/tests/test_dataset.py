@@ -12,9 +12,11 @@ def _dummy_episode(n=5, cameras=("wrist", "scene")):
         "observation.state": np.zeros((n, config.STATE_DIM), dtype=np.float32),
         "action": np.zeros((n, config.ACTION_DIM), dtype=np.float32),
         "aux.joints_ideal": np.zeros((n, 6), dtype=np.float32),
+        "aux.joints_command": np.zeros((n, 6), dtype=np.float32),
         "aux.pose_ideal": np.zeros((n, 7), dtype=np.float32),
         "aux.pose_noisy": np.zeros((n, 7), dtype=np.float32),
         "aux.sync_ok": np.ones((n, 1), dtype=bool),
+        "next.done": np.zeros((n, 1), dtype=bool),
     }
     for name in cameras:
         arrays["observation.images.%s" % name] = np.zeros(
@@ -34,6 +36,22 @@ def test_state_layout():
     assert np.allclose(parts["tcp_pos"], tcp[:3])
     assert np.allclose(parts["tcp_quat"], tcp[3:])
     assert parts["gripper"][0] == config.GRIPPER_CLOSED
+
+
+def test_state_quaternion_is_canonical():
+    # Schema 2: q und -q (gleiche Orientierung) ergeben denselben State --
+    # sonst lernt die Policy zwei scheinbar verschiedene Zustaende.
+    # Pose wie PICK in der VM: Greifer unten, w ~ 0 (2026-09-14).
+    q = np.array([-0.025, 0.001, -1.0, -0.002])
+    q /= np.linalg.norm(q)
+    pose_a = np.concatenate([[0.45, 0.0, 0.17], q])
+    pose_b = np.concatenate([[0.45, 0.0, 0.17], -q])
+    joints = [0.0] * 6
+    state_a = dataset.build_state(joints, pose_a, config.GRIPPER_OPEN)
+    state_b = dataset.build_state(joints, pose_b, config.GRIPPER_OPEN)
+    assert np.array_equal(state_a, state_b)
+    # Die Wahl haengt an der Referenz, nicht an w: y-Komponente positiv
+    assert dataset.split_state(state_a)["tcp_quat"][2] > 0
 
 
 def test_action_layout_and_threshold():

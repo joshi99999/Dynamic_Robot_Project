@@ -29,6 +29,7 @@ __all__ = [
     "matrix_to_quat",
     "quat_rotate",
     "quat_angle_between",
+    "quat_canonical",
     "slerp",
     "pose_rpy_to_quat",
     "pose_quat_to_rpy",
@@ -159,6 +160,23 @@ def quat_angle_between(q1, q2):
     dot = abs(float(np.dot(q1, q2)))
     dot = max(-1.0, min(1.0, dot))
     return 2.0 * math.acos(dot)
+
+
+def quat_canonical(q, reference):
+    """Waehlt von q und -q (gleiche Orientierung) das zur Referenz naehere.
+
+    Noetig, wo Quaternionen als ZAHLEN weiterverwendet werden -- im
+    State-Vektor lernt die Policy sonst aus q und -q zwei scheinbar
+    verschiedene Zustaende (AP 1.5.1).
+
+    Bewusst NICHT "w >= 0": bei Greifer-nach-unten-Posen ist w ~ 0 (Home:
+    exakt 0, PICK: -0.025, gemessen an den VM-Punkten 2026-09-14), dort
+    wuerde schon das Rotationsrauschen das Vorzeichen staendig kippen. Die
+    Referenz liegt dagegen mitten im Arbeitsbereich; ein Umschlag passiert
+    erst bei ~180 Grad Abweichung von ihr.
+    """
+    q = np.asarray(q, dtype=float)
+    return -q if float(np.dot(q, np.asarray(reference, dtype=float))) < 0.0 else q
 
 
 def slerp(q1, q2, t):

@@ -9,8 +9,11 @@ Geprueft werden die ZUSAGEN des Ports (Einheiten, Formen, Seed-Semantik,
 Fehlerverhalten, Lebenszyklus) -- nicht die Geometrie des Modells.
 
 Hinweis Anlage: Die Tests lesen nur und aktivieren kurz das
-Servo-Interface, ohne Bewegungsbefehle abzusetzen; servo_j wird nur mit
-der AKTUELLEN Ist-Stellung aufgerufen. Trotzdem: Not-Halt in Reichweite.
+Servo-Interface, ohne Bewegungsbefehle abzusetzen; servo_j und
+move_to_joints werden nur mit der AKTUELLEN Ist-Stellung aufgerufen
+(Halten: Geschwindigkeit und Beschleunigung bewusst 0). Trotzdem: Not-Halt
+in Reichweite. Gegen den Neura-Adapter laufen die Tests nur, wenn der
+Controller is_robot_in_simulation() == True meldet (Adapter-Sperre).
 """
 
 import sys
@@ -101,21 +104,29 @@ def test_ik_unreachable_raises_ikerror(robot):
 
 def test_servo_lifecycle(robot):
     joints = robot.read_state().joints
+    hold = [0.0] * robot.dof  # Halten: Geschwindigkeit/Beschleunigung 0
     # Vor Aktivierung verweigert servo_j
     try:
-        robot.servo_j(joints)
+        robot.servo_j(joints, hold, hold)
         assert False, "RobotError erwartet (Servo nicht aktiv)"
     except RobotError:
         pass
 
     robot.activate_servo("position")
-    robot.servo_j(joints)  # Halten der Ist-Stellung: bewegungsfrei
+    robot.servo_j(joints, hold, hold)  # Halten der Ist-Stellung: bewegungsfrei
     robot.deactivate_servo()
     try:
-        robot.servo_j(joints)
+        robot.servo_j(joints, hold, hold)
         assert False, "RobotError erwartet (Servo deaktiviert)"
     except RobotError:
         pass
+
+
+def test_move_to_current_joints_is_noop(robot):
+    joints = np.asarray(robot.read_state().joints, dtype=float)
+    robot.move_to_joints(joints)
+    after = np.asarray(robot.read_state().joints, dtype=float)
+    assert float(np.max(np.abs(after - joints))) <= config.START_POSE_TOL_RAD
 
 
 def test_gripper_command_is_nonblocking_and_tracked(robot):
@@ -132,7 +143,8 @@ def test_emergency_stop_contract(robot):
     assert robot.stop_requested
     # Nach Not-Halt: servo_j muss verweigern
     try:
-        robot.servo_j(robot.read_state().joints)
+        hold = [0.0] * robot.dof
+        robot.servo_j(robot.read_state().joints, hold, hold)
         assert False, "RobotError erwartet (nach Not-Halt)"
     except RobotError:
         pass

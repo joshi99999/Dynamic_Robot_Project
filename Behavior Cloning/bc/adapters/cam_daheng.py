@@ -11,10 +11,10 @@ Kamera getestet -- Abnahme ueber die Contract-Tests am Geraet
 
 import os
 import sys
-import time
 
 import numpy as np
 
+from ..clock import host_time
 from ..ports import CameraError, CameraPort, Frame
 
 #: Standardpfade, unter denen das Galaxy SDK sein Python-Paket ablegt.
@@ -320,7 +320,7 @@ class DahengCamera(CameraPort):
             raise CameraError("Kamera '%s' ist nicht geoeffnet" % self.name)
 
         raw = self._cam.data_stream[0].get_image()
-        t = time.time()
+        t = host_time()
         if raw is None:
             raise CameraError("Daheng-Kamera lieferte kein Bild (Timeout)")
         if raw.get_status() != self._gx.GxFrameStatusList.SUCCESS:

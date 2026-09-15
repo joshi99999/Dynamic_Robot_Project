@@ -73,7 +73,17 @@ IMAGE_WIDTH = 320
 #: Version dieses Schemas. Bei JEDER Aenderung an Dimensionen, Reihenfolge
 #: oder Einheiten hochzaehlen -- Datensaetze verschiedener Versionen duerfen
 #: nicht gemischt werden.
-SCHEMA_VERSION = 1
+#:   1 -- Grundschema (AP 0.10)
+#:   2 -- TCP-Quaternion kanonisch zu QUAT_HEMISPHERE_REF; neue Features
+#:        ``next.done`` (Uebergabepunkt ans Hauptprogramm) und
+#:        ``aux.joints_command`` (tatsaechlich per servo_j gesendete Winkel)
+SCHEMA_VERSION = 2
+
+#: Referenz-Orientierung fuer die Vorzeichenwahl der Quaternionen im
+#: Datensatz (geometry.quat_canonical): Greifer zeigt senkrecht nach unten,
+#: [QW, QX, QY, QZ] = 180 Grad um Y. Alle bisher geteachten Posen liegen
+#: nahe daran (|<q, ref>| >= 0.91 an den VM-Punkten, 2026-09-14).
+QUAT_HEMISPHERE_REF = (0.0, 0.0, 1.0, 0.0)
 
 # --------------------------------------------------------------------------
 # Kinematik-Absicherungen (AP 2.4)
@@ -123,6 +133,49 @@ TRANSIT_SPEED_MS = 0.15
 #: Reduzierte Geschwindigkeit im Endanflug (Greifen/Absetzen).
 APPROACH_SPEED_MS = 0.05
 
+#: Hoechste Gelenkgeschwindigkeit in PTP-Segmenten (Interpolation im
+#: Gelenkraum). Die Schrittzahl eines PTP-Segments richtet sich nach dem
+#: strengeren von beiden Limits: diesem UND TRANSIT_SPEED_MS fuer den TCP --
+#: so faehrt ein PTP-Segment nie schneller als ein LIN-Segment.
+#: PROVISORISCH wie TRANSIT_SPEED_MS (AP 0.9 Punkt 5 / AP 2.6).
+PTP_JOINT_SPEED_RADS = 0.5
+
+#: Dauer der Beschleunigungs- bzw. Bremsrampe jedes Segments (Sinus-Profil,
+#: Beschleunigung an beiden Enden 0). Jedes Segment startet und endet im
+#: Stillstand -- Start, Greifer-Dwell und Wechsel LIN <-> PTP sind damit
+#: keine Geschwindigkeitsspruenge mehr (Befund VM 2026-09-14: Controller
+#: schwang dort bis 0.1 rad ueber). Spitzenbeschleunigung = v*pi/(2*T):
+#: 0.47 m/s^2 im Transit, 1.6 rad/s^2 bei PTP_JOINT_SPEED_RADS. Segmente, die
+#: zu kurz fuer volle Geschwindigkeit sind, bekommen dieselbe
+#: Spitzenbeschleunigung und eine kuerzere Rampe.
+#: Gehoert wie TRANSIT_SPEED_MS zum mitgelernten Tempo (AP 2.6): fuer alle
+#: Episoden eines Datensatzes gleich lassen. PROVISORISCH.
+SEGMENT_RAMP_S = 0.5
+
+# --------------------------------------------------------------------------
+# Ablauf zwischen den Episoden (AP 2.2)
+# --------------------------------------------------------------------------
+
+#: Groesste zulaessige Abweichung (rad, je Gelenk) zwischen Ist-Stellung und
+#: geplanter Startstellung, bevor die Aufzeichnung startet. Darueber wird
+#: zuerst per move_to_joints an den Start gefahren -- sonst waere der erste
+#: servo_j-Sollwert ein Sprung.
+START_POSE_TOL_RAD = 0.01
+
+#: Parameter der blockierenden PTP-Fahrt (NeuraPy move_joint) fuer die
+#: Rueckfahrt an den Start. Einheit laut Doku "% of maximum" bei einem
+#: Default von 0.25 -- widerspruechlich. Diese Werte wurden am 2026-09-09
+#: mit tools/check_sim_robot.py in der VM verifiziert (Ziel erreicht).
+RESET_JOINT_SPEED = 25.0
+RESET_JOINT_ACCELERATION = 20.0
+
+#: Toleranz fuer die Plausibilisierung geteachter Punkte: die Pose aus der
+#: Gelenkstellung (FK) muss die Cartesian-Darstellung der Punkte-Datenbank
+#: reproduzieren. Weicht sie ab, sind Punkte vermutlich in einem anderen
+#: Tool/Frame geteacht worden -- dann stimmen Plan und Programm nicht.
+POINT_CROSSCHECK_TOL_POS_M = 2.0e-3
+POINT_CROSSCHECK_TOL_ROT_RAD = 2.0e-2
+
 # --------------------------------------------------------------------------
 # Rauscheinspielung (AP 2.4)
 # --------------------------------------------------------------------------
@@ -138,10 +191,21 @@ NOISE_ROT_AMPLITUDE_RAD = 0.05
 #: weiche Schlingerbewegung statt Zittern.
 NOISE_OU_TAU_S = 0.8
 
-#: Abstand zum Greifpunkt, ab dem die Trichter-Daempfung einsetzt.
+#: Zeitkonstante der zwei Tiefpaesse hinter dem OU-Prozess
+#: (noise.SmoothedOUProcess). Der reine OU-Prozess hat weisse
+#: Geschwindigkeit -- fuer servo_j zu ruckig (VM 2026-09-14: bis 25 rad/s^2
+#: in der Befehlsbahn). Bei 0.25 s und 15 Hz je Achse: 0.022 m/s und
+#: 0.11 m/s^2 Streuung statt 0.09 m/s und 1.95 m/s^2; die Amplitude
+#: (NOISE_TRANS_AMPLITUDE_M) bleibt unveraendert. 0 = ungeglaettet.
+NOISE_SMOOTH_TAU_S = 0.25
+
+#: Bahnlaenge zum naechsten bzw. vom letzten Ankerpunkt, ab der die
+#: Trichter-Daempfung einsetzt. Ankerpunkte sind Episodenstart, jeder
+#: Greiferwechsel und Episodenende (trajectory.py) -- dort ist das Rauschen
+#: exakt 0 und steigt/faellt beidseitig weich an.
 FUNNEL_START_DIST_M = 0.15
 
-#: Abstand, ab dem das Rauschen vollstaendig auf 0 gedaempft ist.
+#: Bahnlaenge, unterhalb der das Rauschen vollstaendig auf 0 gedaempft ist.
 FUNNEL_ZERO_DIST_M = 0.02
 
 #: Maximale Zahl an Rejection-Sampling-Versuchen, bevor die Generierung

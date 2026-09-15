@@ -23,7 +23,14 @@ import numpy as np
 
 from .. import config, geometry
 from ..clock import RealClock
-from ..ports import IKError, NotConnectedError, RobotError, RobotPort, RobotState
+from ..ports import (
+    IKError,
+    NotConnectedError,
+    PointSourcePort,
+    RobotError,
+    RobotPort,
+    RobotState,
+)
 from ..urdf import KinematicChain
 
 
@@ -60,8 +67,13 @@ _FRAME_AFTER_JOINT = {
 }
 
 
-class SimRobot(RobotPort):
-    """Simulierter LARA 5 auf Basis der URDF-Kette."""
+class SimRobot(RobotPort, PointSourcePort):
+    """Simulierter LARA 5 auf Basis der URDF-Kette.
+
+    ``points``: optionale "Punkte-Datenbank" als dict Name -> Gelenkstellung
+    (rad), analog zur Datenbank der Control-Box -- damit laesst sich ein
+    Ablauf aus bc.sequence hardwarefrei durchspielen.
+    """
 
     def __init__(
         self,
@@ -71,6 +83,7 @@ class SimRobot(RobotPort):
         faults=None,
         seed=0,
         home=None,
+        points=None,
     ):
         self._clock = clock if clock is not None else RealClock()
         self._chain = KinematicChain.from_urdf(urdf_path)
@@ -82,6 +95,11 @@ class SimRobot(RobotPort):
         self._gripper_closed = False
         self._gripper_cmd_time = None
         self._stop_requested = threading.Event()
+        #: (Position, Geschwindigkeit, Beschleunigung) des letzten servo_j.
+        self.last_servo_command = None
+        self._points = {
+            str(k): np.asarray(v, dtype=float) for k, v in (points or {}).items()
+        }
         self._joints = (
             np.asarray(home, dtype=float)
             if home is not None
@@ -260,7 +278,13 @@ class SimRobot(RobotPort):
     def deactivate_servo(self):
         self._servo_active = False
 
-    def servo_j(self, joint_angles):
+    def servo_j(self, joint_angles, velocity=None, acceleration=None):
+        """Folgt dem Positionssollwert sofort und exakt.
+
+        ``velocity``/``acceleration`` beeinflussen die Simulation nicht,
+        werden aber (falls angegeben) auf ihre Laenge geprueft und fuer
+        Tests in ``last_servo_command`` abgelegt.
+        """
         self._require_connected()
         if not self._servo_active:
             raise RobotError("Servo-Interface ist nicht aktiv")
@@ -270,11 +294,39 @@ class SimRobot(RobotPort):
         target = np.asarray(joint_angles, dtype=float)
         if len(target) != self.dof:
             raise ValueError("servo_j erwartet %d Winkel" % self.dof)
+        for label, values in (("velocity", velocity), ("acceleration", acceleration)):
+            if values is not None and len(values) != self.dof:
+                raise ValueError("servo_j: %s braucht %d Werte" % (label, self.dof))
+        self.last_servo_command = (target.copy(), velocity, acceleration)
         if self._faults.servo_noise_rad > 0:
             target = target + self._rng.uniform(
                 -self._faults.servo_noise_rad, self._faults.servo_noise_rad, self.dof
             )
         self._joints = target
+
+    def move_to_joints(self, joints):
+        """PTP-Fahrt: in der Simulation ein Sprung ans Ziel."""
+        self._require_connected()
+        if self._servo_active:
+            raise RobotError("move_to_joints bei aktivem Servo-Interface")
+        if self._stop_requested.is_set():
+            raise RobotError("Stopp angefordert -- move_to_joints verweigert")
+        self._fault_gate()
+        target = np.asarray(joints, dtype=float)
+        if len(target) != self.dof:
+            raise ValueError("move_to_joints erwartet %d Winkel" % self.dof)
+        self._joints = target.copy()
+
+    # -- Geteachte Punkte (PointSourcePort) --------------------------------
+
+    def point_names(self):
+        return list(self._points)
+
+    def get_point(self, name):
+        if name not in self._points:
+            raise KeyError(name)
+        joints = self._points[name].copy()
+        return joints, self.fk(joints, frame="tool")
 
     # -- Greifer -----------------------------------------------------------
 

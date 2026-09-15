@@ -1,0 +1,13 @@
+{
+  "name": "pick_to_station",
+  "gripper_start": "open",
+  "sequence": [
+    {"point": "CLEAR_FOV",   "motion": "ptp"},
+    {"point": "APPROACH_01", "motion": "ptp"},
+    {"point": "APPROACH_02", "motion": "ptp", "optional": true},
+    {"point": "PRE_GRASP",   "motion": "ptp"},
+    {"point": "PICK",        "motion": "lin", "approach": true, "gripper": "close"},
+    {"point": "PRE_GRASP",   "motion": "lin"},
+    {"point": "PRE_PLACE",   "motion": "ptp"}
+  ]
+}

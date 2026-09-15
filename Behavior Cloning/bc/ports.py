@@ -11,7 +11,8 @@ Einheiten- und Formatzusagen (Contract, geprueft in tests/contract/):
     * Gelenkwinkel: rad, Reihenfolge Basis -> Flansch, Laenge = dof.
     * Posen: [X, Y, Z, QW, QX, QY, QZ] in Metern / Einheitsquaternion,
       Basis-Koordinatensystem des Roboters.
-    * Zeitstempel: Sekunden der Host-Uhr (``ClockPort.now()``).
+    * Zeitstempel: Sekunden der Host-Uhr (``bc.clock.host_time`` bzw.
+      ``ClockPort.now()``) -- fuer Kameras UND Roboter dieselbe Zeitbasis.
     * Bilder: RGB, uint8, (H, W, 3).
 """
 
@@ -24,6 +25,11 @@ class RobotError(RuntimeError):
 
 class NotConnectedError(RobotError):
     pass
+
+
+class MotionRefused(RobotError):
+    """Bewegung verweigert, weil nicht sichergestellt ist, dass es die
+    Simulation ist (Sicherheitsregel 1: VM und Anlage teilen eine IP)."""
 
 
 class CameraError(RuntimeError):
@@ -186,8 +192,30 @@ class RobotPort(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def servo_j(self, joint_angles):
-        """Sendet Zielgelenkwinkel (rad) an das aktive Servo-Interface."""
+    def servo_j(self, joint_angles, velocity=None, acceleration=None):
+        """Sendet einen Sollwert an das aktive Servo-Interface.
+
+        ``joint_angles`` in rad, ``velocity`` in rad/s, ``acceleration`` in
+        rad/s^2 -- je ``dof`` Werte. Der NeuraPy-Controller verlangt alle
+        drei Listen (``r.get_doc('servo_j')``); ``velocity``/``acceleration``
+        beschreiben, mit welcher Geschwindigkeit der Arm den Sollwert
+        erreichen soll. Sie werden aus der geplanten Bahn abgeleitet
+        (``trajectory.joint_derivatives``), nie pauschal zu 0 gesetzt: 0
+        heisst "am Sollwert anhalten" und erzeugt bei 15 Hz Stop-and-go.
+        Bewusst 0 ist nur beim Halten der Ist-Stellung korrekt.
+
+        ``None`` ist nur fuer Implementierungen zulaessig, die die Werte
+        ohnehin ignorieren (SimRobot); der Neura-Adapter verweigert es.
+        """
+
+    @abc.abstractmethod
+    def move_to_joints(self, joints):
+        """Blockierende PTP-Fahrt auf eine Gelenkstellung (rad).
+
+        Fuer Fahrten AUSSERHALB der Aufzeichnung, z. B. zurueck an die
+        Startpose zwischen zwei Episoden. Kehrt erst nach Erreichen zurueck;
+        wirft :class:`RobotError`, wenn das Ziel nicht erreicht wurde.
+        """
 
     # -- Greifer -----------------------------------------------------------
 
@@ -222,6 +250,30 @@ class RobotPort(abc.ABC):
     @abc.abstractmethod
     def clear_stop(self):
         pass
+
+
+class PointSourcePort(abc.ABC):
+    """Quelle geteachter Punkte, adressiert ueber ihren Namen (AP 2.2).
+
+    Am Neura ist das die Punkte-Datenbank der Control-Box: Punkte werden am
+    Teach-Pendant angelegt und per Touch-up nachgeteacht. Die Pipeline
+    haelt nur die REIHENFOLGE der Namen (bc.sequence) und fragt die
+    Koordinaten vor jeder Episode frisch ab -- so wirkt ein Touch-up ohne
+    Export in die naechste Episode.
+    """
+
+    @abc.abstractmethod
+    def point_names(self):
+        """Namen aller verfuegbaren Punkte (Liste von str)."""
+
+    @abc.abstractmethod
+    def get_point(self, name):
+        """Punkt -> ``(joints, pose_quat)``.
+
+        ``joints``: geteachte Gelenkstellung in rad (ndarray, dof).
+        ``pose_quat``: TCP-Pose [X,Y,Z,QW,QX,QY,QZ] dieser Stellung.
+        Wirft ``KeyError``, wenn der Punkt nicht existiert.
+        """
 
 
 class IKError(RobotError):

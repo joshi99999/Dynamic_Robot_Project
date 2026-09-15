@@ -2,8 +2,12 @@
 
 Ablauf pro Zeitschritt i (bei CONTROL_RATE_HZ):
 
+0. (einmalig) Pruefen, dass der Roboter an der Startstellung steht --
+   sonst waere der erste Sollwert ein Sprung. Hinfahren ist Sache des
+   Aufrufers (apps/record.py, ausserhalb der Aufzeichnung).
 1. Takt abwarten (:class:`bc.sync.Pacer`).
-2. Verrauschte Sollwinkel senden (``servo_j(joints_noisy[i])``).
+2. Verrauschte Sollwinkel senden, mit Geschwindigkeit und Beschleunigung
+   aus derselben Bahn (``servo_j(q, qd, qdd)``, trajectory.joint_derivatives).
 3. Greiferbefehl absetzen, wenn die Bahn an dieser Stelle wechselt --
    die Totzeit ist als Dwell-Schritte bereits IN der Bahn (AP 2.1).
 4. Zustand und juengste Frames abgreifen, Zeitstempel gegen das
@@ -13,12 +17,17 @@ Ablauf pro Zeitschritt i (bei CONTROL_RATE_HZ):
 
 Verwerf-Logik (AP 5.2): ausgeloester Stopp bricht sofort ab und markiert
 die Episode als verworfen; zu viele Latenzbudget-Verletzungen ebenso.
+
+``next.done`` ist nur im letzten Schritt einer VOLLSTAENDIGEN Episode True
+-- das Ende der Bahn ist der Uebergabepunkt ans Hauptprogramm.
 """
 
 import numpy as np
 
 from . import config, dataset
+from .ports import RobotError
 from .sync import Pacer, evaluate
+from .trajectory import joint_derivatives
 
 
 class EpisodeRecorder(object):
@@ -54,13 +63,26 @@ class EpisodeRecorder(object):
         n = len(plan)
         camera_names = [c.name for c in self.captures]
 
+        start_error = float(
+            np.max(np.abs(self.robot.read_state().joints - plan.joints_noisy[0]))
+        )
+        if start_error > config.START_POSE_TOL_RAD:
+            raise RobotError(
+                "Roboter steht nicht an der Startstellung der Bahn (Abweichung "
+                "%.4f rad > %.4f rad) -- vorher move_to_joints ausfuehren."
+                % (start_error, config.START_POSE_TOL_RAD)
+            )
+        velocity, acceleration = joint_derivatives(plan.joints_noisy, plan.rate_hz)
+
         steps = {
             "observation.state": [],
             "action": [],
             "aux.joints_ideal": [],
+            "aux.joints_command": [],
             "aux.pose_ideal": [],
             "aux.pose_noisy": [],
             "aux.sync_ok": [],
+            "next.done": [],
         }
         for name in camera_names:
             steps["observation.images.%s" % name] = []
@@ -77,7 +99,7 @@ class EpisodeRecorder(object):
                     break
 
                 t_target = pacer.tick()
-                self.robot.servo_j(plan.joints_noisy[i])
+                self.robot.servo_j(plan.joints_noisy[i], velocity[i], acceleration[i])
 
                 g = plan.gripper[i]
                 if prev_gripper is None or g != prev_gripper:
@@ -120,13 +142,17 @@ class EpisodeRecorder(object):
                 steps["aux.joints_ideal"].append(
                     np.asarray(plan.joints_ideal[i], dtype=np.float32)
                 )
+                steps["aux.joints_command"].append(
+                    np.asarray(plan.joints_noisy[i], dtype=np.float32)
+                )
                 steps["aux.pose_ideal"].append(
-                    np.asarray(plan.poses_ideal[i], dtype=np.float32)
+                    dataset.canonical_pose(plan.poses_ideal[i]).astype(np.float32)
                 )
                 steps["aux.pose_noisy"].append(
-                    np.asarray(plan.poses_noisy[i], dtype=np.float32)
+                    dataset.canonical_pose(plan.poses_noisy[i]).astype(np.float32)
                 )
                 steps["aux.sync_ok"].append(np.array([report.ok], dtype=bool))
+                steps["next.done"].append(np.array([False], dtype=bool))
         finally:
             self.robot.deactivate_servo()
 
@@ -149,6 +175,8 @@ class EpisodeRecorder(object):
             discard_reason = discard_reason or "unvollstaendig"
 
         arrays = {k: np.stack(v) for k, v in steps.items()}
+        if recorded == n:
+            arrays["next.done"][-1, 0] = True
         meta = dict(metadata or {})
         meta.update(
             {

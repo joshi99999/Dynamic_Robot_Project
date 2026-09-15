@@ -17,8 +17,9 @@ from bc.clock import SimClock
 from bc.collision import default_workspace
 from bc.kinematics import Kinematics
 from bc.noise import generate_plan
+from bc.ports import RobotError
 from bc.recorder import EpisodeRecorder
-from bc.trajectory import Waypoint, build_ideal_trajectory
+from bc.trajectory import Waypoint, build_ideal_trajectory, joint_derivatives
 
 
 def _setup(robot_cls=SimRobot, cam_faults=None, **robot_kwargs):
@@ -91,6 +92,56 @@ def test_record_full_episode():
     assert episode.arrays["aux.sync_ok"].all()
     assert episode.metadata["recorded_steps"] == n
 
+    # Gesendete Sollwinkel sind die verrauschte Bahn (Nachlauf-Auswertung)
+    assert np.allclose(
+        episode.arrays["aux.joints_command"], plan.joints_noisy.astype(np.float32)
+    )
+    # Uebergabepunkt: next.done genau im letzten Schritt
+    done = episode.arrays["next.done"][:, 0]
+    assert done[-1] and not done[:-1].any()
+
+
+class SpyRobot(SimRobot):
+    """Merkt sich alle servo_j-Aufrufe (Testhelfer)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.servo_calls = []
+
+    def servo_j(self, joint_angles, velocity=None, acceleration=None):
+        super().servo_j(joint_angles, velocity, acceleration)
+        self.servo_calls.append((joint_angles, velocity, acceleration))
+
+
+def test_servo_gets_velocity_and_acceleration_from_plan():
+    # Befund VM 2026-09-09: servo_j braucht drei Listen. Geschwindigkeit
+    # und Beschleunigung muessen aus DERSELBEN (verrauschten) Bahn stammen,
+    # sonst meldet man dem Controller "anhalten" bzw. widerspruechliche Ziele.
+    clock, robot, captures = _setup(robot_cls=SpyRobot)
+    plan = _plan(robot)
+    EpisodeRecorder(robot, captures, clock).record(plan)
+
+    vel, acc = joint_derivatives(plan.joints_noisy, plan.rate_hz)
+    assert len(robot.servo_calls) == len(plan)
+    for i, (q, qd, qdd) in enumerate(robot.servo_calls):
+        assert qd is not None and qdd is not None
+        assert np.allclose(q, plan.joints_noisy[i])
+        assert np.allclose(qd, vel[i]) and np.allclose(qdd, acc[i])
+    # Die Bahn bewegt sich wirklich -- es sind nicht ueberall Nullen
+    assert np.abs(vel).max() > 0.01
+
+
+def test_refuses_to_start_away_from_start_pose():
+    clock, robot, captures = _setup()
+    plan = _plan(robot, gripper=False)
+    robot._joints = robot._joints + 0.1  # Arm steht woanders
+    try:
+        EpisodeRecorder(robot, captures, clock).record(plan)
+        assert False, "RobotError erwartet (nicht an der Startstellung)"
+    except RobotError as exc:
+        assert "Startstellung" in str(exc)
+    assert not robot._servo_active  # Servo wurde gar nicht erst aktiviert
+
 
 def test_gripper_dwell_respected():
     clock, robot, captures = _setup()
@@ -135,8 +186,8 @@ class TrippingRobot(SimRobot):
         super().__init__(**kwargs)
         self._servo_count = 0
 
-    def servo_j(self, joint_angles):
-        super().servo_j(joint_angles)
+    def servo_j(self, joint_angles, velocity=None, acceleration=None):
+        super().servo_j(joint_angles, velocity, acceleration)
         self._servo_count += 1
         if self._servo_count == self.TRIP_AFTER:
             self.emergency_stop()
@@ -156,3 +207,5 @@ def test_discard_on_emergency_stop():
     assert len(episode) == TrippingRobot.TRIP_AFTER
     # Nach dem Not-Halt ist das Servo-Interface deaktiviert
     assert not robot._servo_active
+    # Abgebrochene Episode: kein Uebergabepunkt markiert
+    assert not episode.arrays["next.done"].any()

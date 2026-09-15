@@ -1,7 +1,6 @@
 """Szenen-/Top-View-Kamera: Standard-USB-Webcam ueber OpenCV (AP 1.1)."""
 
-import time
-
+from ..clock import host_time
 from ..ports import CameraError, CameraPort, Frame
 
 
@@ -45,7 +44,7 @@ class UvcCamera(CameraPort):
         if not self._open:
             raise CameraError("Kamera '%s' ist nicht geoeffnet" % self.name)
         ok, bgr = self._cap.read()
-        t = time.time()
+        t = host_time()
         if not ok or bgr is None:
             raise CameraError("Kamera '%s' lieferte kein Bild" % self.name)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)

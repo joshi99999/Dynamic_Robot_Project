@@ -111,6 +111,7 @@ class Kinematics(object):
         fk_tol_pos=config.IK_FK_TOL_POS_M,
         fk_tol_rot=config.IK_FK_TOL_ROT_RAD,
         verify_fk=True,
+        fixed_joints=None,
     ):
         """Loest eine ganze Posenbahn im Gelenkraum -- mit Warm-Start.
 
@@ -118,6 +119,11 @@ class Kinematics(object):
         Absicherungen laufen mit; bei Verletzung wird :class:`IKFailure` mit
         dem betroffenen Index geworfen, sodass der Aufrufer die Trajektorie
         verwerfen und neu sampeln kann (Rejection Sampling, AP 2.4).
+
+        ``fixed_joints``: optional (N, dof) mit bereits bekannten
+        Gelenkstellungen (PTP-Segmente der idealen Bahn), NaN = per IK
+        loesen. Bekannte Zeilen werden uebernommen statt geloest -- die
+        Sprung- und Grenzpruefung laeuft trotzdem.
 
         Rueckgabe: Array (N, dof) mit Gelenkwinkeln in rad.
         """
@@ -127,13 +133,24 @@ class Kinematics(object):
 
         reference = np.asarray(seed_joints, dtype=float)
         solutions = np.empty((len(poses_quat), len(reference)), dtype=float)
+        if fixed_joints is not None:
+            fixed_joints = np.asarray(fixed_joints, dtype=float)
+            if fixed_joints.shape != solutions.shape:
+                raise ValueError(
+                    "fixed_joints hat Form %s, erwartet %s"
+                    % (fixed_joints.shape, solutions.shape)
+                )
 
         for i, pose in enumerate(poses_quat):
-            try:
-                sol = self.ik(pose, reference)
-            except IKFailure as exc:
-                exc.index = i
-                raise
+            known = fixed_joints is not None and not np.isnan(fixed_joints[i]).any()
+            if known:
+                sol = fixed_joints[i].copy()
+            else:
+                try:
+                    sol = self.ik(pose, reference)
+                except IKFailure as exc:
+                    exc.index = i
+                    raise
 
             delta = float(np.max(np.abs(sol - reference)))
             if i > 0 and delta > max_delta_q:
@@ -154,7 +171,8 @@ class Kinematics(object):
                     reason="joint_limits",
                 )
 
-            if verify_fk:
+            # Bekannte Zeilen sind per Konstruktion FK-konsistent (Pose = fk(q))
+            if verify_fk and not known:
                 pos_err, rot_err = self.check_fk_roundtrip(sol, pose)
                 if pos_err > fk_tol_pos or rot_err > fk_tol_rot:
                     raise IKFailure(

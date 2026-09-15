@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import config
+from . import config, geometry
 
 # --------------------------------------------------------------------------
 # Schema (verbindlich, AP 0.10)
@@ -26,7 +26,8 @@ from . import config
 
 #: observation.state: [q1..q6, tcp_x, tcp_y, tcp_z, qw, qx, qy, qz, greifer]
 #: Einheiten rad / m / Einheitsquaternion / {0.0, 1.0}. Der Greifer ist der
-#: KOMMANDIERTE Zustand (keine Ist-Rueckmeldung, AP 2.1).
+#: KOMMANDIERTE Zustand (keine Ist-Rueckmeldung, AP 2.1). Das Quaternion ist
+#: kanonisch zu config.QUAT_HEMISPHERE_REF (ab Schema 2, geometry.py).
 STATE_LAYOUT = (
     ("joints", 6),
     ("tcp_pos", 3),
@@ -58,9 +59,16 @@ def features(camera_names=("wrist", "scene")):
         # Zusatzkanaele (AP 0.9 Punkt 2): Soll- UND Ist-Bahn, damit die
         # asymmetrische Label-Logik ueberpruef- und umlabelbar bleibt.
         "aux.joints_ideal": {"shape": (6,), "dtype": "float32"},
+        # Tatsaechlich per servo_j gesendete (verrauschte) Sollwinkel --
+        # zusammen mit observation.state zeigt das den Nachlauf des Arms.
+        "aux.joints_command": {"shape": (6,), "dtype": "float32"},
         "aux.pose_ideal": {"shape": (7,), "dtype": "float32"},
         "aux.pose_noisy": {"shape": (7,), "dtype": "float32"},
         "aux.sync_ok": {"shape": (1,), "dtype": "bool"},
+        # LeRobot-Konvention: True genau im letzten Schritt einer
+        # vollstaendigen Episode. Markiert den Uebergabepunkt ans
+        # Hauptprogramm (Ende des BC-Abschnitts, z. B. PRE_PLACE).
+        "next.done": {"shape": (1,), "dtype": "bool"},
     }
     for name in camera_names:
         feats["observation.images.%s" % name] = {
@@ -75,7 +83,7 @@ def build_state(joints, tcp_quat, gripper_value):
     state = np.concatenate(
         [
             np.asarray(joints, dtype=np.float32),
-            np.asarray(tcp_quat, dtype=np.float32),
+            canonical_pose(tcp_quat).astype(np.float32),
             np.array([gripper_value], dtype=np.float32),
         ]
     )
@@ -84,6 +92,17 @@ def build_state(joints, tcp_quat, gripper_value):
             "State hat %s Werte, Schema verlangt %d" % (state.shape, config.STATE_DIM)
         )
     return state
+
+
+def canonical_pose(pose_quat):
+    """[X,Y,Z,QW,QX,QY,QZ] mit Quaternion kanonisch zur Schema-Referenz.
+
+    Gleiche Orientierung -> gleiche Zahlen, egal ob FK, Controller oder
+    Interpolation q oder -q geliefert hat (Schema 2).
+    """
+    pose = np.asarray(pose_quat, dtype=float).copy()
+    pose[3:7] = geometry.quat_canonical(pose[3:7], config.QUAT_HEMISPHERE_REF)
+    return pose
 
 
 def build_action(joints, gripper_value):
