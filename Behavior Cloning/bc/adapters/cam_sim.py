@@ -32,11 +32,26 @@ class CameraFaultProfile:
     stale_s: float = 0.0
 
 
-class SimCamera(CameraPort):
-    """Platzhalter-Kamera fuer hardwarefreie Tests."""
+#: Bildmuster: "counter" kodiert den Framezaehler (Tests), "static" ist in
+#: jedem Frame gleich (Aufzeichnung/Inferenz mit Platzhalterbildern).
+PATTERNS = ("counter", "static")
 
-    def __init__(self, cfg, clock=None, faults=None, seed=0):
+
+class SimCamera(CameraPort):
+    """Platzhalter-Kamera fuer hardwarefreie Tests.
+
+    ``pattern="static"`` fuer alles, woraus eine Policy lernt: der
+    Framezaehler im Muster "counter" ist eine UHR im Bild. Befund
+    Durchstich 2026-09-17: die Policy las ihn als Zeitsignal ab (AP 2.6,
+    Anti-Pattern) -- Fahrt 0 gelang, ab Fahrt 1 (Zaehler weitergelaufen)
+    fuhr sie direkt ans Bahnende.
+    """
+
+    def __init__(self, cfg, clock=None, faults=None, seed=0, pattern="counter"):
         super().__init__(cfg)
+        if pattern not in PATTERNS:
+            raise ValueError("pattern muss eines von %s sein" % (PATTERNS,))
+        self.pattern = pattern
         self._clock = clock if clock is not None else RealClock()
         self._faults = faults if faults is not None else CameraFaultProfile()
         self._rng = np.random.default_rng(seed)
@@ -73,6 +88,8 @@ class SimCamera(CameraPort):
         image = np.zeros((h, w, 3), dtype=np.uint8)
         image[:, :, 0] = np.linspace(0, 255, w, dtype=np.uint8)[None, :]
         image[:, :, 1] = np.linspace(0, 255, h, dtype=np.uint8)[:, None]
+        if self.pattern == "static":
+            return image
         for bit in range(16):
             if (index >> bit) & 1:
                 x0 = bit * (w // 16)

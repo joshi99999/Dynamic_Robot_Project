@@ -32,10 +32,16 @@ gamepad = [
     "pygame>=2.5,<3",
 ]
 train = [
-    # OFFEN (AP 0.9 Punkt 6): LeRobot-Version VOR der ersten echten
-    # Datenaufzeichnung pinnen -- das Datensatzformat haengt daran.
+    # GEPINNT 2026-09-17 (AP 0.9 Punkt 6): das Datensatzformat (v3.0) und
+    # die Checkpoints haengen an der Version -- bc.config.LEROBOT_VERSION
+    # wird beim Export und Training geprueft. Auf JEDEM Trainings- und
+    # Inferenzrechner dieselbe Version installieren (vollstaendige Liste:
+    # Dokumentation/environment-lock.txt).
     # torch: siehe Hinweis oben (cu128-Index, nicht ueber PyPI-Default).
-    # "lerobot==<VERSION-PINNEN>",
+    "lerobot==0.6.1",
+    "diffusers==0.39.0",   # Noise-Scheduler der Diffusion Policy
+    "torchcodec==0.11.1",  # Video-Dekodierung im DataLoader
+    "av==15.1.0",
 ]
 
 # Hardware-SDKs ohne PyPI-Paket (manuell zu installieren):

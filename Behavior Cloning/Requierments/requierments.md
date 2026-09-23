@@ -175,8 +175,8 @@ Die folgenden Punkte sind vor bzw. während der Umsetzung zu entscheiden; die mi
 3. **⛔ Absolute vs. relative Aktionen** (offen aus AP 1.5.2; absolute Sollposen sind nahegelegt, aber nicht festgelegt).
 4. **⛔ Bildgröße und Rektifizierungs-Ausgabe:** Auflösung und Bildausschnitt nach der Homographie, identisch für Aufzeichnung und Inferenz.
 5. **⛔ Planer-Zielgeschwindigkeit** (offen aus AP 2.6).
-6. **LeRobot-Version:** Das `LeRobotDataset`-Format hat mehrere inkompatible Versionen. Die verwendete Version ist zu pinnen und im Datensatz zu vermerken.
-7. **Action-Chunk-Länge und ausgeführter Anteil `n`** (AP 4.1) — kein Datensatz-Risiko, aber Voraussetzung für die Inferenzschleife.
+6. ~~**LeRobot-Version:** Das `LeRobotDataset`-Format hat mehrere inkompatible Versionen. Die verwendete Version ist zu pinnen und im Datensatz zu vermerken.~~ — **entschieden (17.09.2026): lerobot 0.6.1, Format v3.0**, gepinnt in `config.LEROBOT_VERSION` und `pyproject.toml`. Der Export (`apps/export.py`) prüft die Version und schreibt sie mit Schema-Version und Quellen nach `meta/bc_export.json`; Training und Inferenz prüfen dagegen.
+7. **Action-Chunk-Länge und ausgeführter Anteil `n`** (AP 4.1) — kein Datensatz-Risiko, aber Voraussetzung für die Inferenzschleife. *Vorläufig festgelegt (17.09.2026):* Horizont 16, davon 8 nutzbar, Neuvorhersage alle 2 Takte, überlappende Chunks werden gemittelt (`config.POLICY_*`); an der Zielhardware zu bestätigen.
 8. **Zykluszeit als Metrik ja/nein** (offen aus AP 5.1).
 9. **Abhängigkeiten und Umgebung:** Aktuell sind lediglich `numpy`, `opencv-python` und `scipy` unter Python 3.11.9 installiert; `torch`, `lerobot` und `pytest` fehlen. Festzulegen sind Paketmanager, Versionspinning (inkl. PyTorch cu128 wegen sm_120, siehe AP 3.1) und die Aufteilung Windows/WSL2.
 
@@ -483,6 +483,7 @@ Die konkret benötigte **Anzahl an Demonstrationen** hängt stark von der finale
 ---
 
 ## AP 3: Modell-Training (Diffusion Policy)
+*Status (17.09.2026): **umgesetzt** — `apps/export.py` (Aufzeichnung → LeRobotDataset mit Konsistenzprüfung von Schema, Tempo und Override), `apps/train.py` (CNN-Diffusion-Policy aus lerobot 0.6.1, ResNet18 je Kamera, 240 × 320, hardwareunabhängig: Gerät, bf16, Batch/Gradient Accumulation, Resume). Handlungsanleitung: `Dokumentation/Training-und-Inferenz.md`.*
 
 ### 3.1 Lokale Hardware-Ressourcen
 * **Welche Grafikkarte (GPU) steht für das lokale Training zur Verfügung?**
@@ -511,6 +512,7 @@ Die konkret benötigte **Anzahl an Demonstrationen** hängt stark von der finale
 ---
 
 ## AP 4: Live-Inferenz & Neura-Anbindung
+*Status (17.09.2026): **umgesetzt** — `apps/infer.py` fährt die trainierte Policy (SimRobot und Neura), mittelt überlappende Chunks, erzwingt Schema/Rate/Kameras/Override der Aufzeichnung; Sprung- und Geschwindigkeitsfilter für jeden `servo_j`-Sollwert in beiden Robot-Adaptern (`servo.ServoGuard`). An der Anlage offen: Latenzmessung (4.1 a–c), Filtergrenzen bestätigen, Not-Halt real auslösen.*
 
 ### 4.1 Latenz- & Performance-Ziele
 * **Welche maximale End-to-End-Latenz ist zulässig?**
