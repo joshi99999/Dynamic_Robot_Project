@@ -26,14 +26,22 @@ Datensatz-Schema bleibt identisch).
 
 import argparse
 import json
+import sys
+from datetime import datetime
 from pathlib import Path
 
 import _bootstrap  # noqa: F401
 
 import numpy as np
 
-from bc import capture, config, metrics
-from bc.adapters import open_camera, open_robot
+from bc import config, metrics
+from bc.adapters import (
+    CAMERA_MODES,
+    camera_configs,
+    open_robot,
+    resolve_camera_mode,
+    start_cameras,
+)
 from bc.clock import RealClock, SimClock
 from bc.collision import default_workspace
 from bc.dataset import DatasetWriter
@@ -110,8 +118,9 @@ def parse_args():
     )
     parser.add_argument("--waypoints", default=None, help="waypoints.json aus teach.py")
     parser.add_argument(
-        "--cameras", choices=("auto", "sim", "real"), default="auto",
-        help="auto: Sim-Kameras beim SimRobot, echte Kameras am Neura",
+        "--cameras", choices=CAMERA_MODES, default="auto",
+        help="auto: Sim-Kameras beim SimRobot, echte am Neura; wrist-real: echte "
+             "Wrist-Kamera + Platzhalter-Szene (Labortest)",
     )
     parser.add_argument(
         "--real-robot", action="store_true",
@@ -123,31 +132,73 @@ def parse_args():
     )
     parser.add_argument(
         "--noise-scale", type=float, default=1.0,
-        help="Faktor auf die Rauschamplituden (0 = Referenzfahrt ohne Rauschen)",
+        help="Hoechster Faktor auf die Rauschamplituden (0 = Referenzfahrt ohne Rauschen); "
+             "je Episode wird daraus zufaellig skaliert (config.NOISE_EPISODE_SCALE_RANGE)",
+    )
+    parser.add_argument(
+        "--noise-fixed", action="store_true",
+        help="Rauschfaktor NICHT je Episode ziehen, sondern immer --noise-scale (Vergleichsfahrten)",
+    )
+    parser.add_argument(
+        "--servo-rate", type=float, default=config.SERVO_RATE_HZ,
+        help="servo_j-Senderate in Hz, Vielfaches von %.0f (Vergleichsfahrten; "
+             "fuer Datensaetze den Default lassen)" % config.CONTROL_RATE_HZ,
     )
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--out", default="data_out")
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--seed", type=int, default=None,
+        help="Zufalls-Seed fuer das Rauschen. Default: neu gezogen und in den Metadaten "
+             "abgelegt -- ein fester Seed wiederholt in jedem Aufruf DIESELBEN Bahnen "
+             "(Befund 2026-09-16: zwei Laeufe mit Seed 0 hatten identisches Rauschen).",
+    )
     parser.add_argument(
         "--table-z", type=float, default=None,
         help="Tischhoehe in m fuer das Kollisionsmodell (Basis-KS). "
              "Default: 15 cm unter dem tiefsten Wegpunkt.",
     )
+    # Metadaten je Aufruf (AP 5.2) -- ein Aufruf = ein Block = eine
+    # Objektlage (Objekt hinlegen, PRE_GRASP/PICK per Touch-up, aufzeichnen).
+    meta = parser.add_argument_group("Metadaten (AP 5.2), gelten fuer alle Episoden des Aufrufs")
+    meta.add_argument(
+        "--block", default=None,
+        help="Block-ID, z. B. B07 -- eine Objektlage. An der Anlage Pflicht.",
+    )
+    meta.add_argument(
+        "--session", default=None,
+        help="Session-ID (Default: Datum, z. B. 2026-09-17)",
+    )
+    meta.add_argument("--light", default=None, help="Beleuchtung, z. B. 'Decke an, Rollo zu'")
+    meta.add_argument(
+        "--camera-pose", default=None,
+        help="Kamerapose-Variante der Szenenkamera, z. B. 'nominal' oder '+2cm x'",
+    )
+    meta.add_argument("--object", dest="object_note", default=None,
+                      help="Objekt und Lage in Worten, z. B. 'Teil A, 30 Grad gedreht, links'")
+    meta.add_argument(
+        "--object-points", default="PICK,PRE_GRASP",
+        help="Punkte, deren geteachte Lage als Objektlage abgelegt wird (Komma-Liste)",
+    )
     args = parser.parse_args()
     if args.sequence and args.waypoints:
         parser.error("--sequence und --waypoints schliessen sich aus")
+    if args.seed is None:
+        args.seed = int(np.random.SeedSequence().entropy % (2**31))
     return args
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)  # Fortschritt auch in Logdateien
     args = parse_args()
     robot_kind = args.robot or ("sim" if args.sim else "neura")
     use_sim_robot = robot_kind == "sim"
-    use_sim_cameras = args.cameras == "sim" or (args.cameras == "auto" and use_sim_robot)
+    camera_mode = resolve_camera_mode(args.cameras, use_sim_robot)
+    use_sim_cameras = camera_mode == "sim"
 
     sequence = load_sequence(args.sequence) if args.sequence else None
 
-    cam_cfgs = config.SIM_CAMERAS if use_sim_cameras else config.CAMERAS
+    cam_cfgs = camera_configs(camera_mode)
     if not use_sim_cameras:
         # VOR jeder Hardware-Aktion: eine falsch konfigurierte Kamera faellt
         # im fertigen Datensatz nicht auf, deshalb hier hart nachfragen.
@@ -162,12 +213,18 @@ def main():
     if args.real_robot:
         if use_sim_robot:
             raise SystemExit("--real-robot ergibt mit dem SimRobot keinen Sinn.")
+        if not args.block:
+            raise SystemExit(
+                "--block fehlt: an der Anlage gehoert jede Aufzeichnung zu einem Block "
+                "(Objektlage), sonst sind die Ablationen nicht auswertbar (AP 5.2)."
+            )
         confirm_real_robot()
 
-    clock = SimClock() if use_sim_robot else RealClock()
+    # Echte Kameras stempeln mit der Host-Uhr -- dann auch der SimRobot.
+    clock = SimClock() if use_sim_robot and use_sim_cameras else RealClock()
     if use_sim_robot:
         robot = open_robot("sim", clock=clock, seed=args.seed).connect()
-        robot_info = {"robot": "sim"}
+        robot_info = {"robot": "sim", "in_simulation": True}
     else:
         robot = open_robot("neura", allow_real=args.real_robot, override=args.override)
         try:
@@ -206,20 +263,21 @@ def main():
         robot.close()
         raise SystemExit("Am Neura sind --sequence oder --waypoints Pflicht.")
 
-    if use_sim_cameras:
-        from bc.adapters.cam_sim import SimCamera
-
-        cams = [SimCamera(cfg, clock=clock, seed=args.seed) for cfg in cam_cfgs]
-    else:
-        cams = [open_camera(cfg) for cfg in cam_cfgs]
-    # Sim-Kameras synchron abgreifen: sie liefern sofort, ein Capture-Thread
-    # wuerde nur leer drehen -- und der Zeitstempel ist dann exakt der Abgriff.
-    captures = capture.start_all(cams, threaded=not use_sim_cameras)
+    try:
+        captures, cam_cfgs = start_cameras(camera_mode, clock, seed=args.seed)
+    except Exception:
+        robot.close()
+        raise
 
     kin = Kinematics(robot)
-    writer = DatasetWriter(args.out, camera_names=[c.name for c in cams])
-    recorder = EpisodeRecorder(robot, captures, clock)
+    writer = DatasetWriter(args.out, camera_names=[c.name for c in cam_cfgs])
+    recorder = EpisodeRecorder(robot, captures, clock, servo_rate_hz=args.servo_rate)
     rng = np.random.default_rng(args.seed)
+    print(
+        "Lauf-Einstellungen: servo_j %.0f Hz, Rauschen %s x%.2f, Seed %d, Ablauf %s"
+        % (args.servo_rate, "fest" if args.noise_fixed else "je Episode zufaellig bis",
+           args.noise_scale, args.seed, args.sequence or args.waypoints or "Demo")
+    )
     # Ohne Ablaufdatei: feste Wegpunkte, EINMAL bestimmt (die Demo haengt an
     # der Startpose -- je Episode neu berechnet wuerde sie mitwandern).
     if args.waypoints:
@@ -229,15 +287,49 @@ def main():
     else:
         fixed_waypoints = None
 
+    planner_meta = {
+        "transit_speed_ms": config.TRANSIT_SPEED_MS,
+        "approach_speed_ms": config.APPROACH_SPEED_MS,
+        "ptp_joint_speed_rads": config.PTP_JOINT_SPEED_RADS,
+        "segment_ramp_s": config.SEGMENT_RAMP_S,
+        "gripper_dwell_s": config.GRIPPER_DWELL_S,
+    }
+    object_points = [p.strip() for p in args.object_points.split(",") if p.strip()]
+    if not use_sim_robot and not args.block:
+        print("Hinweis: ohne --block (Objektlage) -- an der Anlage Pflicht (AP 5.2).")
+
     recorded = 0
     try:
         for ep in range(args.episodes):
+            # Rauschstaerke je Episode (AP 2.4, Auswertung 2026-09-16): gezogen
+            # aus NOISE_EPISODE_SCALE_RANGE -- mal fast ideal, mal volle
+            # Auslenkung. --noise-fixed nimmt immer genau --noise-scale.
+            if args.noise_fixed:
+                episode_scale = args.noise_scale
+            else:
+                lo, hi = config.NOISE_EPISODE_SCALE_RANGE
+                episode_scale = args.noise_scale * float(rng.uniform(lo, hi))
             meta = dict(
                 robot_info,
                 mode="noise_injection" if args.noise_scale > 0 else "reference",
-                noise_scale=args.noise_scale,
+                noise_scale=episode_scale,
+                noise_scale_max=args.noise_scale,
+                noise_scale_mode="fest" if args.noise_fixed else "je Episode zufaellig",
+                noise_amplitude_m=config.NOISE_TRANS_AMPLITUDE_M,
+                noise_rot_amplitude_rad=config.NOISE_ROT_AMPLITUDE_RAD,
                 episode_index=ep,
                 seed=args.seed,
+                recorded_at=datetime.now().isoformat(timespec="seconds"),
+                sequence_file=args.sequence,
+                session=args.session or datetime.now().strftime("%Y-%m-%d"),
+                block=args.block,
+                light=args.light,
+                camera_pose=args.camera_pose,
+                object_note=args.object_note,
+                cameras={c.name: c.backend for c in cam_cfgs},
+                # Mitgelerntes Tempo (AP 2.6): der Export verlangt, dass diese
+                # Werte ueber alle Episoden eines Datensatzes gleich sind.
+                planner=planner_meta,
             )
 
             # 1. Wegpunkte -- beim Ablauf je Episode frisch abgefragt
@@ -251,6 +343,12 @@ def main():
                     sequence=sequence.name,
                     points=resolved.points,
                     skipped_points=resolved.skipped,
+                    # Objektlage = die per Touch-up geteachten Greifpunkte
+                    object_pose={
+                        name: resolved.points[name]["pose_quat"]
+                        for name in object_points
+                        if name in resolved.points
+                    },
                 )
                 if resolved.skipped:
                     print("Episode %d: optionale Punkte fehlen: %s" % (ep, resolved.skipped))
@@ -259,6 +357,11 @@ def main():
 
             # 2. Ideale Bahn und Kollisionsmodell
             ideal = build_ideal_trajectory(waypoints, fk=robot.fk)
+            meta["blend_m"] = {
+                wp.name or str(k): r
+                for k, (wp, r) in enumerate(zip(waypoints, ideal.blend_applied))
+                if r > 0
+            }
             z_min = min(wp.pose_quat[2] for wp in waypoints)
             table_z = args.table_z if args.table_z is not None else z_min - 0.15
             workspace = default_workspace(table_height_m=table_z)
@@ -276,7 +379,7 @@ def main():
                 seed_joints = robot.read_state().joints
             try:
                 plan = generate_plan(
-                    kin, workspace, ideal, seed_joints, rng=rng, noise_scale=args.noise_scale
+                    kin, workspace, ideal, seed_joints, rng=rng, noise_scale=episode_scale
                 )
             except PlanRejected as exc:
                 print("Episode %d: Planung verworfen (%s)" % (ep, exc))

@@ -31,6 +31,12 @@ Format (JSON)::
 * ``optional``: Punkt wird uebersprungen, wenn er in der Datenbank fehlt
   (z. B. zusaetzliche Approach-Punkte fuer mehr Variation). Fehlt ein
   Pflichtpunkt, bricht die Aufloesung mit allen fehlenden Namen ab.
+* ``blend``: Ueberschleif-Radius in m an diesem Punkt -- der Arm haelt dort
+  nicht an, sondern verrundet die Ecke (trajectory.py). Nicht erlaubt am
+  ersten und letzten Schritt und zusammen mit ``gripper``. Sinnvoll an
+  reinen Durchfahrpunkten (APPROACH_*, PRE_GRASP nach dem Anheben); NICHT
+  an einem Punkt, von dem aus eine LIN-Anfahrt ans Objekt beginnt -- sonst
+  startet die Anfahrt schraeg.
 """
 
 import json
@@ -42,7 +48,7 @@ import numpy as np
 from .trajectory import MOTION_PTP, MOTIONS, Waypoint
 
 _GRIPPER_VALUES = {"close": True, "open": False}
-_STEP_KEYS = {"point", "motion", "approach", "gripper", "optional"}
+_STEP_KEYS = {"point", "motion", "approach", "gripper", "optional", "blend"}
 
 
 class SequenceError(ValueError):
@@ -56,6 +62,7 @@ class SequenceStep:
     approach: bool = False
     gripper: str = None
     optional: bool = False
+    blend: float = 0.0
 
 
 @dataclass
@@ -120,6 +127,15 @@ def parse_sequence(data):
             )
         if step.gripper is not None and step.gripper not in _GRIPPER_VALUES:
             raise SequenceError("%s: gripper muss 'open' oder 'close' sein" % where)
+        blend = raw.get("blend", 0.0)
+        if isinstance(blend, bool) or not isinstance(blend, (int, float)) or blend < 0:
+            raise SequenceError("%s: blend muss ein Radius in m >= 0 sein" % where)
+        step.blend = float(blend)
+        if step.blend > 0 and step.gripper is not None:
+            raise SequenceError(
+                "%s: blend und gripper schliessen sich aus -- am Greifpunkt "
+                "wird angehalten." % where
+            )
         steps.append(step)
 
     for label, step in (("erste", steps[0]), ("letzte", steps[-1])):
@@ -127,6 +143,11 @@ def parse_sequence(data):
             raise SequenceError(
                 "Der %s Schritt (%s) darf nicht optional sein -- er legt "
                 "Start bzw. Uebergabepunkt fest." % (label, step.point)
+            )
+        if step.blend > 0:
+            raise SequenceError(
+                "Der %s Schritt (%s) darf nicht ueberschliffen werden -- dort "
+                "steht der Arm." % (label, step.point)
             )
     return Sequence(steps=steps, name=str(data.get("name", "")), gripper_start=gripper_start)
 
@@ -176,6 +197,7 @@ def resolve_sequence(sequence, point_source):
                 name=step.point,
                 motion=step.motion,
                 joints=joints.copy(),
+                blend_m=step.blend,
             )
         )
 

@@ -68,6 +68,12 @@ def test_parse_rejects_invalid_files():
         {"sequence": [{"point": "A"}, {"point": "B", "speed": 1}]},  # Tippfehler-Schutz
         {"sequence": [{"point": "A", "optional": True}, {"point": "B"}]},
         {"sequence": [{"point": "A"}, {"point": "B", "optional": True}]},
+        # Ueberschleifen: nicht an Start/Ende, nicht am Greifpunkt, nur Zahl >= 0
+        {"sequence": [{"point": "A", "blend": 0.02}, {"point": "B"}]},
+        {"sequence": [{"point": "A"}, {"point": "B", "blend": 0.02}]},
+        {"sequence": [{"point": "A"}, {"point": "B", "gripper": "close", "blend": 0.02}, {"point": "C"}]},
+        {"sequence": [{"point": "A"}, {"point": "B", "blend": -0.1}, {"point": "C"}]},
+        {"sequence": [{"point": "A"}, {"point": "B", "blend": "gross"}, {"point": "C"}]},
     ]
     for data in bad_cases:
         try:
@@ -93,6 +99,19 @@ def test_resolve_skips_optional_and_propagates_gripper():
     ]
     assert np.allclose(resolved.start_joints, robot.get_point("CLEAR_FOV")[0])
     assert set(resolved.points) == {"CLEAR_FOV", "APPROACH_01", "PRE_GRASP", "PICK", "PRE_PLACE"}
+
+
+def test_blend_is_passed_to_waypoints_and_planned():
+    data = {
+        "sequence": [dict(s) for s in PICK_SEQUENCE["sequence"]],
+    }
+    data["sequence"][1]["blend"] = 0.03  # APPROACH_01
+    data["sequence"][5]["blend"] = 0.03  # PRE_GRASP nach dem Anheben
+    robot = _robot()
+    resolved = resolve_sequence(parse_sequence(data), robot)
+    assert [wp.blend_m for wp in resolved.waypoints] == [0.0, 0.03, 0.0, 0.0, 0.03, 0.0]
+    ideal = build_ideal_trajectory(resolved.waypoints, fk=robot.fk)
+    assert ideal.blend_applied[1] > 0.0 and ideal.blend_applied[4] > 0.0
 
 
 def test_resolve_reports_all_missing_required_points():

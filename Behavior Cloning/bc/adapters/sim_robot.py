@@ -30,7 +30,9 @@ from ..ports import (
     RobotError,
     RobotPort,
     RobotState,
+    ServoLimitError,
 )
+from ..servo import ServoGuard
 from ..urdf import KinematicChain
 
 
@@ -84,8 +86,14 @@ class SimRobot(RobotPort, PointSourcePort):
         seed=0,
         home=None,
         points=None,
+        servo_guard=None,
     ):
         self._clock = clock if clock is not None else RealClock()
+        #: Derselbe Sprung-/Geschwindigkeitsfilter wie am Neura -- sonst
+        #: faellt ein Sprung erst an der VM oder Anlage auf.
+        self.servo_guard = servo_guard if servo_guard is not None else ServoGuard(
+            joint_limits=joint_limits
+        )
         self._chain = KinematicChain.from_urdf(urdf_path)
         self._limits = joint_limits
         self._faults = faults if faults is not None else FaultProfile()
@@ -273,9 +281,11 @@ class SimRobot(RobotPort, PointSourcePort):
     def activate_servo(self, mode="position"):
         self._require_connected()
         self._fault_gate()
+        self.servo_guard.reset(self._joints, self._clock.now())
         self._servo_active = True
 
     def deactivate_servo(self):
+        self.servo_guard.clear()
         self._servo_active = False
 
     def servo_j(self, joint_angles, velocity=None, acceleration=None):
@@ -297,6 +307,11 @@ class SimRobot(RobotPort, PointSourcePort):
         for label, values in (("velocity", velocity), ("acceleration", acceleration)):
             if values is not None and len(values) != self.dof:
                 raise ValueError("servo_j: %s braucht %d Werte" % (label, self.dof))
+        try:
+            self.servo_guard.check(target, self._clock.now())
+        except ServoLimitError:
+            self.emergency_stop()
+            raise
         self.last_servo_command = (target.copy(), velocity, acceleration)
         if self._faults.servo_noise_rad > 0:
             target = target + self._rng.uniform(

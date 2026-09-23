@@ -156,6 +156,128 @@ def test_joint_derivatives_match_motion():
     assert np.allclose(vel[:, 2], 0.0) and np.allclose(acc[:, 2], 0.0)
 
 
+def _speeds(traj):
+    dt = 1.0 / config.CONTROL_RATE_HZ
+    return np.linalg.norm(np.diff(traj.poses_quat[:, :3], axis=0), axis=1) / dt
+
+
+def _blend_wp(x, y, z, blend=0.0, gripper=False):
+    wp = _wp(x, y, z, gripper=gripper)
+    wp.blend_m = blend
+    return wp
+
+
+def test_blend_keeps_speed_through_via_point():
+    # Ueberschleifen: am Durchfahrpunkt nicht anhalten (Anwender 2026-09-15)
+    stop = build_ideal_trajectory([_wp(0, 0, 0.5), _wp(0.2, 0, 0.5), _wp(0.2, 0.2, 0.5)])
+    blend = build_ideal_trajectory(
+        [_wp(0, 0, 0.5), _blend_wp(0.2, 0, 0.5, blend=0.05), _wp(0.2, 0.2, 0.5)]
+    )
+    assert blend.blend_applied[1] == 0.05
+    v_stop, v_blend = _speeds(stop), _speeds(blend)
+    corner = int(np.argmin(np.linalg.norm(stop.poses_quat[:, :3] - [0.2, 0, 0.5], axis=1)))
+    assert v_stop[corner] < 0.01
+    # Mit Ueberschleifen faellt die Geschwindigkeit nirgends unter ~70 % (90-Grad-Ecke)
+    ramp_steps = int(np.ceil(config.SEGMENT_RAMP_S * config.CONTROL_RATE_HZ)) + 1
+    inner = v_blend[ramp_steps:-ramp_steps]  # ohne Anfahren/Bremsen an Start und Ende
+    assert inner.min() > 0.6 * config.TRANSIT_SPEED_MS
+    assert inner.max() <= config.TRANSIT_SPEED_MS * 1.001
+    # Schneller am Ziel, Start und Ende unveraendert exakt
+    assert len(blend) < len(stop)
+    assert np.allclose(blend.poses_quat[0], stop.poses_quat[0])
+    assert np.allclose(blend.poses_quat[-1], stop.poses_quat[-1])
+    # Ecke verrundet: der Punkt selbst wird nicht erreicht, aber nur knapp verfehlt
+    miss = np.linalg.norm(blend.poses_quat[:, :3] - [0.2, 0, 0.5], axis=1).min()
+    assert 0.005 < miss < 0.05
+    # Ausserhalb des Radius liegt die Bahn auf den Geraden
+    p = blend.poses_quat[:, :3]
+    far = np.linalg.norm(p - [0.2, 0, 0.5], axis=1) > 0.05 + 1e-6
+    on_leg = (np.abs(p[:, 1]) < 1e-9) | (np.abs(p[:, 0] - 0.2) < 1e-9)
+    assert np.all(on_leg[far])
+    # Beschleunigung stetig und begrenzt
+    acc = np.abs(np.diff(v_blend)) * config.CONTROL_RATE_HZ
+    assert acc.max() <= 1.15 * config.TRANSIT_SPEED_MS * np.pi / (2 * config.SEGMENT_RAMP_S)
+
+
+def test_blend_collinear_is_constant_speed():
+    traj = build_ideal_trajectory(
+        [_wp(0, 0, 0.5), _blend_wp(0.2, 0, 0.5, blend=0.0375), _wp(0.4, 0, 0.5)]
+    )
+    v = _speeds(traj)
+    mid = v[10:-10]
+    assert np.allclose(mid, mid.mean(), rtol=0.03)
+
+
+def test_no_blend_at_gripper_change_or_ends():
+    traj = build_ideal_trajectory(
+        [
+            _blend_wp(0, 0, 0.5, blend=0.05),
+            _blend_wp(0.2, 0, 0.5, blend=0.05, gripper=True),
+            _blend_wp(0.2, 0.2, 0.5, blend=0.05, gripper=True),
+        ]
+    )
+    assert traj.blend_applied == (0.0, 0.0, 0.0)
+    assert int(traj.dwell_mask.sum()) == config.GRIPPER_DWELL_STEPS
+    dwell_idx = np.where(traj.dwell_mask)[0]
+    assert np.allclose(traj.poses_quat[dwell_idx, :3], [0.2, 0, 0.5])
+
+
+def test_blend_radius_limited_to_half_segment():
+    traj = build_ideal_trajectory(
+        [_wp(0, 0, 0.5), _blend_wp(0.04, 0, 0.5, blend=0.5), _wp(0.04, 0.3, 0.5)]
+    )
+    assert abs(traj.blend_applied[1] - 0.02) < 1e-9
+
+
+def test_ptp_blend_in_joint_space():
+    import _fixtures
+
+    robot = _fixtures.make_robot("sim")
+    q_a = robot.read_state().joints
+    q_b = q_a + np.array([0.3, 0.0, 0.0, 0.0, 0.0, 0.0])
+    q_c = q_b + np.array([0.0, -0.1, 0.1, 0.0, 0.2, 0.0])
+    wps = [
+        Waypoint(robot.fk(q_a), name="A", joints=q_a),
+        Waypoint(robot.fk(q_b), name="B", motion="ptp", joints=q_b, blend_m=0.05),
+        Waypoint(robot.fk(q_c), name="C", motion="ptp", joints=q_c),
+    ]
+    traj = build_ideal_trajectory(wps, fk=robot.fk)
+    # Alle Gelenkzeilen bekannt (Ueberlagerung im Gelenkraum), Posen = FK
+    assert not np.isnan(traj.joints).any()
+    for i in (0, len(traj) // 2, len(traj) - 1):
+        assert np.allclose(traj.poses_quat[i][:3], robot.fk(traj.joints[i])[:3], atol=1e-9)
+    # Keine Stillstandsstelle zwischen Start und Ende
+    dq = np.abs(np.diff(traj.joints, axis=0)).max(axis=1)
+    assert dq[3:-3].min() > 1e-3
+    assert np.allclose(traj.joints[-1], q_c)
+
+
+def test_lin_ptp_blend_leaves_joints_to_ik():
+    import _fixtures
+
+    robot = _fixtures.make_robot("sim")
+    q_a = robot.read_state().joints
+    p_a = robot.fk(q_a)
+    p_b = p_a.copy()
+    p_b[2] += 0.12
+    from bc.kinematics import Kinematics
+
+    q_b = Kinematics(robot).ik(p_b, q_a)
+    q_c = q_b + np.array([0.3, 0.0, 0.0, 0.0, 0.0, 0.0])
+    wps = [
+        Waypoint(p_a, name="A", joints=q_a),
+        Waypoint(robot.fk(q_b), name="B", motion="lin", joints=q_b, blend_m=0.04),
+        Waypoint(robot.fk(q_c), name="C", motion="ptp", joints=q_c),
+    ]
+    traj = build_ideal_trajectory(wps, fk=robot.fk)
+    unknown = np.isnan(traj.joints).any(axis=1)
+    assert unknown.any()  # LIN und Ueberschleif-Fenster
+    assert not unknown[-1]
+    # Bahn ist stetig (keine Spruenge beim Uebergang ins/aus dem Fenster)
+    steps = np.linalg.norm(np.diff(traj.poses_quat[:, :3], axis=0), axis=1)
+    assert steps.max() <= config.TRANSIT_SPEED_MS / config.CONTROL_RATE_HZ * 1.2
+
+
 def test_requires_two_waypoints():
     try:
         build_ideal_trajectory([_wp(0, 0, 0.5)])

@@ -10,8 +10,15 @@ eigentliche Abnahmeobjekt (AP 0.6).
 WICHTIG (Falle aus AP 0.4): Ergebnisse aus der virtuellen Steuerung sind
 KEINE Anlagenmessung. Das Skript fuehrt ``is_robot_in_simulation()`` in
 jeder Ausgabe mit und verweigert Bewegungsbefehle, wenn der Controller
-NICHT im Simulationsmodus ist -- fuer die reale Anlage ist dieses Werkzeug
-ausdruecklich nicht gedacht.
+NICHT im Simulationsmodus ist.
+
+AN DER ANLAGE (Nachlauf/Override neu messen, AP 0.6 Punkt 3) nur mit
+``--real-robot`` und Bestaetigung. Dann gilt:
+    * KEINE Fahrt in die feste Startpose -- der Servotest laeuft um die
+      aktuelle Stellung. Arm vorher am Pendant in eine freie Pose fahren.
+    * Kleine Auslenkung (``--amplitude``, Default an der Anlage 0.05 rad)
+      auf EINEM Gelenk (``--joint``), move_linear-Test entfaellt.
+    * Greifertest nur mit ``--gripper``.
 
 Ohne ``--move`` wird nur gelesen und gerechnet, der Roboter bewegt sich
 nicht (wie tools/check_ik.py). Erst ``--move`` fuehrt Bewegungen aus.
@@ -19,8 +26,9 @@ nicht (wie tools/check_ik.py). Erst ``--move`` fuehrt Bewegungen aus.
 Ausfuehren (aus dem Ordner "Behavior Cloning"):
     python tools/check_sim_robot.py                 # nur lesen
     python tools/check_sim_robot.py --move          # inkl. Bewegungstests
-    python tools/check_sim_robot.py --move --rate 15
+    python tools/check_sim_robot.py --move --rate 60 --overrides 1.0,0.5
     python tools/check_sim_robot.py --move --servo-derivs zero --override 1.0
+    python tools/check_sim_robot.py --move --real-robot --rate 60 --overrides 1.0,0.5 --joint 1
 
 ``--servo-derivs`` vergleicht, was der Controller aus Geschwindigkeit und
 Beschleunigung macht: ``plan`` sendet die analytischen Ableitungen der
@@ -366,16 +374,17 @@ def check_motion(bot, report):
 # -- 5. Servo-Interface ----------------------------------------------------
 
 
-def check_servo(bot, report, rate_hz, derivs="plan", seconds=4.0, amplitude=0.15):
-    """Sollwertstrom auf J1 -- das Interface, auf dem AP 4 spielt.
+def check_servo(bot, report, rate_hz, derivs="plan", seconds=4.0, amplitude=0.15, joint=0,
+                label=""):
+    """Sollwertstrom auf EINEM Gelenk -- das Interface, auf dem AP 4 spielt.
 
-    Testbahn: q1(t) = q0 + A * (1 - cos(2 pi f t)) / 2 mit analytischer
+    Testbahn: q(t) = q0 + A * (1 - cos(2 pi f t)) / 2 mit analytischer
     Geschwindigkeit und Beschleunigung (``derivs="plan"``) oder Nullen
     (``derivs="zero"``).
     """
     section(
-        "5. Servo-Interface bei %.0f Hz, Ableitungen: %s (AP 0.6 Punkt 3)"
-        % (rate_hz, derivs)
+        "5. Servo-Interface bei %.0f Hz, Ableitungen: %s, Gelenk %d%s (AP 0.6 Punkt 3)"
+        % (rate_hz, derivs, joint + 1, label)
     )
     q0 = np.asarray(bot.get_joint_angles(), dtype=float)
     period = 1.0 / rate_hz
@@ -393,13 +402,13 @@ def check_servo(bot, report, rate_hz, derivs="plan", seconds=4.0, amplitude=0.15
             q = q0.copy()
             qd = np.zeros_like(q0)
             qdd = np.zeros_like(q0)
-            q[0] = q0[0] + amplitude * (1.0 - math.cos(omega * t)) / 2.0
+            q[joint] = q0[joint] + amplitude * (1.0 - math.cos(omega * t)) / 2.0
             if derivs == "plan":
-                qd[0] = amplitude * omega * math.sin(omega * t) / 2.0
-                qdd[0] = amplitude * omega * omega * math.cos(omega * t) / 2.0
+                qd[joint] = amplitude * omega * math.sin(omega * t) / 2.0
+                qdd[joint] = amplitude * omega * omega * math.cos(omega * t) / 2.0
             bot.servo_j(q, qd, qdd)
-            commanded.append(q[0] - q0[0])
-            measured.append(float(np.asarray(bot.get_joint_angles())[0]) - q0[0])
+            commanded.append(q[joint] - q0[joint])
+            measured.append(float(np.asarray(bot.get_joint_angles())[joint]) - q0[joint])
             rest = t0 + (i + 1) * period - time.time()
             if rest > 0:
                 time.sleep(rest)
@@ -422,10 +431,11 @@ def check_servo(bot, report, rate_hz, derivs="plan", seconds=4.0, amplitude=0.15
     lag_steps = _estimate_lag(commanded, measured, max_lag=int(rate_hz))
     show("Zyklen", "%d in %.2f s (Soll %.2f s)" % (steps, duration, steps * period))
     show("Zyklen ueber Budget", "%d (%.0f %%)" % (late, 100.0 * late / max(1, steps)))
-    show("groesste erreichte Auslenkung J1", "%.4f rad (Soll %.4f)" % (peak, amplitude))
+    show("groesste erreichte Auslenkung J%d" % (joint + 1), "%.4f rad (Soll %.4f)" % (peak, amplitude))
     show("Nachlauf Soll -> Ist", "%d Takte = %.0f ms" % (lag_steps, 1000.0 * lag_steps * period))
+    report.add("ok", "Nachlauf%s: %.0f ms bei %.0f Hz" % (label, 1000.0 * lag_steps * period, rate_hz))
     show(
-        "Folgefehler J1 (RMS / max)",
+        "Folgefehler J%d (RMS / max)" % (joint + 1),
         "%.4f / %.4f rad"
         % (
             float(np.sqrt(np.mean((commanded - measured) ** 2))),
@@ -525,47 +535,77 @@ def main():
         default=config.DEFAULT_OVERRIDE,
         help="Geschwindigkeits-Override beim Verbinden (0-1)",
     )
+    parser.add_argument(
+        "--overrides", default=None,
+        help="Servotest nacheinander mit diesen Overrides, z. B. 1.0,0.5 (Nachlauf je Override)",
+    )
+    parser.add_argument("--joint", type=int, default=1, help="Gelenk fuer den Servotest (1-6)")
+    parser.add_argument("--amplitude", type=float, default=None,
+                        help="Auslenkung in rad (Default: VM 0.15, Anlage 0.05)")
+    parser.add_argument("--real-robot", action="store_true",
+                        help="REALE Anlage freigeben (mit Bestaetigung, siehe Docstring)")
+    parser.add_argument("--gripper", action="store_true",
+                        help="an der Anlage auch den Greifer schalten")
     args = parser.parse_args()
 
     report = Report()
     raw, in_sim = connect(report)
+    real = in_sim is not True
 
     move = args.move
-    if move and in_sim is not True:
+    if move and real and not args.real_robot:
         report.add(
             "fail",
             "is_robot_in_simulation() ist %r -- Bewegungstests werden "
-            "verweigert. Dieses Werkzeug ist ausschliesslich fuer die "
-            "virtuelle Steuerung gedacht." % (in_sim,),
+            "verweigert. An der Anlage nur mit --real-robot." % (in_sim,),
         )
         move = False
+    if move and real:
+        print("\n!! --real-robot: Servotest an der REALEN ANLAGE um die aktuelle Stellung,")
+        print("   Gelenk %d, Auslenkung %.3f rad. Arbeitsraum frei? Not-Aus in Reichweite?"
+              % (args.joint, args.amplitude or 0.05))
+        if input("   Zum Fortfahren 'ANLAGE' eintippen: ").strip() != "ANLAGE":
+            raise SystemExit("Abgebrochen.")
+    amplitude = args.amplitude if args.amplitude is not None else (0.05 if real else 0.15)
+    overrides = (
+        [float(v) for v in args.overrides.split(",")] if args.overrides else [args.override]
+    )
 
     check_functions(raw, report)
 
     # Der Adapter prueft is_robot_in_simulation() beim Verbinden selbst noch
     # einmal und verweigert Bewegungen ohne bestaetigte Simulation.
-    bot = NeuraRobot(robot=raw, override=args.override)
+    bot = NeuraRobot(robot=raw, override=overrides[0], allow_real=args.real_robot)
     bot.connect(power_on=move, ensure_automatic=move)
-    show("Override", args.override)
+    show("Override", overrides[0])
     try:
         joints = check_state(bot, report)
         check_kinematics(bot, joints, report)
         if move:
-            check_motion(bot, report)
-            check_servo(bot, report, args.rate, derivs=args.servo_derivs)
-            check_gripper(bot, report)
+            if not real:
+                check_motion(bot, report)
+            for override in overrides:
+                bot._call("set_override", override)
+                check_servo(bot, report, args.rate, derivs=args.servo_derivs,
+                            amplitude=amplitude, joint=args.joint - 1,
+                            label=", Override %.2f" % override)
+            if not real or args.gripper:
+                check_gripper(bot, report)
         else:
             print("\n(Bewegungs-, Servo- und Greifertests uebersprungen -- --move)")
     finally:
         bot.close()
 
     passed = report.summary()
-    print(
-        "\nHinweis: Alle Ergebnisse stammen aus der VIRTUELLEN Steuerung "
-        "(is_robot_in_simulation() == %r).\nSie sind keine Anlagenmessung -- "
-        "Raten, Jitter, Latenzen, Greifer-Totzeit und\nKollisionsmodell "
-        "bleiben Punkte der Abnahmeliste AP 0.6." % (in_sim,)
-    )
+    if real:
+        print("\nHinweis: is_robot_in_simulation() == %r -- ANLAGENMESSUNG." % (in_sim,))
+    else:
+        print(
+            "\nHinweis: Alle Ergebnisse stammen aus der VIRTUELLEN Steuerung "
+            "(is_robot_in_simulation() == %r).\nSie sind keine Anlagenmessung -- "
+            "Raten, Jitter, Latenzen, Greifer-Totzeit und\nKollisionsmodell "
+            "bleiben Punkte der Abnahmeliste AP 0.6." % (in_sim,)
+        )
     raise SystemExit(0 if passed else 1)
 
 

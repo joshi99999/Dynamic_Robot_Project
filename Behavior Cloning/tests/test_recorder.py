@@ -19,7 +19,7 @@ from bc.kinematics import Kinematics
 from bc.noise import generate_plan
 from bc.ports import RobotError
 from bc.recorder import EpisodeRecorder
-from bc.trajectory import Waypoint, build_ideal_trajectory, joint_derivatives
+from bc.trajectory import Waypoint, build_ideal_trajectory
 
 
 def _setup(robot_cls=SimRobot, cam_faults=None, **robot_kwargs):
@@ -113,22 +113,38 @@ class SpyRobot(SimRobot):
         self.servo_calls.append((joint_angles, velocity, acceleration))
 
 
-def test_servo_gets_velocity_and_acceleration_from_plan():
-    # Befund VM 2026-09-09: servo_j braucht drei Listen. Geschwindigkeit
-    # und Beschleunigung muessen aus DERSELBEN (verrauschten) Bahn stammen,
-    # sonst meldet man dem Controller "anhalten" bzw. widerspruechliche Ziele.
+def test_servo_substeps_interpolate_plan_with_velocity():
+    # Befund VM 2026-09-15: bei 15 Hz faehrt der Controller jeden Sollwert
+    # an und steht dann (Stop-and-go). Jetzt: Zwischenschritte mit
+    # SERVO_RATE_HZ, das Ziel des Schritts i genau auf Takt i. servo_j bekommt
+    # immer drei Listen (VM 2026-09-09), die Geschwindigkeit passt zur Fahrt.
     clock, robot, captures = _setup(robot_cls=SpyRobot)
     plan = _plan(robot)
+    t0 = clock.now()
     EpisodeRecorder(robot, captures, clock).record(plan)
 
-    vel, acc = joint_derivatives(plan.joints_noisy, plan.rate_hz)
-    assert len(robot.servo_calls) == len(plan)
-    for i, (q, qd, qdd) in enumerate(robot.servo_calls):
+    sub = int(round(config.SERVO_RATE_HZ / config.CONTROL_RATE_HZ))
+    assert sub > 1
+    calls = robot.servo_calls
+    assert len(calls) == 1 + (len(plan) - 1) * sub
+    q_all = np.array([c[0] for c in calls])
+    # Auf jedem Beobachtungstakt exakt der geplante Sollwert
+    assert np.allclose(q_all[::sub], plan.joints_noisy)
+    # Dazwischen linear
+    i = len(plan) // 2
+    mid = q_all[(i - 1) * sub + sub // 2]
+    assert np.allclose(
+        mid, plan.joints_noisy[i - 1] + (sub // 2) / sub * (plan.joints_noisy[i] - plan.joints_noisy[i - 1])
+    )
+    # Geschwindigkeit = Zieldifferenz je Takt, nie pauschal None
+    period = 1.0 / config.CONTROL_RATE_HZ
+    for k in range(1, sub + 1):
+        q, qd, qdd = calls[(i - 1) * sub + k]
         assert qd is not None and qdd is not None
-        assert np.allclose(q, plan.joints_noisy[i])
-        assert np.allclose(qd, vel[i]) and np.allclose(qdd, acc[i])
-    # Die Bahn bewegt sich wirklich -- es sind nicht ueberall Nullen
-    assert np.abs(vel).max() > 0.01
+        assert np.allclose(qd, (plan.joints_noisy[i] - plan.joints_noisy[i - 1]) / period)
+    assert max(np.abs(c[1]).max() for c in calls) > 0.01
+    # Senderate stimmt: Episode dauert (N-1) Takte
+    assert abs((clock.now() - t0) - (len(plan) - 1) * period) < 2 * period
 
 
 def test_refuses_to_start_away_from_start_pose():
@@ -177,10 +193,14 @@ def test_discard_on_stale_camera():
     assert not episode.arrays["aux.sync_ok"].any()
 
 
+_SUBSTEPS = int(round(config.SERVO_RATE_HZ / config.CONTROL_RATE_HZ))
+
+
 class TrippingRobot(SimRobot):
     """Loest nach N servo-Befehlen den Schutzstopp aus (Testhelfer)."""
 
-    TRIP_AFTER = 5
+    #: Halte-Befehl + 4 volle Fenster, Stopp mitten im fuenften
+    TRIP_AFTER = 1 + 4 * _SUBSTEPS + 1
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -196,15 +216,17 @@ class TrippingRobot(SimRobot):
 def test_discard_on_emergency_stop():
     clock, robot, captures = _setup(robot_cls=TrippingRobot)
     plan = _plan(robot, gripper=False)
-    assert len(plan) > TrippingRobot.TRIP_AFTER + 1
+    assert len(plan) > 6
     recorder = EpisodeRecorder(robot, captures, clock)
     episode = recorder.record(plan)
 
     assert episode.discarded
     assert episode.discard_reason == "schutzstopp"
-    # Es wurde nur bis zum Stopp aufgezeichnet, nichts stillschweigend
-    # aufgefuellt
-    assert len(episode) == TrippingRobot.TRIP_AFTER
+    # Es wurde nur bis zum Stopp aufgezeichnet (Takte 0-4), das angebrochene
+    # Fenster nicht mehr, nichts stillschweigend aufgefuellt
+    assert len(episode) == 5
+    # Nach dem Stopp kein weiterer Sollwert
+    assert robot._servo_count == TrippingRobot.TRIP_AFTER
     # Nach dem Not-Halt ist das Servo-Interface deaktiviert
     assert not robot._servo_active
     # Abgebrochene Episode: kein Uebergabepunkt markiert

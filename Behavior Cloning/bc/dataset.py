@@ -6,10 +6,10 @@ Reihenfolgen und Bezugsframes verwenden (AP 1.5.1). Jede Aenderung
 erfordert das Hochzaehlen von ``config.SCHEMA_VERSION``.
 
 Ablageformat: ein neutrales, abhaengigkeitsfreies Format (npz + json) je
-Episode. Die Konvertierung ins ``LeRobotDataset``-Format erfolgt in einem
-separaten Schritt, sobald die LeRobot-Version gepinnt ist (AP 0.9 Punkt 6)
--- so haengt die Aufzeichnung nicht an einer schweren Abhaengigkeit und
-das Format ist im Test ohne lerobot pruefbar.
+Episode. Die Konvertierung ins ``LeRobotDataset``-Format ist ein separater
+Schritt (:func:`to_lerobot`, lerobot gepinnt in config.LEROBOT_VERSION) --
+so haengt die Aufzeichnung nicht an einer schweren Abhaengigkeit, und das
+Format ist im Test ohne lerobot pruefbar.
 """
 
 import json
@@ -271,15 +271,15 @@ def load_episode(root, index):
     return ep
 
 
-def to_lerobot(root, output):
-    """Konvertierung ins LeRobotDataset-Format.
+def to_lerobot(roots, output, **kwargs):
+    """Konvertierung ins LeRobotDataset-Format (lerobot gepinnt auf
+    config.LEROBOT_VERSION, AP 0.9 Punkt 6).
 
-    Bewusst noch nicht implementiert: die LeRobot-Version (und damit das
-    Zielformat) ist zu pinnen, BEVOR echte Daten aufgezeichnet werden
-    (AP 0.9 Punkt 6). Das neutrale Ablageformat oben enthaelt alle dafuer
-    noetigen Informationen.
+    ``roots``: eine Aufzeichnung oder eine Liste (z. B. ein Block je
+    Objektlage). Pruefungen und Optionen: :func:`bc.lerobot_io.export`.
     """
-    raise NotImplementedError(
-        "LeRobot-Version zuerst pinnen (AP 0.9 Punkt 6), dann diese "
-        "Konvertierung gegen die gepinnte API implementieren."
-    )
+    from . import lerobot_io
+
+    if isinstance(roots, (str, Path)):
+        roots = [roots]
+    return lerobot_io.export(roots, output, **kwargs)

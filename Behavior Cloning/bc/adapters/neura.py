@@ -43,7 +43,9 @@ from ..ports import (
     RobotError,
     RobotPort,
     RobotState,
+    ServoLimitError,
 )
+from ..servo import ServoGuard
 
 #: ``servo_j`` liefert einen Warn-/Fehlercode. Im Doku-Beispiel
 #: (``r.get_doc('servo_j')``) laeuft der Strom weiter, solange der Code < 3
@@ -85,8 +87,13 @@ class NeuraRobot(RobotPort, PointSourcePort):
     keine Locks, damit ein Watchdog nie blockiert.
     """
 
-    def __init__(self, robot=None, override=config.DEFAULT_OVERRIDE, allow_real=False):
+    def __init__(
+        self, robot=None, override=config.DEFAULT_OVERRIDE, allow_real=False, servo_guard=None
+    ):
         self._robot = robot
+        #: Sprung-/Geschwindigkeitsfilter fuer jeden servo_j-Sollwert
+        #: (servo.ServoGuard). Nicht abschaltbar, nur anders parametrierbar.
+        self.servo_guard = servo_guard if servo_guard is not None else ServoGuard()
         self._override = override
         self._allow_real = bool(allow_real)
         self._in_simulation = None
@@ -408,10 +415,14 @@ class NeuraRobot(RobotPort, PointSourcePort):
 
     def activate_servo(self, mode="position"):
         self._require_motion("activate_servo")
+        # Startstellung des Filters VOR der Aktivierung messen: der erste
+        # Sollwert muss nahe an der Ist-Stellung liegen.
+        self.servo_guard.reset(self.get_joint_angles(), host_time())
         self._call("activate_servo_interface", mode)
         self._servo_active = True
 
     def deactivate_servo(self):
+        self.servo_guard.clear()
         if self._servo_active:
             self._call("deactivate_servo_interface")
             self._servo_active = False
@@ -448,6 +459,13 @@ class NeuraRobot(RobotPort, PointSourcePort):
                 )
             lists.append(values)
 
+        try:
+            self.servo_guard.check(lists[0], host_time())
+        except ServoLimitError:
+            # Nichts senden und anhalten -- ein abgelehnter Sollwert heisst,
+            # der Aufrufer ist in einem Zustand, dem man nicht weiter folgt.
+            self.emergency_stop()
+            raise
         code = self._call("servo_j", *lists)
         self.last_servo_code = code
         if isinstance(code, (int, float)) and code >= SERVO_ERROR_CODE_MIN:
@@ -533,6 +551,13 @@ class NeuraRobot(RobotPort, PointSourcePort):
         return self._stop_requested.is_set()
 
     def clear_stop(self):
+        """Stopp quittieren. Nach ``stop`` nimmt der Controller keine Bewegung
+        mehr an ("Motion cannot be executed! Try executing after running
+        r.init_program()", VM 2026-09-17) -- deshalb hier neu initialisieren.
+        Das bewegt nichts. Ob nach einem Stopp weitergefahren wird, entscheidet
+        der Aufrufer (an der Anlage: Bediener)."""
+        if self._stop_requested.is_set() and self._robot is not None:
+            self._call_safe("init_program")
         self._stop_requested.clear()
 
 

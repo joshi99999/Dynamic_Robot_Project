@@ -1,28 +1,39 @@
 """
-Episoden-Auswertung als HTML-Bericht (AP 2.4 / AP 5.1) -- NUR LESEND.
+Episoden-Auswertung als PDF-Bericht (AP 2.4 / AP 5.1) -- NUR LESEND.
 
 Zeigt je Episode, ob die Datenaufzeichnung das tut, was sie soll:
 
+* Uebersicht aller Laeufe in zeitlicher Reihenfolge mit ihren Einstellungen
+  (servo_j-Senderate, Rauschen, Ueberschleifen, Override) und Kennzahlen --
+  damit sich spaeter zuordnen laesst, was man an der VM/Anlage gesehen hat.
 * TCP-Bahn in Drauf- und Seitenansicht: ideal, gesendeter (verrauschter)
   Befehl, tatsaechlich gefahrene Bahn.
-* Abweichung vom Ideal ueber die Zeit: Rauschen (Befehl - Ideal) und
-  Ist - Ideal, mit Greiferphase -- hier sieht man die Trichter-Daempfung an
-  Start, Greifpunkt und Uebergabe.
+* TCP-Geschwindigkeit und Ist-Beschleunigung ueber die Zeit -- hier sieht
+  man Ruckeln (sprunghafte Ist-Geschwindigkeit bei glattem Befehl).
+* Abweichung vom Ideal: Rauschen (Befehl - Ideal) und Ist - Ideal, mit
+  Greiferphase (Trichter-Daempfung an Start, Greifpunkt und Uebergabe).
 * Folgefehler Befehl(t) -> Ist(t+1) je Takt: wie gut der Controller folgt.
 * Alle sechs Gelenke: ideal / Befehl / Ist.
 
-Braucht nur numpy (kein matplotlib): der Bericht ist eine einzelne
-HTML-Datei mit eingebettetem SVG und Hover-Anzeige. Mehrere Datensaetze in
-einem Bericht erlauben den direkten Vergleich (z. B. mit und ohne Rauschen).
+PDF statt HTML (Anwender, 2026-09-16): der Bericht soll dauerhaft ablegbar
+und ohne VM/Browser-Sitzung lesbar sein. Braucht weiterhin nur numpy: die
+Diagramme sind statisches SVG, das PDF druckt Microsoft Edge im
+Headless-Modus (auf Windows vorhanden). ``--html`` liefert zusaetzlich die
+interaktive Fassung mit Hover-Anzeige.
 
 Ausfuehren (aus dem Ordner "Behavior Cloning"):
-    python tools/plot_episode.py data_vm
-    python tools/plot_episode.py data_vm data_vm_ref --out vergleich.html
+    python tools/plot_episode.py data_vm/2026-09-16/*
+    python tools/plot_episode.py data_a data_b --out Berichte/vergleich.pdf
+    python tools/plot_episode.py data_a --html
 """
 
 import argparse
 import html
 import json
+import shutil
+import subprocess
+import tempfile
+from datetime import datetime
 from pathlib import Path
 
 import _bootstrap  # noqa: F401
@@ -91,9 +102,40 @@ def episode_payload(root, index):
         "skipped_points": meta.get("skipped_points"),
         "points": list((meta.get("points") or {}).keys()),
     }
+    # Ruckeln: Ist-Geschwindigkeit gegen ihr gleitendes 5er-Mittel (nur in
+    # Fahrt) und Ist-Beschleunigung des jeweils staerksten Gelenks
+    dt = 1.0 / rate
+    v_ideal = np.r_[0.0, np.linalg.norm(np.diff(p_ideal, axis=0), axis=1) / dt]
+    v_cmd = np.r_[0.0, np.linalg.norm(np.diff(p_cmd, axis=0), axis=1) / dt]
+    v_act = np.r_[0.0, np.linalg.norm(np.diff(tcp_act, axis=0), axis=1) / dt]
+    a_act = np.full(n, np.nan)
+    if n > 2:
+        a_act[1:-1] = np.abs(np.diff(q_act, 2, axis=0)).max(axis=1) / dt**2
+    smooth = np.convolve(v_act, np.ones(5) / 5.0, mode="same")
+    moving = v_cmd > 0.02
+    moving[:3] = moving[-3:] = False
+    stats["v_ripple"] = round(float(np.sqrt(np.mean((v_act - smooth)[moving] ** 2))), 4) if moving.any() else None
+    stats["a_act_p95"] = round(float(np.nanpercentile(a_act, 95)), 2) if n > 2 else None
+    stats["a_act_max"] = round(float(np.nanmax(a_act)), 2) if n > 2 else None
+
+    ep_dir = Path(root) / json.loads((Path(root) / "index.json").read_text(encoding="utf-8"))["episodes"][index]["dir"]
+    recorded = meta.get("recorded_at")
+    info["recorded_at"] = recorded or datetime.fromtimestamp((ep_dir / "meta.json").stat().st_mtime).isoformat(timespec="seconds")
+    info["recorded_exact"] = recorded is not None
+    # Aeltere Aufnahmen (vor 2026-09-15 abends) kennen die Senderate nicht:
+    # damals ging jeder 15-Hz-Sollwert direkt an servo_j.
+    info["servo_rate_hz"] = meta.get("servo_rate_hz", rate)
+    blend = meta.get("blend_m")
+    if blend is None:
+        info["blend"] = "ja (Testdatei)" if "blend" in str(meta.get("sequence", "")) else "nein"
+    else:
+        info["blend"] = ", ".join("%s %.0f cm" % (k, v * 100) for k, v in blend.items()) or "nein"
+
     return {
         "label": "%s / ep_%05d" % (Path(root).name, index),
         "rate": rate,
+        "speed": {"ideal": _r(v_ideal, 4), "cmd": _r(v_cmd, 4), "act": _r(v_act, 4)},
+        "acc": _r(a_act, 3),
         "stats": stats,
         "info": info,
         "gripper": [int(v > 0.5) for v in state[:, 13]],
@@ -117,31 +159,343 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("datasets", nargs="+", help="Datensatz-Verzeichnisse (apps/record.py --out)")
-    parser.add_argument("--out", default=None, help="Ziel-HTML (Default: <erster Datensatz>/bericht.html)")
+    parser.add_argument(
+        "--out", default=None,
+        help="Ziel-PDF (Default: Berichte/bericht_<Datum>_<Uhrzeit>.pdf im Ordner 'Behavior Cloning')",
+    )
+    parser.add_argument("--title", default=None, help="Titel auf der ersten Seite")
+    parser.add_argument("--html", action="store_true", help="zusaetzlich interaktive HTML-Fassung neben dem PDF")
     args = parser.parse_args()
 
     section("Episoden laden")
+    datasets = []
+    for pattern in args.datasets:
+        # PowerShell expandiert keine Platzhalter -- hier selbst aufloesen
+        matches = sorted(Path().glob(pattern)) if any(c in pattern for c in "*?[") else [Path(pattern)]
+        datasets.extend(p for p in matches if (p / "index.json").is_file())
     episodes = []
-    for root in args.datasets:
-        index = json.loads((Path(root) / "index.json").read_text(encoding="utf-8"))
+    for root in datasets:
+        index = json.loads((root / "index.json").read_text(encoding="utf-8"))
         for i in range(len(index["episodes"])):
             episodes.append(episode_payload(root, i))
             s = episodes[-1]["stats"]
             print(
-                "  %-28s %3d Schritte, Folgefehler max %.3f rad, TCP-Abweichung max %.0f mm"
+                "  %-44s %3d Schritte, Folgefehler max %.3f rad, TCP-Abweichung max %.0f mm"
                 % (episodes[-1]["label"], s["steps"], s["track_max"] or 0, s["tcp_track_max_mm"])
             )
     if not episodes:
         raise SystemExit("Keine Episoden gefunden.")
+    episodes.sort(key=lambda ep: ep["info"]["recorded_at"])
 
-    out = Path(args.out) if args.out else Path(args.datasets[0]) / "bericht.html"
-    title = "Episoden-Auswertung: " + ", ".join(Path(d).name for d in args.datasets)
-    page = TEMPLATE.replace("__TITLE__", html.escape(title)).replace(
-        "__DATA__", json.dumps(episodes, separators=(",", ":")).replace("</", "<\\/")
-    )
-    out.write_text(page, encoding="utf-8")
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+    out = Path(args.out) if args.out else Path(__file__).resolve().parent.parent / "Berichte" / ("bericht_%s.pdf" % stamp)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    title = args.title or "Episoden-Auswertung"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        page = Path(tmp) / "bericht.html"
+        page.write_text(print_report(episodes, title, datasets), encoding="utf-8")
+        html_to_pdf(page, out, Path(tmp))
     section("Ergebnis")
-    print("  Bericht: %s" % out.resolve())
+    print("  PDF: %s" % out.resolve())
+
+    if args.html:
+        html_out = out.with_suffix(".html")
+        interactive = TEMPLATE.replace("__TITLE__", html.escape(title)).replace(
+            "__DATA__", json.dumps(episodes, separators=(",", ":")).replace("</", "<\\/")
+        )
+        html_out.write_text(interactive, encoding="utf-8")
+        print("  HTML: %s" % html_out.resolve())
+
+
+# ---------------------------------------------------------------------------
+# Statischer Druckbericht (SVG) -> PDF
+# ---------------------------------------------------------------------------
+
+EDGE_CANDIDATES = (
+    Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+    Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+    Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+)
+
+COLORS = {"ideal": "#2a78d6", "cmd": "#eb6834", "act": "#1baf7a", "track": "#4a3aa7", "acc": "#b8322a"}
+NAMES = {"ideal": "Ideal", "cmd": "Befehl (verrauscht)", "act": "Ist"}
+
+
+def html_to_pdf(page, out, tmp):
+    browser = next((p for p in EDGE_CANDIDATES if p.is_file()), None) or shutil.which("msedge")
+    if browser is None:
+        raise SystemExit("Kein Edge/Chrome gefunden -- PDF nicht moeglich (--html nutzen).")
+    # Eigenes Profil: sonst haengt sich der Aufruf an ein offenes Edge-Fenster
+    cmd = [
+        str(browser), "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
+        "--user-data-dir=%s" % (tmp / "profile"), "--print-to-pdf=%s" % out.resolve(),
+        page.resolve().as_uri(),
+    ]
+    subprocess.run(cmd, check=True, timeout=180, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if not out.is_file():
+        raise SystemExit("PDF wurde nicht erzeugt: %s" % out)
+
+
+def _nice_ticks(lo, hi, count):
+    if not hi > lo:
+        hi = lo + 1.0
+    raw = (hi - lo) / count
+    mag = 10 ** np.floor(np.log10(raw))
+    step = next(m * mag for m in (1, 2, 2.5, 5, 10) if m * mag >= raw)
+    start = np.ceil(lo / step) * step
+    return [round(v, 6) for v in np.arange(start, hi + 1e-9 * step, step)]
+
+
+def _fmt_tick(v):
+    return ("%g" % v) if abs(v) < 1e5 else ("%.0f" % v)
+
+
+def svg_line(series, rate, height=170, width=1100, bands=None, zero=False, ylabel=""):
+    """Zeitreihe als SVG. ``series``: [(key/Name, Farbe, Werte mit None)]."""
+    m_l, m_r, m_t, m_b = 52, 10, 8, 24
+    vals = [v for _, _, values in series for v in values if v is not None]
+    lo, hi = (min(vals), max(vals)) if vals else (0.0, 1.0)
+    if zero:
+        lo = min(0.0, lo)
+    if not hi > lo:
+        hi = lo + 1.0
+    pad = (hi - lo) * 0.06
+    hi += pad
+    if not zero:
+        lo -= pad
+    ticks = _nice_ticks(lo, hi, 4)
+    lo, hi = min(lo, ticks[0]), max(hi, ticks[-1])
+    n = max(len(values) for _, _, values in series)
+    X = lambda i: m_l + (width - m_l - m_r) * i / max(1, n - 1)  # noqa: E731
+    Y = lambda v: m_t + (height - m_t - m_b) * (1 - (v - lo) / (hi - lo))  # noqa: E731
+    out = ['<svg viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg">' % (width, height)]
+    if bands is not None:
+        start = None
+        for i in range(n + 1):
+            on = i < n and bands[i]
+            if on and start is None:
+                start = i
+            if not on and start is not None:
+                out.append('<rect x="%.1f" y="%d" width="%.1f" height="%d" fill="#89878124"/>'
+                           % (X(start), m_t, max(1.0, X(i - 1) - X(start)), height - m_t - m_b))
+                start = None
+    for v in ticks:
+        out.append('<line x1="%d" x2="%d" y1="%.1f" y2="%.1f" stroke="#e1e0d9"/>' % (m_l, width - m_r, Y(v), Y(v)))
+        out.append('<text x="%d" y="%.1f" text-anchor="end">%s</text>' % (m_l - 5, Y(v) + 3.5, _fmt_tick(v)))
+    for s in _nice_ticks(0, (n - 1) / rate, 8):
+        x = X(s * rate)
+        if x <= width - m_r + 1:
+            out.append('<text x="%.1f" y="%d" text-anchor="middle">%s s</text>' % (x, height - 7, _fmt_tick(s)))
+    out.append('<line x1="%d" x2="%d" y1="%d" y2="%d" stroke="#c3c2b7"/>' % (m_l, width - m_r, height - m_b, height - m_b))
+    if ylabel:
+        out.append('<text x="%d" y="%d" class="lbl">%s</text>' % (m_l + 4, m_t + 10, html.escape(ylabel)))
+    for _, color, values in series:
+        d, pen = [], False
+        for i, v in enumerate(values):
+            if v is None:
+                pen = False
+                continue
+            d.append("%s%.1f %.1f" % ("L" if pen else "M", X(i), Y(v)))
+            pen = True
+        out.append('<path d="%s" fill="none" stroke="%s" stroke-width="1.4" stroke-linejoin="round"/>' % ("".join(d), color))
+    out.append("</svg>")
+    return "".join(out)
+
+
+def svg_path(ep, ax, ay, xname, yname, width=380, height=300):
+    """TCP-Bahn in der Ebene, gleicher Massstab auf beiden Achsen."""
+    m_l, m_r, m_t, m_b = 46, 8, 8, 26
+    keys = ("ideal", "cmd", "act")
+    xs = [v for k in keys for v in ep["path"][k][ax] if v is not None]
+    ys = [v for k in keys for v in ep["path"][k][ay] if v is not None]
+    span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0) * 1.08
+    cx, cy = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+    pw, ph = width - m_l - m_r, height - m_t - m_b
+    scale = min(pw, ph) / span
+    X = lambda v: m_l + pw / 2 + (v - cx) * scale  # noqa: E731
+    Y = lambda v: m_t + ph / 2 - (v - cy) * scale  # noqa: E731
+    out = ['<svg viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg">' % (width, height)]
+    for v in _nice_ticks(cy - ph / 2 / scale, cy + ph / 2 / scale, 5):
+        out.append('<line x1="%d" x2="%d" y1="%.1f" y2="%.1f" stroke="#e1e0d9"/>' % (m_l, width - m_r, Y(v), Y(v)))
+        out.append('<text x="%d" y="%.1f" text-anchor="end">%s</text>' % (m_l - 4, Y(v) + 3.5, _fmt_tick(v)))
+    for v in _nice_ticks(cx - pw / 2 / scale, cx + pw / 2 / scale, 5):
+        out.append('<line x1="%.1f" x2="%.1f" y1="%d" y2="%d" stroke="#e1e0d9"/>' % (X(v), X(v), m_t, height - m_b))
+        out.append('<text x="%.1f" y="%d" text-anchor="middle">%s</text>' % (X(v), height - 9, _fmt_tick(v)))
+    out.append('<text x="%d" y="%d" text-anchor="end" class="lbl">%s [mm]</text>' % (width - m_r, height - 20, xname))
+    out.append('<text x="%d" y="%d" class="lbl">%s [mm]</text>' % (m_l + 4, m_t + 10, yname))
+    for k in keys:
+        pts = [(X(x), Y(y)) for x, y in zip(ep["path"][k][ax], ep["path"][k][ay]) if x is not None and y is not None]
+        d = "".join("%s%.1f %.1f" % ("L" if i else "M", px, py) for i, (px, py) in enumerate(pts))
+        out.append('<path d="%s" fill="none" stroke="%s" stroke-width="1.4" stroke-linejoin="round"/>' % (d, COLORS[k]))
+    ix, iy = ep["path"]["ideal"][ax], ep["path"]["ideal"][ay]
+    for i, name in ((0, "Start"), (len(ix) - 1, "Uebergabe")):
+        out.append('<circle cx="%.1f" cy="%.1f" r="4" fill="#fff" stroke="#52514e" stroke-width="1.5"/>' % (X(ix[i]), Y(iy[i])))
+        out.append('<text x="%.1f" y="%.1f" class="lbl">%s</text>' % (X(ix[i]) + 6, Y(iy[i]) - 6, name))
+    out.append("</svg>")
+    return "".join(out)
+
+
+def _legend(items):
+    parts = []
+    for name, color, band in items:
+        swatch = '<i class="band"></i>' if band else '<i style="background:%s"></i>' % color
+        parts.append("<span>%s%s</span>" % (swatch, html.escape(name)))
+    return '<div class="legend">%s</div>' % "".join(parts)
+
+
+def _num(v, digits, unit=""):
+    if v is None or (isinstance(v, float) and not np.isfinite(v)):
+        return "&ndash;"
+    return ("%." + str(digits) + "f%s") % (v, (" " + unit) if unit else "")
+
+
+def _settings(ep):
+    inf = ep["info"]
+    return [
+        ("Aufnahme", inf["recorded_at"].replace("T", " ") + ("" if inf["recorded_exact"] else " (ca.)")),
+        ("servo_j-Rate", "%.0f Hz" % inf["servo_rate_hz"]),
+        ("Rauschen", "aus" if not inf["noise_scale"] else "an (x%.2g)" % inf["noise_scale"]),
+        ("Ueberschleifen", inf["blend"]),
+        ("Override", _num(inf["override"], 2) if inf["override"] is not None else "&ndash;"),
+        ("Ablauf", html.escape(str(inf["sequence"] or "&ndash;"))),
+        ("Roboter", "%s%s" % (inf["robot"], " (Simulation)" if inf["in_simulation"] else "")),
+    ]
+
+
+def print_report(episodes, title, datasets):
+    rows = []
+    for k, ep in enumerate(episodes, 1):
+        inf, s = ep["info"], ep["stats"]
+        rows.append(
+            "<tr><td>%d</td><td class='l'>%s</td><td class='l'>%s</td><td>%.0f Hz</td><td>%s</td><td class='l'>%s</td>"
+            "<td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
+            % (k, html.escape(ep["label"]), inf["recorded_at"][5:16].replace("T", " "),
+               inf["servo_rate_hz"], ("x%.2f" % inf["noise_scale"]) if inf["noise_scale"] else "aus",
+               "ja" if inf["blend"] != "nein" else "nein",
+               _num(s["duration_s"], 1, "s"), _num(s["track_max"], 3), _num(s["v_ripple"], 3),
+               _num(s["a_act_p95"], 1), _num(s["noise_max_mm"], 0),
+               "verworfen" if s["discarded"] else ("%s" % (inf["pacer_overruns"] if inf["pacer_overruns"] is not None else "&ndash;")))
+        )
+    overview = """
+<section class="page">
+  <h1>%s</h1>
+  <p class="sub">Erstellt %s &middot; Datensaetze: %s</p>
+  <p class="note">Ideal = geplante Bahn &middot; Befehl = verrauschte, per servo_j gesendete Bahn &middot;
+  Ist = gemessene Stellung (FK). VM-Ergebnisse sind keine Anlagenmessung.</p>
+  <h2>Alle Laeufe in zeitlicher Reihenfolge</h2>
+  <table class="ov">
+    <tr><th>Nr</th><th class='l'>Datensatz / Episode</th><th class='l'>Aufnahme</th><th>servo_j</th><th>Rauschen</th>
+    <th class='l'>Ueberschl.</th><th>Dauer</th><th>Folgefehler max [rad]</th><th>Ruckeln v [m/s]</th>
+    <th>Ruckeln a p95 [rad/s&sup2;]</th><th>Rauschen max [mm]</th><th>Takt-Ueberlaeufe</th></tr>
+    %s
+  </table>
+  <h2>Kennzahlen</h2>
+  <ul class="note">
+    <li><b>Folgefehler max:</b> groesste Gelenkabweichung zwischen Befehl im Takt t und gemessener Stellung im Takt t+1.</li>
+    <li><b>Ruckeln v:</b> Schwankung der gemessenen TCP-Geschwindigkeit um ihr gleitendes Mittel (5 Takte), nur waehrend der Fahrt.
+      Bei glattem Lauf klein; Stop-and-go zwischen den Sollwerten macht sie gross.</li>
+    <li><b>Ruckeln a p95:</b> gemessene Beschleunigung des jeweils staerksten Gelenks, 95. Perzentil (Ausreisser ignoriert).</li>
+    <li><b>Rauschen max:</b> groesste gewollte Auslenkung Befehl &minus; Ideal.</li>
+    <li><b>Takt-Ueberlaeufe:</b> servo_j-Takte, die der Taktgeber zu spaet erreicht und uebersprungen hat.</li>
+    <li>Die VM liefert die Ist-Stellung nur mit ca. 50 Hz; ein Rest an &bdquo;Ruckeln v&ldquo; ist Messrauschen.</li>
+  </ul>
+</section>""" % (html.escape(title), datetime.now().strftime("%Y-%m-%d %H:%M"),
+                 html.escape(", ".join(str(d) for d in datasets)), "".join(rows))
+
+    pages = [overview]
+    path_legend = _legend([(NAMES[k], COLORS[k], False) for k in ("ideal", "cmd", "act")] + [("Greifer zu", None, True)])
+    for k, ep in enumerate(episodes, 1):
+        s, rate = ep["stats"], ep["rate"]
+        bands = [g == 1 for g in ep["gripper"]]
+        chips = "".join("<span><b>%s:</b> %s</span>" % (a, b) for a, b in _settings(ep))
+        figures = [
+            ("Schritte", "%d (%s)" % (s["steps"], _num(s["duration_s"], 1, "s"))),
+            ("Folgefehler max / RMS", "%s / %s rad" % (_num(s["track_max"], 3), _num(s["track_rms"], 3))),
+            ("TCP Befehl &rarr; Ist max / Mittel", "%s / %s mm" % (_num(s["tcp_track_max_mm"], 0), _num(s["tcp_track_mean_mm"], 1))),
+            ("Ruckeln v / a p95 / a max", "%s m/s / %s / %s rad/s&sup2;" % (_num(s["v_ripple"], 3), _num(s["a_act_p95"], 1), _num(s["a_act_max"], 1))),
+            ("Rauschen max", _num(s["noise_max_mm"], 0, "mm")),
+            ("Sync im Budget", _num(s["sync_ok_pct"], 1, "%")),
+            ("Status", "verworfen: %s" % html.escape(s["discard_reason"]) if s["discarded"] else "ok"),
+            ("Takt-Ueberlaeufe", str(ep["info"]["pacer_overruns"])),
+        ]
+        fig_html = "".join("<div><span>%s</span><b>%s</b></div>" % f for f in figures)
+        joints = "".join(
+            "<div><div class='note'>Gelenk %d [rad]</div>%s</div>"
+            % (j + 1, svg_line([(key, COLORS[key], ep["joints"][key][j]) for key in ("ideal", "cmd", "act")], rate, height=130, width=520))
+            for j in range(6)
+        )
+        pages.append("""
+<section class="page">
+  <h1>%d. %s</h1>
+  <div class="chips">%s</div>
+  <div class="figs">%s</div>
+  %s
+  <div class="two"><div><h2>TCP-Bahn, Draufsicht</h2>%s</div><div><h2>TCP-Bahn, Seitenansicht</h2>%s</div></div>
+  <h2>TCP-Geschwindigkeit</h2>
+  <p class="note">Springt die Ist-Kurve bei glattem Befehl von Takt zu Takt, ruckelt der Arm. Grau: Greifer geschlossen.</p>
+  %s
+</section>
+<section class="page">
+  <h2>%d. %s &ndash; Gemessene Beschleunigung (staerkstes Gelenk)</h2>
+  %s
+  <h2>Abweichung vom Ideal</h2>
+  <p class="note">Befehl &minus; Ideal = aufgepraegtes Rauschen (0 an Start, Greifpunkt und Uebergabe); Ist &minus; Ideal = was am Arm ankommt.</p>
+  %s
+  %s
+  <h2>Folgefehler Befehl &rarr; Ist</h2>
+  %s
+  <h2>Gelenke</h2>
+  %s
+  <div class="joints">%s</div>
+</section>""" % (
+            k, html.escape(ep["label"]), chips, fig_html, path_legend,
+            svg_path(ep, 0, 1, "X", "Y"), svg_path(ep, 0, 2, "X", "Z"),
+            svg_line([(key, COLORS[key], ep["speed"][key]) for key in ("ideal", "cmd", "act")], rate, bands=bands, zero=True, ylabel="m/s"),
+            k, html.escape(ep["label"]),
+            svg_line([("acc", COLORS["acc"], ep["acc"])], rate, height=115, bands=bands, zero=True, ylabel="rad/s\u00b2"),
+            _legend([("Befehl \u2212 Ideal (Rauschen)", COLORS["cmd"], False), ("Ist \u2212 Ideal", COLORS["act"], False), ("Greifer zu", None, True)]),
+            svg_line([("cmd", COLORS["cmd"], ep["noise_mm"]), ("act", COLORS["act"], ep["dev_mm"])], rate, height=125, bands=bands, zero=True, ylabel="mm"),
+            svg_line([("track", COLORS["track"], ep["track"])], rate, height=100, bands=bands, zero=True, ylabel="rad"),
+            _legend([(NAMES[key], COLORS[key], False) for key in ("ideal", "cmd", "act")]),
+            joints,
+        ))
+    return PRINT_TEMPLATE.replace("__TITLE__", html.escape(title)).replace("__BODY__", "".join(pages))
+
+
+PRINT_TEMPLATE = """<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>__TITLE__</title>
+<style>
+@page { size: A4 landscape; margin: 10mm; }
+* { box-sizing: border-box; }
+body { margin: 0; color: #0b0b0b; font: 10px/1.4 "Segoe UI", system-ui, sans-serif; background: #fff; }
+.page { page-break-after: always; break-after: page; }
+.page:last-child { page-break-after: auto; }
+h1 { font-size: 16px; margin: 0 0 4px; font-weight: 600; }
+h2 { font-size: 11.5px; margin: 8px 0 2px; font-weight: 600; }
+.sub { color: #52514e; margin: 0 0 6px; }
+.note { color: #52514e; margin: 0 0 3px; }
+ul.note { padding-left: 16px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 2px 0 6px; }
+.chips span { color: #52514e; } .chips b { color: #0b0b0b; font-weight: 600; }
+.figs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 4px; }
+.figs div { border: 1px solid #e1e0d9; border-radius: 6px; padding: 3px 6px; }
+.figs span { display: block; color: #52514e; font-size: 9px; } .figs b { font-size: 11px; font-variant-numeric: tabular-nums; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.two svg { max-height: 62mm; }
+.joints { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 10px; }
+svg { display: block; width: 100%; height: auto; }
+svg text { fill: #898781; font-size: 10px; font-variant-numeric: tabular-nums; }
+svg .lbl { fill: #52514e; }
+.legend { display: flex; gap: 12px; color: #52514e; margin: 2px 0; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend i { display: inline-block; width: 14px; height: 2px; } .legend i.band { height: 8px; background: #89878124; }
+table.ov { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; margin-top: 4px; }
+table.ov th, table.ov td { padding: 3px 6px; border-bottom: 1px solid #e1e0d9; text-align: right; }
+table.ov th { color: #52514e; font-weight: 500; }
+table.ov .l { text-align: left; }
+</style></head><body>__BODY__</body></html>
+"""
 
 
 TEMPLATE = r"""<!doctype html>

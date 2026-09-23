@@ -5,9 +5,11 @@ Ablauf pro Zeitschritt i (bei CONTROL_RATE_HZ):
 0. (einmalig) Pruefen, dass der Roboter an der Startstellung steht --
    sonst waere der erste Sollwert ein Sprung. Hinfahren ist Sache des
    Aufrufers (apps/record.py, ausserhalb der Aufzeichnung).
-1. Takt abwarten (:class:`bc.sync.Pacer`).
-2. Verrauschte Sollwinkel senden, mit Geschwindigkeit und Beschleunigung
-   aus derselben Bahn (``servo_j(q, qd, qdd)``, trajectory.joint_derivatives).
+1./2. Verrauschte Sollwinkel des Schritts i ueber den vorangehenden Takt
+   linear anfahren: Zwischenschritte mit SERVO_RATE_HZ (bc/servo.py), der
+   letzte faellt genau auf Takt i (:class:`bc.sync.Pacer`). Dieselbe
+   Interpolation nutzt die Inferenz -- sonst folgt der Arm dort anders als
+   in den Daten.
 3. Greiferbefehl absetzen, wenn die Bahn an dieser Stelle wechselt --
    die Totzeit ist als Dwell-Schritte bereits IN der Bahn (AP 2.1).
 4. Zustand und juengste Frames abgreifen, Zeitstempel gegen das
@@ -26,8 +28,8 @@ import numpy as np
 
 from . import config, dataset
 from .ports import RobotError
+from .servo import ServoInterpolator
 from .sync import Pacer, evaluate
-from .trajectory import joint_derivatives
 
 
 class EpisodeRecorder(object):
@@ -45,11 +47,13 @@ class EpisodeRecorder(object):
         rate_hz=config.CONTROL_RATE_HZ,
         max_skew=config.SYNC_MAX_SKEW_S,
         max_bad_ratio=config.SYNC_MAX_BAD_FRAME_RATIO,
+        servo_rate_hz=config.SERVO_RATE_HZ,
     ):
         self.robot = robot
         self.captures = list(captures)
         self.clock = clock
         self.rate_hz = rate_hz
+        self.servo_rate_hz = servo_rate_hz
         self.max_skew = max_skew
         self.max_bad_ratio = max_bad_ratio
 
@@ -72,7 +76,9 @@ class EpisodeRecorder(object):
                 "%.4f rad > %.4f rad) -- vorher move_to_joints ausfuehren."
                 % (start_error, config.START_POSE_TOL_RAD)
             )
-        velocity, acceleration = joint_derivatives(plan.joints_noisy, plan.rate_hz)
+        interp = ServoInterpolator(self.rate_hz, self.servo_rate_hz).reset(
+            plan.joints_noisy[0]
+        )
 
         steps = {
             "observation.state": [],
@@ -89,17 +95,26 @@ class EpisodeRecorder(object):
 
         bad_frames = 0
         discard_reason = ""
-        pacer = Pacer(self.clock, self.rate_hz).start()
         self.robot.activate_servo("position")
+        # Takt erst NACH dem Aktivieren starten: die Aktivierung dauert an
+        # der VM einige 10 ms -- bei 60 Hz zaehlte das bisher als 3
+        # Ueberlaeufe je Episode, obwohl kein Sollwert zu spaet kam.
+        pacer = Pacer(self.clock, self.servo_rate_hz).start()
         try:
             prev_gripper = None
             for i in range(n):
+                # Takt 0: an der Startstellung halten. Danach das Ziel des
+                # Schritts i ueber den vorangehenden Takt interpoliert
+                # anfahren -- der letzte Zwischenschritt faellt auf Takt i.
+                commands = [interp.hold()] if i == 0 else interp.window(plan.joints_noisy[i])
+                for q_cmd, v_cmd, a_cmd in commands:
+                    if self.robot.stop_requested:
+                        break
+                    t_target = pacer.tick()
+                    self.robot.servo_j(q_cmd, v_cmd, a_cmd)
                 if self.robot.stop_requested:
                     discard_reason = "schutzstopp"
                     break
-
-                t_target = pacer.tick()
-                self.robot.servo_j(plan.joints_noisy[i], velocity[i], acceleration[i])
 
                 g = plan.gripper[i]
                 if prev_gripper is None or g != prev_gripper:
@@ -186,6 +201,7 @@ class EpisodeRecorder(object):
                 "pacer_overruns": pacer.overruns,
                 "noise_rejects": plan.rejects,
                 "rate_hz": self.rate_hz,
+                "servo_rate_hz": self.servo_rate_hz,
             }
         )
         return dataset.Episode(

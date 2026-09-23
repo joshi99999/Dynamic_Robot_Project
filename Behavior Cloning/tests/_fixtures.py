@@ -16,6 +16,11 @@ def make_clock(kind="sim"):
     return SimClock() if kind == "sim" else RealClock()
 
 
+#: Freigabe der REALEN Anlage fuer die Contract-Suite -- nur ueber
+#: ``run_all.py --robot=neura --real-robot`` (mit Bestaetigung) gesetzt.
+ALLOW_REAL = {"robot": False}
+
+
 def make_robot(kind="sim", clock=None, **kwargs):
     if kind == "sim":
         from bc.adapters.sim_robot import SimRobot
@@ -27,6 +32,7 @@ def make_robot(kind="sim", clock=None, **kwargs):
         # power_on: servo_j/move_to_joints brauchen einen bestromten Arm.
         # Die Adapter-Sperre verweigert das, solange der Controller nicht
         # is_robot_in_simulation() == True meldet (reale Anlage: allow_real).
+        kwargs.setdefault("allow_real", ALLOW_REAL["robot"])
         return NeuraRobot(**kwargs).connect(power_on=True)
     raise ValueError(kind)
 

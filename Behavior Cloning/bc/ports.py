@@ -32,6 +32,12 @@ class MotionRefused(RobotError):
     Simulation ist (Sicherheitsregel 1: VM und Anlage teilen eine IP)."""
 
 
+class ServoLimitError(RobotError):
+    """servo_j-Sollwert abgelehnt: Sprung, Geschwindigkeit, Abstand zur
+    Ist-Stellung oder Achsgrenze verletzt (servo.ServoGuard). Der Adapter
+    hat dann bereits den Software-Stopp ausgeloest."""
+
+
 class CameraError(RuntimeError):
     pass
 

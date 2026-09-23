@@ -26,6 +26,18 @@ CONTROL_RATE_HZ = 15.0
 #: Abgeleiteter Frame-Abstand.
 CONTROL_PERIOD_S = 1.0 / CONTROL_RATE_HZ
 
+#: Senderate der servo_j-Sollwerte -- ganzzahliges Vielfaches von
+#: CONTROL_RATE_HZ. Zwischen zwei 15-Hz-Zielen wird linear interpoliert
+#: (bc/servo.py), in Aufzeichnung UND Inferenz identisch. Die Policy-Rate
+#: bleibt 15 Hz; nur der Controller bekommt feinere Zwischenschritte.
+#: Gemessen VM 2026-09-15 (J1-Fahrt 0.1 rad/s, Ist-Stellung mit ~50 Hz
+#: gelesen): bei 15 Hz Stop-and-go innerhalb jedes Takts (Geschwindigkeit
+#: je Update 0.004-0.6 rad/s, Streuung 60-100 % des Mittels), bei 60 Hz
+#: 33 %, 120 Hz 27 %, 250 Hz 19 % (Rest ist Messrauschen der Zeitstempel).
+#: servo_j dauert ~2.5 ms je Aufruf -- 60 Hz laesst Luft fuer Zustand und
+#: Kameras im Beobachtungstakt. Neuras eigenes Beispiel sendet mit 1 kHz.
+SERVO_RATE_HZ = 60.0
+
 #: Maximal zulaessige Zeitdifferenz zwischen den Quellen eines Frames.
 #: Deutlich kleiner als ein halber Frame-Abstand (AP 1.3).
 SYNC_MAX_SKEW_S = 0.030
@@ -88,6 +100,32 @@ QUAT_HEMISPHERE_REF = (0.0, 0.0, 1.0, 0.0)
 # --------------------------------------------------------------------------
 # Kinematik-Absicherungen (AP 2.4)
 # --------------------------------------------------------------------------
+
+#: Sprung- und Geschwindigkeitsfilter fuer JEDEN servo_j-Sollwert
+#: (servo.ServoGuard, in beiden Robot-Adaptern). Letzte Verteidigungslinie
+#: gegen eine Policy oder einen Planer, der Unsinn kommandiert -- greift in
+#: Aufzeichnung UND Inferenz, weil er im Adapter sitzt.
+#: Hoechste zulaessige Gelenkgeschwindigkeit zwischen zwei Sollwerten.
+#: Gemessen VM 2026-09-16: Idealbahn max 0.39 rad/s, gesendete verrauschte
+#: Befehle max 0.60 rad/s (Rauschfaktor 1). 1.0 laesst Luft fuer
+#: Policy-Korrekturen und haelt einen Sprung pro Aufruf trotzdem klein
+#: (60 Hz: 0.017 rad). PROVISORISCH wie das Planer-Tempo (AP 2.6).
+SERVO_MAX_JOINT_SPEED_RADS = 1.0
+
+#: Weiche Stufe davor, nur in der Inferenz (servo.TargetLimiter): die
+#: Aenderung des Policy-Ziels je 15-Hz-Takt wird auf diese Geschwindigkeit
+#: BEGRENZT statt abgelehnt. Befund Durchstich 2026-09-17: die Labels selbst
+#: verlangen Korrekturen bis ~1 rad/s (Aktion - Zustand p99 0.07 rad/Takt),
+#: und beim Eintreffen eines verspaeteten Chunks springt das Mittel -- eine
+#: Fahrt wurde bei 1.03 rad/s vom ServoGuard gestoppt. Unter
+#: SERVO_MAX_JOINT_SPEED_RADS, damit der harte Filter nur Fehler faengt.
+POLICY_MAX_JOINT_SPEED_RADS = 0.8
+
+#: Groesster zulaessiger Abstand (rad, je Gelenk) zwischen einem neuen
+#: Sollwert und der GEMESSENEN Stellung. Gemessen VM 2026-09-16: Action vs.
+#: Ist-Stellung max 0.20 rad (Rauschen + Nachlauf). Groesser = Ziel liegt
+#: nicht mehr "vor dem Arm", sondern woanders -- Abbruch.
+SERVO_MAX_TARGET_GAP_RAD = 0.35
 
 #: Maximale Gelenkwinkelaenderung zwischen zwei Trajektorienschritten.
 #: Erkennt Konfigurationsspruenge und Singularitaetsdurchgaenge auch dann,
@@ -190,6 +228,21 @@ NOISE_ROT_AMPLITUDE_RAD = 0.05
 #: Zeitkonstante des Ornstein-Uhlenbeck-Prozesses. Grosse Werte = traege,
 #: weiche Schlingerbewegung statt Zittern.
 NOISE_OU_TAU_S = 0.8
+
+#: Rauschstaerke JE EPISODE: Faktor gleichverteilt in diesem Bereich, mal
+#: den Amplituden oben (apps/record.py, abschaltbar mit --noise-fixed).
+#: Begruendung (Auswertung 2026-09-16, Berichte/2026-09-16_Rauschstudie.pdf):
+#:   * VM-Laeufe mit festem Faktor 1: Ist-Zustand im Transit praktisch nie
+#:     auf der Idealbahn (nur 33 % der Schritte < 5 mm, fast alle davon an
+#:     Start/Greifpunkt) -- die Policy saehe den Zustand, in dem sie spaeter
+#:     meist sein soll, kaum.
+#:   * Stellvertreter-Studie (MLP-Policy, SimRobot, 5 Trainings-Seeds): ohne
+#:     Rauschen 12-40 % Erfolg und Bahnabweichung p95 34 mm; fester Faktor 1
+#:     macht die gelernten Befehle 5x unruhiger als die Idealbahn, kleines
+#:     festes Rauschen korrigiert grosse Stoesse ruckartig. Die Mischung 0-1
+#:     war ungestoert so ruhig wie kleines Rauschen und korrigierte 30-mm-
+#:     Stoesse am weichsten.
+NOISE_EPISODE_SCALE_RANGE = (0.0, 1.0)
 
 #: Zeitkonstante der zwei Tiefpaesse hinter dem OU-Prozess
 #: (noise.SmoothedOUProcess). Der reine OU-Prozess hat weisse
@@ -341,7 +394,7 @@ def check_cameras_configured(cameras=CAMERAS):
     """
     warnings = []
     for cfg in cameras:
-        if cfg.name == "scene" and not SCENE_CAMERA_CONFIRMED:
+        if cfg.name == "scene" and cfg.backend != "sim" and not SCENE_CAMERA_CONFIRMED:
             warnings.append(
                 "Szenenkamera ist noch ein Platzhalter (backend=%s, device=%s). "
                 "Auf einem Laptop ist OpenCV-Index 0 die eingebaute Webcam!"
@@ -373,3 +426,59 @@ DEFAULT_OVERRIDE = 0.2
 #: Ungefaehre Reichweite der LARA 5 -- nur zur Plausibilitaetspruefung
 #: gemeldeter Posen (Erkennung von Platzhalterwerten).
 MAX_REACH_M = 0.9
+
+# --------------------------------------------------------------------------
+# Policy, Training und Inferenz (AP 3 / AP 4)
+# --------------------------------------------------------------------------
+
+#: Gepinnte LeRobot-Version (AP 0.9 Punkt 6). Der Export schreibt sie in den
+#: Datensatz, Training und Inferenz pruefen dagegen. Das Datensatzformat
+#: selbst (codebase_version "v3.0") legt lerobot fest.
+LEROBOT_VERSION = "0.6.1"
+
+#: Beobachtungen je Vorhersage (aktueller Takt + Vorgaenger). Der Wert
+#: der Diffusion-Policy-Referenz; zwei Takte geben der Policy die
+#: Bewegungsrichtung, ohne sie zur Zeitreihe zu machen.
+POLICY_N_OBS_STEPS = 2
+
+#: Laenge des vorhergesagten Aktions-Horizonts (AP 4.1: 8-16). Muss durch
+#: 2 ** len(POLICY_DOWN_DIMS) teilbar sein (U-Net-Downsampling).
+POLICY_HORIZON = 16
+
+#: Davon nutzbare Schritte ab dem aktuellen Takt (horizon - n_obs + 1 ist
+#: das Maximum). Aus diesen Schritten mittelt die Inferenz ueberlappende
+#: Chunks (policy.ChunkEnsembler).
+POLICY_N_ACTION_STEPS = 8
+
+#: Nach wie vielen Takten neu vorhergesagt wird (AP 0.9 Punkt 7). Kleiner =
+#: mehr ueberlappende Chunks zum Mitteln und schnellere Reaktion auf
+#: Stoerungen, dafuer mehr GPU-Last. 1 <= Wert <= POLICY_N_ACTION_STEPS.
+POLICY_REPLAN_STEPS = 2
+
+#: Gewichtung beim Mitteln ueberlappender Chunks: w = exp(-k * Alter in
+#: Takten). 0 = gleichgewichtet. k > 0 bevorzugt NEUERE Vorhersagen
+#: (reaktiver), k < 0 aeltere (ruhiger, ACT-Stil).
+POLICY_ENSEMBLE_DECAY = 0.0
+
+#: U-Net-Kanaele. (256, 512, 1024) ist die Groesse der Diffusion-Policy-
+#: Referenz fuer Realroboter (~65 M Parameter) statt lerobots Default
+#: (512, 1024, 2048, ~260 M) -- passt auf 16 GB und bleibt auf den
+#: Inferenz-Laptops (Hardware noch unbekannt, AP 3.1) rechenbar.
+POLICY_DOWN_DIMS = (256, 512, 1024)
+
+#: Bildausschnitt fuer die Augmentierung: zufaelliger Crop mit diesem
+#: Anteil im Training, zentrierter Crop bei der Inferenz (lerobot).
+POLICY_CROP_RATIO = 0.9
+
+#: Denoising-Schritte bei der Inferenz (DDIM). Training laeuft mit 100.
+#: Vorlaeufig; auf der Zielhardware messen (AP 4.1 Punkt a).
+POLICY_INFERENCE_STEPS = 10
+
+#: Was das Netz vorhersagt: "epsilon" (Rauschen, lerobot-Default) oder
+#: "sample" (direkt die Aktionsfolge). Befund Durchstich 2026-09-17 (Sim,
+#: 50 Episoden, 8000 Schritte, epsilon): mit 10 DDIM-Schritten gezackte
+#: Chunks -- groesster Sprung im Chunk 0.10-0.12 rad statt 0.015 wie im
+#: Label, Streuung zwischen Samples 0.05-0.07 rad; erst mit 100 Schritten
+#: glatt (0.019), dann aber 600 ms je Vorhersage. Die Policy loeste so schon
+#: im ersten Takt den ServoGuard aus.
+POLICY_PREDICTION_TYPE = "sample"

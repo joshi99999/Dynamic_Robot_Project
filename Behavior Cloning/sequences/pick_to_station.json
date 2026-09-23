@@ -3,11 +3,11 @@
   "gripper_start": "open",
   "sequence": [
     {"point": "CLEAR_FOV",   "motion": "ptp"},
-    {"point": "APPROACH_01", "motion": "ptp"},
-    {"point": "APPROACH_02", "motion": "ptp", "optional": true},
+    {"point": "APPROACH_01", "motion": "ptp", "blend": 0.05},
+    {"point": "APPROACH_02", "motion": "ptp", "optional": true, "blend": 0.05},
     {"point": "PRE_GRASP",   "motion": "ptp"},
     {"point": "PICK",        "motion": "lin", "approach": true, "gripper": "close"},
-    {"point": "PRE_GRASP",   "motion": "lin"},
+    {"point": "PRE_GRASP",   "motion": "lin", "blend": 0.04},
     {"point": "PRE_PLACE",   "motion": "ptp"}
   ]
 }

@@ -15,6 +15,12 @@ gegen die echten Geraete:
     python tests/run_all.py --camera=uvc    contract.test_camera_contract
     python tests/run_all.py --camera=daheng contract.test_camera_contract
     python tests/run_all.py --robot=neura   contract.test_robot_contract
+    python tests/run_all.py --robot=neura --real-robot contract.test_robot_contract
+
+``--real-robot`` gibt die REALE Steuerung frei (Bestaetigung im Terminal).
+Die Suite bewegt nicht: servo_j nur mit der Ist-Stellung, move_to_joints
+auf die Ist-Stellung, der Sprungtest wird vor dem Senden abgelehnt. Der
+Greifer schaltet aber (zu/auf) -- Arbeitsraum am Greifer frei halten.
 """
 
 import importlib
@@ -37,6 +43,7 @@ MODULES = [
     "test_trajectory",
     "test_noise",
     "test_sequence",
+    "test_servo",
     "test_sync",
     "test_dataset",
     "test_recorder",
@@ -44,6 +51,7 @@ MODULES = [
     "test_rectify",
     "test_safety",
     "test_policy",
+    "test_lerobot",
     "test_layering",
     "test_apps",
     "contract.test_robot_contract",
@@ -115,6 +123,8 @@ def main(argv=None):
         if arg.startswith("--robot=") or arg.startswith("--camera="):
             key, value = arg[2:].split("=", 1)
             BACKENDS[key] = value
+        elif arg == "--real-robot":
+            _fixtures.ALLOW_REAL["robot"] = True
         elif arg.startswith("-"):
             raise SystemExit("Unbekannte Option '%s'" % arg)
         else:
@@ -124,6 +134,12 @@ def main(argv=None):
     for key, value in BACKENDS.items():
         if value != "sim":
             print("!! %s-Backend: %s (HARDWARE)" % (key, value))
+    if _fixtures.ALLOW_REAL["robot"]:
+        if BACKENDS["robot"] != "neura":
+            raise SystemExit("--real-robot nur zusammen mit --robot=neura")
+        print("!! --real-robot: Tests laufen gegen die REALE Steuerung (Greifer schaltet).")
+        if input("   Not-Aus in Reichweite, Greifer frei? 'ANLAGE' eintippen: ").strip() != "ANLAGE":
+            raise SystemExit("Abgebrochen.")
 
     total_passed, total_failed = 0, []
     for module_name in modules:

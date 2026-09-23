@@ -22,7 +22,10 @@ import numpy as np
 
 from bc import config
 from bc.adapters import open_robot
+from bc.clock import RealClock
 from bc.kinematics import IKFailure, Kinematics
+from bc.servo import ServoInterpolator
+from bc.sync import Pacer
 
 
 def save_waypoints(path, waypoints):
@@ -55,7 +58,13 @@ def teach_loop(robot, teleop, poll_sleep=0.02, clock=None):
 
     state = robot.read_state()
     target_pose = np.asarray(state.tcp_quat, dtype=float).copy()
+    # Jogs laufen ueber dieselbe Interpolation wie Aufzeichnung und Inferenz:
+    # ein 1-cm-Jog als EIN servo_j-Sollwert waere ein Sprung, den der
+    # ServoGuard im Adapter zu Recht ablehnt.
+    interp = ServoInterpolator().reset(state.joints)
+    pacer = Pacer(clock if clock is not None else RealClock(), config.SERVO_RATE_HZ)
     robot.activate_servo("position")
+    pacer.start()
     try:
         while True:
             event = teleop.poll()
@@ -75,10 +84,10 @@ def teach_loop(robot, teleop, poll_sleep=0.02, clock=None):
                 except IKFailure as exc:
                     print("Jog nicht erreichbar: %s" % exc)
                     continue
-                # Jog = Sprung auf ein neues Ziel, an dem der Arm stehen
-                # bleibt: Geschwindigkeit/Beschleunigung 0 sind hier korrekt.
-                hold = [0.0] * robot.dof
-                robot.servo_j(joints, hold, hold)
+                # Einen Takt hin, einen Takt ausrollen (gleiches Ziel -> v = 0).
+                for q, v, a in interp.window(joints) + interp.window(joints):
+                    pacer.tick()
+                    robot.servo_j(q, v, a)
                 target_pose = candidate
 
             elif event.kind == "gripper":

@@ -25,7 +25,7 @@ import _paths  # noqa: F401,E402
 import numpy as np  # noqa: E402
 
 from bc import config, geometry  # noqa: E402
-from bc.ports import IKError, RobotError, RobotState  # noqa: E402
+from bc.ports import IKError, RobotError, RobotState, ServoLimitError  # noqa: E402
 
 
 def test_dof(robot):
@@ -120,6 +120,26 @@ def test_servo_lifecycle(robot):
         assert False, "RobotError erwartet (Servo deaktiviert)"
     except RobotError:
         pass
+
+
+def test_servo_guard_refuses_jump(robot):
+    # Sprung- und Geschwindigkeitsfilter im Adapter (servo.ServoGuard): ein
+    # 0.3-rad-Sprung wird VOR dem Senden abgelehnt und loest den
+    # Software-Stopp aus. Bewegungsfrei -- es wird nichts gesendet.
+    joints = np.asarray(robot.read_state().joints, dtype=float)
+    hold = [0.0] * robot.dof
+    robot.activate_servo("position")
+    try:
+        robot.servo_j(joints + 0.3, hold, hold)
+        assert False, "ServoLimitError erwartet"
+    except ServoLimitError:
+        pass
+    finally:
+        robot.deactivate_servo()
+    assert robot.stop_requested
+    after = np.asarray(robot.read_state().joints, dtype=float)
+    assert float(np.max(np.abs(after - joints))) <= config.START_POSE_TOL_RAD
+    robot.clear_stop()
 
 
 def test_move_to_current_joints_is_noop(robot):
