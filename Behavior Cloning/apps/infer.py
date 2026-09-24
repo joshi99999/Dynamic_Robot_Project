@@ -258,6 +258,8 @@ def parse_args():
     parser.add_argument("--robot", choices=("sim", "neura"), default=None)
     parser.add_argument("--cameras", choices=CAMERA_MODES, default="auto",
                         help="wie apps/record.py -- muss zur Aufzeichnung passen")
+    parser.add_argument("--uvc-device", type=int, default=None,
+                        help="OpenCV-Index der Webcam bei --cameras wrist-uvc (wie apps/record.py)")
     parser.add_argument("--real-robot", action="store_true")
     parser.add_argument("--override", type=float, default=None,
                         help="Neura-Override; Default und Pflichtwert: der der Aufzeichnung")
@@ -296,7 +298,7 @@ def main():
     use_sim_robot = robot_kind == "sim"
     camera_mode = resolve_camera_mode(args.cameras, use_sim_robot)
     use_sim_cameras = camera_mode == "sim"
-    cam_cfgs = camera_configs(camera_mode)
+    cam_cfgs = camera_configs(camera_mode, uvc_device=args.uvc_device)
 
     info, policy = None, None
     if args.hold:
@@ -373,7 +375,8 @@ def main():
               % (robot.in_simulation, args.override, robot.gripper_mode))
 
     try:
-        captures, cam_cfgs = start_cameras(camera_mode, clock, seed=args.seed)
+        captures, cam_cfgs = start_cameras(camera_mode, clock, seed=args.seed,
+                                           uvc_device=args.uvc_device)
     except Exception:
         robot.close()
         raise

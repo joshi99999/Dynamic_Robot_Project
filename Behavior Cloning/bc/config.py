@@ -386,6 +386,24 @@ SCENE_CAMERA_DAHENG = CameraConfig(
 
 CAMERAS = (WRIST_CAMERA, SCENE_CAMERA)
 
+#: NUR ZUM TESTEN: beliebige USB-Webcam als Ersatz fuer die Wrist-Kamera
+#: (Kameramodus "wrist-uvc", AP 1.1/1.3). Prueft die Kamera-KETTE mit
+#: echtem Geraet -- Rate, Frame-Alter, Zeitstempel, Sync-Budget, Last im
+#: Recorder -- bevor die Daheng am Labortag zur Verfuegung steht. Nicht die
+#: Daheng-Einstellungen (Belichtung, Weissabgleich, Binning). Index 0 ist auf
+#: einem Laptop meist die eingebaute Kamera; USB-Webcam oft Index 1
+#: (``tools/check_cameras.py --list``, Aufruf mit ``--uvc-device``).
+#: Aufnahmen damit sind Testdaten: record.py verweigert den Modus an der
+#: realen Anlage, der Export bricht bei gemischten Backends ab.
+WRIST_CAMERA_UVC_STANDIN = CameraConfig(
+    name="wrist",
+    backend="uvc",
+    device=0,
+    width=640,
+    height=480,
+    fps=30.0,
+)
+
 
 def check_cameras_configured(cameras=CAMERAS):
     """Warnt vor Aufzeichnungen mit noch nicht bestaetigter Kamera.

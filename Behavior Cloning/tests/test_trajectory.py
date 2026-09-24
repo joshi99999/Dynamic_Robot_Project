@@ -229,6 +229,34 @@ def test_blend_radius_limited_to_half_segment():
     assert abs(traj.blend_applied[1] - 0.02) < 1e-9
 
 
+def test_small_blend_before_lin_approach_keeps_descent_straight():
+    # Entscheidung 2026-09-23: PRE_GRASP im Anflug mit 10 mm ueberschleifen,
+    # damit dort kein Stillstand entsteht (Deadlock AP 2.6). Die senkrechte
+    # Anfahrt ans Objekt muss dabei praktisch unveraendert bleiben.
+    pre, pick = np.array([0.45, 0.0, 0.40]), np.array([0.45, 0.0, 0.30])
+    stop = build_ideal_trajectory(
+        [_wp(0.25, -0.15, 0.40), _wp(*pre), _wp(*pick, approach=True)]
+    )
+    blend = build_ideal_trajectory(
+        [_wp(0.25, -0.15, 0.40), _blend_wp(*pre, blend=0.01), _wp(*pick, approach=True)]
+    )
+    assert blend.blend_applied[1] == 0.01
+    p = blend.poses_quat[:, :3]
+    # Ecke nur knapp verfehlt
+    assert np.linalg.norm(p - pre, axis=1).min() < 0.003
+    # Abstieg: ab 5 mm unter PRE_GRASP exakt auf der Senkrechten
+    descent = p[:, 2] < pre[2] - 0.005
+    assert np.abs(p[descent, :2] - pick[:2]).max() < 1e-9
+    # Kein Stillstand an der Ecke (ohne Ueberschleifen: praktisch 0)
+    ramp_steps = int(np.ceil(config.SEGMENT_RAMP_S * config.CONTROL_RATE_HZ)) + 1
+    corner = int(np.argmin(np.linalg.norm(p - pre, axis=1)))
+    corner_stop = int(np.argmin(np.linalg.norm(stop.poses_quat[:, :3] - pre, axis=1)))
+    assert _speeds(stop)[corner_stop] < 0.005
+    window = _speeds(blend)[corner - ramp_steps:corner + ramp_steps]
+    assert window.min() > 0.3 * config.APPROACH_SPEED_MS
+    assert np.allclose(p[-1], pick)
+
+
 def test_ptp_blend_in_joint_space():
     import _fixtures
 

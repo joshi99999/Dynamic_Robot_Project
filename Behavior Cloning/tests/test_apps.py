@@ -30,6 +30,7 @@ def test_teach_loop_saves_waypoints():
 
 
 def test_camera_modes_and_static_placeholders():
+    from bc import config
     from bc.adapters import camera_configs, resolve_camera_mode, start_cameras
     from bc.clock import SimClock
 
@@ -37,6 +38,11 @@ def test_camera_modes_and_static_placeholders():
     assert resolve_camera_mode("auto", robot_is_sim=False) == "real"
     mixed = {c.name: c.backend for c in camera_configs("wrist-real")}
     assert mixed == {"wrist": "daheng", "scene": "sim"}
+    # Webcam als Wrist-Ersatz: gleiche Namen/Reihenfolge, Index ueberschreibbar
+    webcam = camera_configs("wrist-uvc", uvc_device=1)
+    assert [(c.name, c.backend) for c in webcam] == [("wrist", "uvc"), ("scene", "sim")]
+    assert webcam[0].device == 1
+    assert camera_configs("wrist-uvc")[0].device == config.WRIST_CAMERA_UVC_STANDIN.device
 
     captures, cfgs = start_cameras("sim", SimClock())
     try:
@@ -47,11 +53,12 @@ def test_camera_modes_and_static_placeholders():
     finally:
         for cap in captures:
             cap.stop()
-    try:
-        start_cameras("wrist-real", SimClock())
-        assert False, "ValueError erwartet (echte Kamera braucht Host-Uhr)"
-    except ValueError:
-        pass
+    for mode in ("wrist-real", "wrist-uvc"):
+        try:
+            start_cameras(mode, SimClock())
+            assert False, "ValueError erwartet (echte Kamera braucht Host-Uhr)"
+        except ValueError:
+            pass
 
 
 def _infer_setup():

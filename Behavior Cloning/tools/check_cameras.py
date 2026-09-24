@@ -8,6 +8,7 @@ wenn es einen Recorder zu steuern gibt.
 Ausfuehren (aus dem Ordner "Behavior Cloning"):
     python tools/check_cameras.py --list           # welche Geraete sind da?
     python tools/check_cameras.py --backend sim    # Werkzeug ohne Hardware
+    python tools/check_cameras.py --backend uvc --device 1  # Webcam als Wrist-Ersatz
     python tools/check_cameras.py                  # beide Kameras
     python tools/check_cameras.py --only scene     # nur eine Kamera
     python tools/check_cameras.py --only scene --device 1   # anderer Index
@@ -37,6 +38,12 @@ from bc.adapters import open_camera
 def build_configs(only, backend=None, device=None):
     if backend == "sim":
         base = list(config.SIM_CAMERAS)
+    elif backend == "uvc":
+        # Webcam als Wrist-Ersatz (config.WRIST_CAMERA_UVC_STANDIN) -- dieselbe
+        # Konfiguration wie record.py --cameras wrist-uvc
+        if only not in (None, "wrist"):
+            raise SystemExit("--backend uvc ersetzt nur die Wrist-Kamera (--only wrist)")
+        base = [config.WRIST_CAMERA_UVC_STANDIN]
     else:
         base = list(config.CAMERAS)
 
@@ -141,8 +148,9 @@ def main():
         help="angeschlossene Kameras suchen und beenden",
     )
     parser.add_argument(
-        "--backend", default=None, choices=("sim",),
-        help="'sim' testet das Werkzeug ohne Hardware",
+        "--backend", default=None, choices=("sim", "uvc"),
+        help="'sim' testet das Werkzeug ohne Hardware; 'uvc' oeffnet eine USB-Webcam "
+             "als Wrist-Ersatz (Index mit --device)",
     )
     parser.add_argument(
         "--device", default=None,

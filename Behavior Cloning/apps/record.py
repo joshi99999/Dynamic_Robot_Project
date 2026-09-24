@@ -21,7 +21,9 @@ SICHERHEIT: Gegen den Neura-Adapter wird nur bewegt, wenn der Controller
 ``is_robot_in_simulation() == True`` meldet (VM und Anlage teilen eine IP).
 Die reale Anlage braucht ``--real-robot`` UND eine Bestaetigung im
 Terminal. Ohne Kameras-Hardware: ``--cameras sim`` (Platzhalterbilder, das
-Datensatz-Schema bleibt identisch).
+Datensatz-Schema bleibt identisch). Kamerakette mit einer USB-Webcam statt
+der Daheng testen (auch ohne VM, der SimRobot laeuft dann in Echtzeit):
+``--sim --cameras wrist-uvc --uvc-device 1``.
 """
 
 import argparse
@@ -120,7 +122,13 @@ def parse_args():
     parser.add_argument(
         "--cameras", choices=CAMERA_MODES, default="auto",
         help="auto: Sim-Kameras beim SimRobot, echte am Neura; wrist-real: echte "
-             "Wrist-Kamera + Platzhalter-Szene (Labortest)",
+             "Wrist-Kamera + Platzhalter-Szene (Labortest); wrist-uvc: USB-Webcam "
+             "statt Wrist-Kamera (nur Test der Kamerakette)",
+    )
+    parser.add_argument(
+        "--uvc-device", type=int, default=None,
+        help="OpenCV-Index der Webcam bei --cameras wrist-uvc "
+             "(Default config.WRIST_CAMERA_UVC_STANDIN; tools/check_cameras.py --list)",
     )
     parser.add_argument(
         "--real-robot", action="store_true",
@@ -198,7 +206,7 @@ def main():
 
     sequence = load_sequence(args.sequence) if args.sequence else None
 
-    cam_cfgs = camera_configs(camera_mode)
+    cam_cfgs = camera_configs(camera_mode, uvc_device=args.uvc_device)
     if not use_sim_cameras:
         # VOR jeder Hardware-Aktion: eine falsch konfigurierte Kamera faellt
         # im fertigen Datensatz nicht auf, deshalb hier hart nachfragen.
@@ -213,6 +221,11 @@ def main():
     if args.real_robot:
         if use_sim_robot:
             raise SystemExit("--real-robot ergibt mit dem SimRobot keinen Sinn.")
+        if camera_mode == "wrist-uvc":
+            raise SystemExit(
+                "--cameras wrist-uvc ist nur ein Test der Kamerakette (Webcam statt "
+                "Wrist-Kamera) -- an der Anlage 'wrist-real', 'real' oder 'sim' verwenden."
+            )
         if not args.block:
             raise SystemExit(
                 "--block fehlt: an der Anlage gehoert jede Aufzeichnung zu einem Block "
@@ -264,7 +277,8 @@ def main():
         raise SystemExit("Am Neura sind --sequence oder --waypoints Pflicht.")
 
     try:
-        captures, cam_cfgs = start_cameras(camera_mode, clock, seed=args.seed)
+        captures, cam_cfgs = start_cameras(camera_mode, clock, seed=args.seed,
+                                           uvc_device=args.uvc_device)
     except Exception:
         robot.close()
         raise

@@ -34,9 +34,17 @@ Format (JSON)::
 * ``blend``: Ueberschleif-Radius in m an diesem Punkt -- der Arm haelt dort
   nicht an, sondern verrundet die Ecke (trajectory.py). Nicht erlaubt am
   ersten und letzten Schritt und zusammen mit ``gripper``. Sinnvoll an
-  reinen Durchfahrpunkten (APPROACH_*, PRE_GRASP nach dem Anheben); NICHT
-  an einem Punkt, von dem aus eine LIN-Anfahrt ans Objekt beginnt -- sonst
-  startet die Anfahrt schraeg.
+  reinen Durchfahrpunkten (APPROACH_*, PRE_GRASP nach dem Anheben).
+  Vor einer LIN-Anfahrt ans Objekt (PRE_GRASP im Anflug) nur mit KLEINEM
+  Radius: Entscheidung 2026-09-23, 10 mm. Ein Halt dort war die Ursache des
+  Stillstands-Deadlocks im Policy-Durchstich (AP 2.6) -- im Zustand ist
+  "angekommen" nicht von "losfahren" zu unterscheiden. Nachgerechnet mit den
+  VM-Punkten (PTP-Anflug, 145 mm LIN-Abstieg): Ecke um 0,4 mm verfehlt, ab
+  1,6 mm unter PRE_GRASP exakt auf der Abstiegsachse, Orientierung 0,02 Grad,
+  Mindestgeschwindigkeit 0,028 m/s statt Stillstand. Groessere Radien sind
+  NICHT besser (40 mm: 0,013 m/s, laengere Ueberlappung = tiefer in beiden
+  Rampen). PRE_GRASP muss mindestens 2 x Radius ueber PICK liegen, sonst
+  kappt trajectory.py den Radius auf die halbe Segmentlaenge.
 """
 
 import json

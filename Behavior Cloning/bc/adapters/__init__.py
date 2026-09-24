@@ -8,6 +8,8 @@ Kamera-Backends werden ueber :func:`open_camera` anhand von
 ``CameraConfig.backend`` aufgeloest ("daheng" | "uvc" | "sim").
 """
 
+from dataclasses import replace
+
 from .. import config
 from ..ports import CameraError
 
@@ -37,8 +39,10 @@ def open_camera(cfg):
 #:   wrist-real  echte Wrist-Kamera, Szenenkamera als Platzhalter -- fuer
 #:               den Labortest "VM/Sim mit echter Wrist-Kamera", solange die
 #:               Szenenkamera nicht entschieden ist
+#:   wrist-uvc   USB-Webcam statt Wrist-Kamera, Szene als Platzhalter -- NUR
+#:               Test der Kamerakette ohne Daheng (config.WRIST_CAMERA_UVC_STANDIN)
 #:   auto        sim beim SimRobot, real am Neura
-CAMERA_MODES = ("auto", "sim", "real", "wrist-real")
+CAMERA_MODES = ("auto", "sim", "real", "wrist-real", "wrist-uvc")
 
 
 def resolve_camera_mode(mode, robot_is_sim):
@@ -49,19 +53,29 @@ def resolve_camera_mode(mode, robot_is_sim):
     return mode
 
 
-def camera_configs(mode):
-    """Konfigurationen je Modus (ohne etwas zu oeffnen)."""
+def camera_configs(mode, uvc_device=None):
+    """Konfigurationen je Modus (ohne etwas zu oeffnen).
+
+    ``uvc_device``: OpenCV-Index der Webcam im Modus "wrist-uvc"
+    (None = config.WRIST_CAMERA_UVC_STANDIN.device).
+    """
     if mode == "sim":
         return list(config.SIM_CAMERAS)
     if mode == "real":
         return list(config.CAMERAS)
-    if mode == "wrist-real":
+    if mode in ("wrist-real", "wrist-uvc"):
+        if mode == "wrist-real":
+            wrist = config.WRIST_CAMERA
+        else:
+            wrist = config.WRIST_CAMERA_UVC_STANDIN
+            if uvc_device is not None:
+                wrist = replace(wrist, device=uvc_device)
         sim = {c.name: c for c in config.SIM_CAMERAS}
-        return [config.WRIST_CAMERA if c.name == "wrist" else sim[c.name] for c in config.CAMERAS]
+        return [wrist if c.name == "wrist" else sim[c.name] for c in config.CAMERAS]
     raise ValueError(mode)
 
 
-def start_cameras(mode, clock, seed=0):
+def start_cameras(mode, clock, seed=0, uvc_device=None):
     """Oeffnet die Kameras eines (aufgeloesten) Modus und startet die Captures.
 
     Echte Kameras laufen im Hintergrund-Thread (ThreadedCapture), Platzhalter
@@ -77,7 +91,7 @@ def start_cameras(mode, clock, seed=0):
     from ..clock import RealClock
     from .cam_sim import SimCamera
 
-    cfgs = camera_configs(mode)
+    cfgs = camera_configs(mode, uvc_device=uvc_device)
     if any(c.backend != "sim" for c in cfgs) and not isinstance(clock, RealClock):
         raise ValueError("Echte Kameras brauchen die Host-Uhr (RealClock), nicht %s"
                          % type(clock).__name__)

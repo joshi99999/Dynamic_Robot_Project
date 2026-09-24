@@ -1,8 +1,20 @@
 # Anlagentag — Checkliste bis zur ersten echten Aufzeichnung
 
-Stand 17.09.2026. Reihenfolge so gewählt, dass jeder Schritt nur bestätigte
+Stand 23.09.2026. Reihenfolge so gewählt, dass jeder Schritt nur bestätigte
 Voraussetzungen braucht und bewegungsfreie Prüfungen vor den bewegten kommen.
-Ziel: Nach diesem Termin kann zeitnah aufgezeichnet werden.
+
+**Zwei Termine** (Festlegung Anwender, 23.09.2026):
+
+* **Termin 1 — Anbindung:** Steht die Kameraanbindung mit der echten Kamera,
+  lassen sich Punkte teachen und abfahren (Override egal)? Schritte **0, 1, 2,
+  4, 5, 7** und aus 8 **Teachen + Referenzfahrt**. Danach wird alles final
+  festgelegt und nachgezogen.
+* **Termin 2 — finale Aufnahme:** Override, Rektifizierung, Szenenkamera,
+  Blockaufzeichnung (Schritte 3, 6, Rest von 8).
+
+Der Laptop braucht für Termin 1 **kein CUDA**: `record.py`, `teach.py` und
+alle `check_*`-Werkzeuge importieren kein torch. CUDA braucht erst die
+Policy-Fahrt (CPU gemessen: 384 ms je Vorhersage bei 66 ms Takt).
 
 Alle Befehle aus `Behavior Cloning`, Python `E:\Enviroments\bc_env\python.exe`
 (bzw. das Environment des Labor-Laptops). **Not-Aus während aller bewegten
@@ -24,6 +36,26 @@ Protokolle landen in `Berichte/` (JSON, Bilder), Aufzeichnungen in
       (`predict_ms_median` in `summary.json`, AP 4.1 a).
 - [ ] ResNet18-Gewichte im Cache, falls der Laptop offline ist
       (`Training-und-Inferenz.md`, 3.1).
+- [ ] **Galaxy SDK installieren und den Adapter gegen gxipy prüfen** — ohne
+      Kamera: `python tools/check_daheng_api.py`. Der Adapter ist gegen die
+      gxipy-Doku geschrieben; fehlt ein Feature-Name, läuft die Kamera still
+      mit falschen Einstellungen weiter (nur eine Hinweiszeile). Erwartet:
+      keine `FAIL`. `WARN` bei Features heißt „erst am Gerät prüfbar“ → am
+      Termin `--open`.
+- [ ] **Kamerakette mit einer USB-Webcam** (Daheng-Ersatz, ohne VM, SimRobot in
+      Echtzeit):
+      ```powershell
+      python tools/check_cameras.py --list
+      python tools/check_cameras.py --backend uvc --device 1
+      python apps/record.py --sim --cameras wrist-uvc --uvc-device 1 --episodes 2 --out data_sim/<Datum>_webcam
+      ```
+      Bewertet wird: Bilder kommen an, keine Pacer-Überläufe, Episode wird
+      geschrieben. **Nicht** das Latenzbudget: Eine Webcam mit ≤ 30 fps
+      liefert Frames, die oft älter als 30 ms sind, der Recorder verwirft die
+      Episode dann korrekt als `latenzbudget` (am Entwicklungsrechner
+      23.09.: Webcam 9–11 fps, 71 % über Budget). Die Daheng mit nativer Rate
+      lag bei 4–9 ms. Webcam-Aufnahmen sind Testdaten — an der Anlage
+      verweigert `record.py` den Modus.
 
 ## 1. Verbindung, Kinematik, Achsgrenzen — bewegungsfrei
 
@@ -80,16 +112,31 @@ suchen, dann mit `--roi x,y,w,h` wiederholen.
 - [ ] **RPC-Dauer** < 17 ms. Blockiert der Aufruf länger, hält er Aufzeichnung
       und Inferenz im Takt an — vor der Aufzeichnung lösen.
 - [ ] Schließzeit ≤ `GRIPPER_DWELL_S` (500 ms). Sonst Dwell erhöhen, danach
-      `GRIPPER_DWELL_VERIFIED = True`.
+      `GRIPPER_DWELL_VERIFIED = True`. **So kurz wie möglich festlegen** —
+      jeder Dwell-Takt ist ein Stillstand, den die Policy nicht zählen kann
+      (siehe unten, Stillstand).
+- [ ] **Gibt der Greifer eine Rückmeldung?** Backenposition, Kraft, ein
+      digitaler Eingang „geschlossen“ oder eine NeuraPy-Funktion, die den
+      Ist-Zustand liest. Notieren, wie sie heißt und wie schnell sie kommt.
+      Hintergrund: Im State steht heute nur der **kommandierte** Zustand
+      (`NeuraRobot.gripper_command` setzt ihn sofort beim Befehl). Damit
+      unterscheidet die Policy „muss greifen“ von „hat gegriffen“, aber nicht
+      „schließt noch“ von „ist zu, weiterfahren“. Eine gemessene Rückmeldung
+      würde genau das liefern — ist eine **Schema-Änderung** und muss vor
+      Termin 2 entschieden sein.
 
 ## 5. Kameras
 
 ```powershell
 python tools/check_cameras.py --list
+python tools/check_daheng_api.py --open
 python tools/check_cameras.py --only wrist
 python tools/check_cameras.py
 ```
 
+- [ ] `check_daheng_api.py --open`: jedes Feature vorhanden und schreibbar
+      (bekannt: Binning ist an der VEN-161 nicht schreibbar, Config setzt es
+      nicht). Sonst den Namen im Adapter korrigieren, bevor aufgezeichnet wird.
 - [ ] Wrist: Rate, Frame-Alter < 30 ms, Seriennummer passt.
 - [ ] Belichtung fest (`exposure_us`), Weißabgleich einmal automatisch, dann die
       Ratios in `config.WRIST_CAMERA.white_balance_ratios` pinnen.
@@ -128,6 +175,9 @@ python tools/plot_episode.py "data_vm/<Datum>/wrist_real"
 
 - [ ] Punkte der Ablaufdatei am Pendant teachen (`CLEAR_FOV`, `APPROACH_01`,
       `PRE_GRASP`, `PICK`, `PRE_PLACE`, optional `APPROACH_02`).
+      `PRE_GRASP` **senkrecht über** `PICK`, mindestens 2 cm, besser 5–10 cm
+      (VM: 14,5 cm) — sonst kappt der Planer das 10-mm-Überschleifen auf die
+      halbe Abstiegsstrecke.
 - [ ] Referenzfahrt ohne Rauschen, eine Episode, Override wie festgelegt:
       `--noise-scale 0 --episodes 1`, dann `plot_episode.py` ansehen.
 - [ ] Dann mit Rauschen (Faktor je Episode 0–1), einige Episoden.
@@ -144,4 +194,5 @@ python tools/plot_episode.py "data_vm/<Datum>/wrist_real"
 | Szenenkamera + Rektifizierung im Schema | `config.SCENE_CAMERA`, Recorder | Schritt 5/6 |
 | Achsgrenzen/Filtergrenzen | `JOINT_LIMITS_RAD`, `SERVO_MAX_*` | Schritt 1/3 |
 | Zykluszeit als Vergleichsmetrik ja/nein | AP 5.1 | Team |
-| **Stillstand an Zwischenpunkten** (Deadlock, AP 2.6) | `trajectory.py` (Rampen), Ablaufdatei (Überschleifen), `POLICY_REPLAN_STEPS` | offen, siehe `Berichte/2026-09-17_Durchstich_Policy.pdf` |
+| **Stillstand an Zwischenpunkten** (Deadlock, AP 2.6) | Ablaufdatei (Überschleifen), Greifer-Dwell, ggf. Schema | **PRE_GRASP gelöst** (23.09.): 10 mm Überschleifen, Anfahrt bleibt senkrecht (Ecke um 0,4 mm verfehlt, ab 1,6 mm darunter exakt auf der Achse, VM-Punkte nachgerechnet). **Offen: PICK** — einziger verbleibender Halt ist der Greifer-Dwell. Kandidaten: gemessene Greiferrückmeldung als State (Schritt 4), Dwell kurz und konstant, Policy am Greifpunkt aufteilen (aus denselben Aufnahmen möglich). Vor Termin 2 in der VM gegenfahren. |
+| Greiferrückmeldung als State ja/nein | `dataset.py`, Adapter | Schritt 4 |
