@@ -4,9 +4,9 @@ CLAUDE.local.md
 __pycache__/
 *.pyc
 .pytest_cache/
-data_out/
-data_sim/
-data_vm/
+data_out*/
+data_sim*/
+data_vm*/
 checkpoints/
 snapshot_*.png
 waypoints*.json

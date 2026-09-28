@@ -13,6 +13,7 @@ Ausfuehren (aus dem Ordner "Behavior Cloning"):
 Abnahme der Adapter an der Hardware (AP 0.6) -- dieselben Tests, nur
 gegen die echten Geraete:
     python tests/run_all.py --camera=uvc    contract.test_camera_contract
+    python tests/run_all.py --camera=uvc --uvc-device=2 contract.test_camera_contract
     python tests/run_all.py --camera=daheng contract.test_camera_contract
     python tests/run_all.py --robot=neura   contract.test_robot_contract
     python tests/run_all.py --robot=neura --real-robot contract.test_robot_contract
@@ -34,6 +35,8 @@ from pathlib import Path
 import _paths  # noqa: F401
 
 import _fixtures
+
+from bc import config
 
 MODULES = [
     "test_clock",
@@ -124,6 +127,8 @@ def main(argv=None):
         if arg.startswith("--robot=") or arg.startswith("--camera="):
             key, value = arg[2:].split("=", 1)
             BACKENDS[key] = value
+        elif arg.startswith("--uvc-device="):
+            _fixtures.UVC_DEVICE["device"] = int(arg.split("=", 1)[1])
         elif arg == "--real-robot":
             _fixtures.ALLOW_REAL["robot"] = True
         elif arg.startswith("-"):
@@ -135,6 +140,15 @@ def main(argv=None):
     for key, value in BACKENDS.items():
         if value != "sim":
             print("!! %s-Backend: %s (HARDWARE)" % (key, value))
+    if BACKENDS["camera"] == "uvc":
+        # Index mit ausgeben: sonst bleibt unbemerkt, wenn die Suite gegen
+        # die eingebaute statt der angeschlossenen Kamera laeuft.
+        device = _fixtures.UVC_DEVICE["device"]
+        print(
+            "!! UVC-Index: %s"
+            % ("%d (--uvc-device)" % device if device is not None
+               else "%s (config.SCENE_CAMERA)" % (config.SCENE_CAMERA.device,))
+        )
     if _fixtures.ALLOW_REAL["robot"]:
         if BACKENDS["robot"] != "neura":
             raise SystemExit("--real-robot nur zusammen mit --robot=neura")

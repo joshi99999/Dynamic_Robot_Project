@@ -47,6 +47,13 @@ from ..ports import (
 )
 from ..servo import ServoGuard
 
+#: Wiederholungen fuer ``init_program`` und Pause dazwischen (siehe
+#: :meth:`NeuraRobot._init_program`). 6 x 1.0 s deckt die in der VM
+#: beobachtete Nachlaufzeit von ``stop()`` mit Reserve ab und verzoegert
+#: den Normalfall nicht, weil der erste Versuch dort sofort greift.
+INIT_PROGRAM_RETRIES = 6
+INIT_PROGRAM_RETRY_S = 1.0
+
 #: ``servo_j`` liefert einen Warn-/Fehlercode. Im Doku-Beispiel
 #: (``r.get_doc('servo_j')``) laeuft der Strom weiter, solange der Code < 3
 #: ist, sonst gilt das Servo als im Fehler.
@@ -156,7 +163,7 @@ class NeuraRobot(RobotPort, PointSourcePort):
         if (power_on or ensure_automatic) and not self._motion_allowed:
             raise MotionRefused(self._refusal_message("power_on"))
 
-        self._call("init_program")
+        self._init_program()
         if power_on:
             self._call("power_on")
         if ensure_automatic and self._call_safe("is_robot_in_teach_mode"):
@@ -241,6 +248,41 @@ class NeuraRobot(RobotPort, PointSourcePort):
             return self._call(name, *args, **kwargs)
         except Exception:
             return None
+
+    def _init_program(self):
+        """``init_program`` mit Wiederholung -- ``stop()`` wirkt verzoegert.
+
+        Befund VM 2026-09-28: Direkt nach einem ``stop()`` (Ende der
+        vorigen Aufzeichnung, ``close()`` jedes Contract-Tests) lehnt der
+        Controller ``init_program`` ab; Sekunden spaeter greift derselbe
+        Aufruf. Die Meldung lautet dabei "Unable to switch to play mode.
+        Check if robot in automatic mode" und zeigt damit auf den
+        Betriebsmodus -- der Modus war aber nachweislich Automatik
+        (``is_robot_in_teach_mode() == False``, ``get_diagnostics()``
+        ohne Fehler, ``program_status == 'RUNNING'``). Die Meldung ist
+        irrefuehrend, der eigentliche Grund ist das noch nicht beendete
+        Programm.
+
+        Ohne Wiederholung schlug in der Contract-Suite je Lauf genau ein
+        beliebiger Test fehl (wandernd, 2026-09-24 und 2026-09-28) und
+        ``apps/record.py`` brach vor der ersten Episode ab.
+        """
+        letzte = None
+        for versuch in range(INIT_PROGRAM_RETRIES):
+            try:
+                return self._call("init_program")
+            except Exception as exc:
+                letzte = exc
+                if versuch + 1 < INIT_PROGRAM_RETRIES:
+                    time.sleep(INIT_PROGRAM_RETRY_S)
+        raise RobotError(
+            "init_program() auch nach %d Versuchen in %.1f s abgelehnt: %s. "
+            "Die Meldung nennt den Betriebsmodus, gemeint ist meist ein noch "
+            "laufendes Programm oder ein nicht quittierter Fehler -- "
+            "program_status() und get_diagnostics() pruefen, notfalls "
+            "reset_errors() bzw. reset_control()."
+            % (INIT_PROGRAM_RETRIES, INIT_PROGRAM_RETRIES * INIT_PROGRAM_RETRY_S, letzte)
+        )
 
     def list_methods(self):
         """Alle vom Controller angebotenen Funktionen (Diagnose)."""
@@ -555,9 +597,16 @@ class NeuraRobot(RobotPort, PointSourcePort):
         mehr an ("Motion cannot be executed! Try executing after running
         r.init_program()", VM 2026-09-17) -- deshalb hier neu initialisieren.
         Das bewegt nichts. Ob nach einem Stopp weitergefahren wird, entscheidet
-        der Aufrufer (an der Anlage: Bediener)."""
+        der Aufrufer (an der Anlage: Bediener).
+
+        Das Neu-Initialisieren laeuft ueber :meth:`_init_program` und wirft
+        bei endgueltigem Scheitern. Frueher stand hier ``_call_safe``, das
+        den Fehler verschluckte: Der Stopp galt dann als quittiert, waehrend
+        der Controller weiter jede Bewegung ablehnte -- an der Anlage der
+        Ablauf "Bediener quittiert, naechster Fahrbefehl geht ins Leere"
+        (AP 4.2)."""
         if self._stop_requested.is_set() and self._robot is not None:
-            self._call_safe("init_program")
+            self._init_program()
         self._stop_requested.clear()
 
 

@@ -3,6 +3,7 @@
     pytest                       # alles hardwarefrei (sim)
     pytest --robot=neura         # Contract-Tests gegen die Anlage
     pytest --camera=daheng       # Contract-Tests gegen die Daheng-Kamera
+    pytest --camera=uvc --uvc-device=2   # gegen eine bestimmte Webcam
 
 Die Contract-Suite ist die Abnahmeliste der Adapter: dieselben Tests, die
 heute gegen die Simulation laufen, werden am Hardwaretag unveraendert
@@ -18,6 +19,7 @@ import _fixtures
 def pytest_addoption(parser):
     parser.addoption("--robot", default="sim", choices=("sim", "neura"))
     parser.addoption("--camera", default="sim", choices=("sim", "uvc", "daheng"))
+    parser.addoption("--uvc-device", default=None, type=int)
 
 
 @pytest.fixture
@@ -31,6 +33,7 @@ def robot(request):
 @pytest.fixture
 def camera(request):
     kind = request.config.getoption("--camera")
+    _fixtures.UVC_DEVICE["device"] = request.config.getoption("--uvc-device")
     cam = _fixtures.make_camera(kind)
     yield cam
     if cam.is_open:

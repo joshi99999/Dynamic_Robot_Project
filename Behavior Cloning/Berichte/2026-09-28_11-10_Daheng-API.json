@@ -1,0 +1,201 @@
+{
+  "erzeugt": "2026-09-28T11:10:04",
+  "befunde": [
+    [
+      "ok",
+      "gxipy importiert"
+    ],
+    [
+      "ok",
+      "gx.DeviceManager (-)"
+    ],
+    [
+      "ok",
+      "gx.GxAutoEntry (CONTINUOUS, OFF, ONCE)"
+    ],
+    [
+      "ok",
+      "gx.GxFrameStatusList (SUCCESS)"
+    ],
+    [
+      "ok",
+      "gx.GxSwitchEntry (OFF, ON)"
+    ],
+    [
+      "ok",
+      "DeviceManager.open_device_by_index"
+    ],
+    [
+      "ok",
+      "DeviceManager.open_device_by_sn"
+    ],
+    [
+      "ok",
+      "DeviceManager.update_device_list"
+    ],
+    [
+      "ok",
+      "Geraet.close_device (in Device.py)"
+    ],
+    [
+      "ok",
+      "Geraet.data_stream (in Device.py)"
+    ],
+    [
+      "ok",
+      "Geraet.stream_off (in Device.py)"
+    ],
+    [
+      "ok",
+      "Geraet.stream_on (in Device.py)"
+    ],
+    [
+      "ok",
+      "Datenstrom.get_image (in DataStream.py)"
+    ],
+    [
+      "ok",
+      "Bild.convert (in ImageFormatConvert.py, ImageProc.py)"
+    ],
+    [
+      "ok",
+      "Bild.get_numpy_array (in Buffer.py, ImageProc.py)"
+    ],
+    [
+      "ok",
+      "Bild.get_status (in ImageProc.py)"
+    ],
+    [
+      "ok",
+      "AcquisitionFrameRate (in Device.py)"
+    ],
+    [
+      "ok",
+      "AcquisitionFrameRateMode (in Device.py)"
+    ],
+    [
+      "ok",
+      "BalanceRatio (in Device.py)"
+    ],
+    [
+      "ok",
+      "BalanceRatioSelector (in Device.py)"
+    ],
+    [
+      "ok",
+      "BalanceWhiteAuto (in Device.py)"
+    ],
+    [
+      "ok",
+      "BinningHorizontal (in Device.py)"
+    ],
+    [
+      "ok",
+      "BinningVertical (in Device.py)"
+    ],
+    [
+      "ok",
+      "ExposureAuto (in Device.py)"
+    ],
+    [
+      "ok",
+      "ExposureTime (in Device.py)"
+    ],
+    [
+      "ok",
+      "Gain (in Device.py, gxwrapper.py)"
+    ],
+    [
+      "ok",
+      "GainAuto (in Device.py)"
+    ],
+    [
+      "ok",
+      "Height (in Device.py, ImageFormatConvert.py, dxwrapper.py, gxwrapper.py)"
+    ],
+    [
+      "ok",
+      "HeightMax (in Device.py)"
+    ],
+    [
+      "ok",
+      "OffsetX (in Device.py, dxwrapper.py)"
+    ],
+    [
+      "ok",
+      "OffsetY (in Device.py)"
+    ],
+    [
+      "ok",
+      "TriggerMode (in Device.py)"
+    ],
+    [
+      "ok",
+      "Width (in Device.py, ImageFormatConvert.py, dxwrapper.py, gxwrapper.py)"
+    ],
+    [
+      "ok",
+      "WidthMax (in Device.py, dxwrapper.py)"
+    ]
+  ],
+  "gxipy": {
+    "pfad": "C:\\Program Files\\Daheng Imaging\\GalaxySDK\\Development\\Samples\\Python\\gxipy\\__init__.py",
+    "version": "2.0.2512.9261"
+  },
+  "adapter_namen": {
+    "module": {
+      "DeviceManager": [],
+      "GxSwitchEntry": [
+        "OFF",
+        "ON"
+      ],
+      "GxAutoEntry": [
+        "CONTINUOUS",
+        "OFF",
+        "ONCE"
+      ],
+      "GxFrameStatusList": [
+        "SUCCESS"
+      ]
+    },
+    "manager": [
+      "open_device_by_index",
+      "open_device_by_sn",
+      "update_device_list"
+    ],
+    "device": [
+      "close_device",
+      "data_stream",
+      "stream_off",
+      "stream_on"
+    ],
+    "features": [
+      "AcquisitionFrameRate",
+      "AcquisitionFrameRateMode",
+      "BalanceRatio",
+      "BalanceRatioSelector",
+      "BalanceWhiteAuto",
+      "BinningHorizontal",
+      "BinningVertical",
+      "ExposureAuto",
+      "ExposureTime",
+      "Gain",
+      "GainAuto",
+      "Height",
+      "HeightMax",
+      "OffsetX",
+      "OffsetY",
+      "TriggerMode",
+      "Width",
+      "WidthMax"
+    ],
+    "image": [
+      "convert",
+      "get_numpy_array",
+      "get_status"
+    ],
+    "stream": [
+      "get_image"
+    ]
+  }
+}

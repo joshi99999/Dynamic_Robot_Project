@@ -6,6 +6,8 @@ Die Contract-Tests laufen gegen JEDE Implementierung eines Ports --
 entscheidet, welche Implementierung geprueft wird.
 """
 
+from dataclasses import replace
+
 import _paths  # noqa: F401
 
 from bc import config
@@ -19,6 +21,16 @@ def make_clock(kind="sim"):
 #: Freigabe der REALEN Anlage fuer die Contract-Suite -- nur ueber
 #: ``run_all.py --robot=neura --real-robot`` (mit Bestaetigung) gesetzt.
 ALLOW_REAL = {"robot": False}
+
+#: OpenCV-Index der UVC-Kamera fuer die Contract-Suite, gesetzt ueber
+#: ``run_all.py --uvc-device=N`` bzw. ``pytest --uvc-device=N``.
+#: ``None`` = Index aus ``config.SCENE_CAMERA`` (0).
+#:
+#: Noetig, weil der Index NICHT stabil ist: er haengt am Rechner und am
+#: OpenCV-Backend. Ohne die Option testet die Suite auf einem Laptop die
+#: eingebaute Webcam statt der angeschlossenen Kamera -- und zwar
+#: unbemerkt, weil auch die eingebaute Bilder liefert.
+UVC_DEVICE = {"device": None}
 
 
 def make_robot(kind="sim", clock=None, **kwargs):
@@ -46,7 +58,10 @@ def make_camera(kind="sim", name="wrist", clock=None, **kwargs):
     if kind == "uvc":
         from bc.adapters.cam_uvc import UvcCamera
 
-        return UvcCamera(config.SCENE_CAMERA)
+        cfg = config.SCENE_CAMERA
+        if UVC_DEVICE["device"] is not None:
+            cfg = replace(cfg, device=UVC_DEVICE["device"])
+        return UvcCamera(cfg)
     if kind == "daheng":
         from bc.adapters.cam_daheng import DahengCamera
 
