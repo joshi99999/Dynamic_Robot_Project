@@ -12,6 +12,7 @@ Ausfuehren (aus dem Ordner "Behavior Cloning"):
     python tools/check_cameras.py                  # beide Kameras
     python tools/check_cameras.py --only scene     # nur eine Kamera
     python tools/check_cameras.py --only scene --device 1   # anderer Index
+    python tools/check_cameras.py --camera scene=uvc:1 --camera wrist=sim  # frei zuordnen
     python tools/check_cameras.py --no-display     # nur Ratenmessung
 
 Tasten im Fenster: q oder ESC beendet, s speichert einen Schnappschuss.
@@ -32,10 +33,10 @@ import _bootstrap  # noqa: F401
 import numpy as np
 
 from bc import capture, config
-from bc.adapters import open_camera
+from bc.adapters import apply_camera_specs, list_devices, open_camera
 
 
-def build_configs(only, backend=None, device=None):
+def build_configs(only, backend=None, device=None, specs=None):
     if backend == "sim":
         base = list(config.SIM_CAMERAS)
     elif backend == "uvc":
@@ -59,64 +60,42 @@ def build_configs(only, backend=None, device=None):
         if len(base) != 1:
             raise SystemExit("--device nur zusammen mit --only sinnvoll")
         base = [replace(base[0], device=device)]
+    if specs:
+        try:
+            base = apply_camera_specs(base, specs)
+        except ValueError as exc:
+            raise SystemExit("--camera: %s" % exc)
+        if only is not None:
+            base = [c for c in base if c.name == only]
     return base
 
 
-def list_devices():
+def print_devices():
     """Sucht nach angeschlossenen Kameras -- erster Schritt der Inbetriebnahme.
 
-    UVC: es gibt keine saubere Enumeration in OpenCV, daher werden die
-    Indizes 0..5 probeweise geoeffnet. Daheng: ueber das Galaxy SDK.
+    Die Suche selbst liegt in ``bc.adapters.list_devices``, damit Terminal
+    und Bedienoberflaeche dieselbe Liste sehen. Hier wird sie nur gedruckt.
+    Die Schluessel ("uvc:1") sind genau die, die ``--camera`` erwartet.
     """
-    print("== UVC / Webcams (OpenCV) ==")
-    try:
-        import cv2
-    except ImportError:
-        print("  opencv-python nicht installiert")
-        return
+    inventory = list_devices()
+    by_backend = {}
+    for dev in inventory["devices"]:
+        by_backend.setdefault(dev.backend, []).append(dev)
 
-    found_uvc = False
-    for index in range(6):
-        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-        if cap.isOpened():
-            ok, frame = cap.read()
-            shape = frame.shape if ok and frame is not None else None
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            print(
-                "  Index %d: %s, gemeldete FPS %.1f"
-                % (index, shape if shape else "geoeffnet, aber kein Bild", fps)
-            )
-            found_uvc = True
-        cap.release()
-    if not found_uvc:
-        print("  keine UVC-Kamera gefunden (Indizes 0-5 geprueft)")
+    for backend, title in (("sim", "Platzhalter"),
+                           ("uvc", "UVC / Webcams (OpenCV)"),
+                           ("daheng", "Daheng / USB3-Vision (gxipy)")):
+        print("\n== %s ==" % title)
+        for dev in by_backend.get(backend, []):
+            mark = " " if dev.available else "!"
+            print("  %s %-24s %-26s %s" % (mark, dev.key, dev.label, dev.detail))
+        note = inventory["notes"].get(backend)
+        if note:
+            for line in note.splitlines():
+                print("  %s" % line)
 
-    print("\n== Daheng / USB3-Vision (gxipy) ==")
-    from bc.adapters.cam_daheng import import_gxipy
-    from bc.ports import CameraError
-
-    try:
-        gx = import_gxipy()
-    except CameraError as exc:
-        print("  %s" % exc)
-        return
-    print("  gxipy: %s" % gx.__file__)
-
-    manager = gx.DeviceManager()
-    count, info_list = manager.update_device_list()
-    if count == 0:
-        print("  keine Daheng-Kamera gefunden (USB3-Kabel/Treiber pruefen,")
-        print("  Gegenprobe mit dem Galaxy Viewer)")
-        return
-    for info in info_list:
-        print(
-            "  %s  SN=%s  Vendor=%s"
-            % (
-                info.get("model_name", "?"),
-                info.get("sn", "?"),
-                info.get("vendor_name", "?"),
-            )
-        )
+    print("\nZuordnen mit --camera, z. B.:")
+    print("  python apps/record.py --sim --camera wrist=uvc:1 --camera scene=sim")
 
 
 def side_by_side(frames, height=480):
@@ -156,17 +135,23 @@ def main():
         "--device", default=None,
         help="Geraet ueberschreiben (UVC: Index, Daheng: Seriennummer)",
     )
+    parser.add_argument(
+        "--camera", action="append", default=None, metavar="NAME=BACKEND[:GERAET]",
+        help="Kameraplatz frei besetzen, z. B. 'scene=uvc:1' (wie apps/record.py); "
+             "mehrfach angebbar",
+    )
     args = parser.parse_args()
 
     if args.list:
-        list_devices()
+        print_devices()
         return
 
     device = args.device
     if device is not None and device.isdigit():
         device = int(device)
 
-    configs = build_configs(args.only, backend=args.backend, device=device)
+    configs = build_configs(args.only, backend=args.backend, device=device,
+                            specs=args.camera)
     print("Oeffne Kameras: %s" % ", ".join(c.name for c in configs))
     for cfg in configs:
         size = (

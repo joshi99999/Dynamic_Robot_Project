@@ -36,11 +36,12 @@ import _bootstrap  # noqa: F401
 
 import numpy as np
 
-from bc import config, metrics
+from bc import config, metrics, preview
 from bc.adapters import (
     CAMERA_MODES,
     camera_configs,
     open_robot,
+    parse_camera_spec,
     resolve_camera_mode,
     start_cameras,
 )
@@ -56,6 +57,91 @@ from bc.trajectory import Waypoint, build_ideal_trajectory
 
 #: Wortlaut, der fuer --real-robot eingetippt werden muss.
 REAL_ROBOT_CONFIRMATION = "ANLAGE"
+
+
+#: Zeile, mit der record.py nach der Bewertung einer Episode fragt. Die
+#: Bedienoberflaeche erkennt sie daran und stellt die Rueckfrage selbst
+#: (gui/recording.LABEL_PROMPT). Im Terminal ist es eine gewoehnliche Frage.
+LABEL_PROMPT = "BEWERTUNG"
+#: Erlaubte Antworten auf stdin -> (success, verworfen)
+LABEL_ANSWERS = {
+    "e": (True, False),    # erfolgreich
+    "f": (False, False),   # fehlgeschlagen, aber behalten (markiert)
+    "v": (None, True),     # verwerfen
+}
+
+
+def ask_label(episode_index, steps):
+    """Erfolgs-Label und Verwerfen abfragen (AP 5.2, AP 1.2).
+
+    Rueckgabe ``(success, discard)``. Ohne Eingabe (geschlossenes stdin)
+    bleibt die Episode UNBEWERTET und wird behalten -- nichts wird
+    stillschweigend weggeworfen, und ``export.py --require-success`` laesst
+    sie dann spaeter bewusst aussen vor.
+    """
+    # Die Frage als VOLLSTAENDIGE Zeile ausgeben, nicht als input()-Prompt:
+    # Die Bedienoberflaeche liest die Ausgabe zeilenweise mit, und ein
+    # Prompt ohne Zeilenumbruch kaeme dort nie an.
+    print("%s Episode %d (%d Schritte) -- [e]rfolgreich, [f]ehlgeschlagen, "
+          "[v]erwerfen" % (LABEL_PROMPT, episode_index, steps))
+    # Ohne Prompt-Text: Ein Prompt ohne Zeilenumbruch bleibt im Puffer
+    # haengen und klebt an der NAECHSTEN Ausgabezeile -- die Oberflaeche
+    # las dann "> Episode 0 -> ep_00000: ..." und erkannte die Episode
+    # nicht mehr. Die Frage steht ohnehin schon in der Zeile darueber.
+    answer = ask("", "").strip().lower()[:1]
+    if answer not in LABEL_ANSWERS:
+        if answer:
+            print("   '%s' nicht verstanden -- Episode bleibt unbewertet." % answer)
+        return None, False
+    return LABEL_ANSWERS[answer]
+
+
+def ask(prompt, default=""):
+    """Rueckfrage im Terminal; ohne stdin die sichere Antwort.
+
+    Aus der Bedienoberflaeche laufen diese Skripte als Unterprozess mit
+    geschlossenem stdin. ``input()`` wirft dort EOFError -- und zwar unter
+    Umstaenden mitten in einem Lauf, der den Roboter bewegt. Eine
+    unbeantwortete Sicherheitsfrage ist ein Nein, kein Absturz.
+    """
+    try:
+        return input(prompt)
+    except EOFError:
+        # input() hat den Prompt schon geschrieben -- hier nur noch, was
+        # daraus wird.
+        print("[keine Eingabe moeglich -> '%s']" % default)
+        return default
+
+
+class EpisodeProgress(object):
+    """Fortschritt je Takt -- Zeilen fuer das Terminal, optional ein Livebild.
+
+    Wird dem Recorder als ``monitor`` uebergeben. Die Zeilen sind das, was
+    die Bedienoberflaeche mitliest; ohne ``--preview`` faellt hier nur eine
+    Zeile je Sekunde an.
+    """
+
+    #: Abstand der Fortschrittszeilen in Takten (15 Hz -> einmal je Sekunde).
+    EVERY = 15
+
+    def __init__(self, preview_writer=None):
+        self.preview = preview_writer
+        self.episode = 0
+        self.bad = 0
+
+    def start_episode(self, episode):
+        self.episode = episode
+        self.bad = 0
+
+    def __call__(self, i, n, frames, report):
+        if not report.ok:
+            self.bad += 1
+        if i % self.EVERY == 0 or i == n - 1:
+            print("  Takt %4d von %d  Versatz %3.0f ms  ausserhalb Budget %d"
+                  % (i, n, 1e3 * report.spread, self.bad))
+        if self.preview is not None:
+            self.preview.offer(
+                frames, "Episode %d  Takt %d/%d" % (self.episode, i, n))
 
 
 def demo_waypoints_sim(robot):
@@ -103,7 +189,7 @@ def waypoints_from_file(path):
 def confirm_real_robot():
     print("\n!! --real-robot: Die Freigabe gilt der REALEN ANLAGE.")
     print("   Not-Aus in Reichweite? Arbeitsraum frei? Override geprueft?")
-    answer = input("   Zum Fortfahren '%s' eintippen: " % REAL_ROBOT_CONFIRMATION)
+    answer = ask("   Zum Fortfahren '%s' eintippen: " % REAL_ROBOT_CONFIRMATION)
     if answer.strip() != REAL_ROBOT_CONFIRMATION:
         raise SystemExit("Abgebrochen -- reale Anlage nicht freigegeben.")
 
@@ -129,6 +215,26 @@ def parse_args():
         "--uvc-device", type=int, default=None,
         help="OpenCV-Index der Webcam bei --cameras wrist-uvc "
              "(Default config.WRIST_CAMERA_UVC_STANDIN; tools/check_cameras.py --list)",
+    )
+    parser.add_argument(
+        "--ask-label", action="store_true",
+        help="nach jeder Episode nach Erfolg/Verwerfen fragen (AP 5.2). Ohne "
+             "das bleibt die Episode unbewertet (ausser gegen den SimRobot)",
+    )
+    parser.add_argument(
+        "--preview", default=None, metavar="DATEI",
+        help="waehrend der Aufnahme das zuletzt aufgenommene Bild als JPEG hierhin "
+             "schreiben (fuer die Bedienoberflaeche). STANDARD AUS: kostet Zeit in "
+             "der 15-Hz-Schleife",
+    )
+    parser.add_argument(
+        "--preview-hz", type=float, default=None,
+        help="wie oft das Vorschaubild hoechstens geschrieben wird (Default %g)"
+             % preview.DEFAULT_RATE_HZ,
+    )
+    parser.add_argument(
+        "--camera", action="append", default=None, metavar="NAME=BACKEND[:GERAET]",
+        help="einzelnen Kameraplatz abweichend besetzen, z. B. 'scene=uvc:1' oder 'wrist=sim'; mehrfach angebbar. Ergaenzt --cameras, das den Ausgangspunkt setzt (Geraete auflisten: tools/check_cameras.py --list)",
     )
     parser.add_argument(
         "--real-robot", action="store_true",
@@ -206,7 +312,14 @@ def main():
 
     sequence = load_sequence(args.sequence) if args.sequence else None
 
-    cam_cfgs = camera_configs(camera_mode, uvc_device=args.uvc_device)
+    try:
+        cam_cfgs = camera_configs(camera_mode, uvc_device=args.uvc_device,
+                                  specs=args.camera)
+    except ValueError as exc:
+        raise SystemExit("--camera: %s" % exc)
+    # Der Modus sagt nur, WOMIT begonnen wird -- nach den Zuordnungen kann
+    # trotzdem ueberall ein Platzhalter stehen (oder eben nicht mehr).
+    use_sim_cameras = all(c.backend == "sim" for c in cam_cfgs)
     if not use_sim_cameras:
         # VOR jeder Hardware-Aktion: eine falsch konfigurierte Kamera faellt
         # im fertigen Datensatz nicht auf, deshalb hier hart nachfragen.
@@ -215,16 +328,17 @@ def main():
             print("\n!! KAMERA-KONFIGURATION UNBESTAETIGT:")
             for warning in warnings:
                 print("   - %s" % warning)
-            if input("Trotzdem aufzeichnen? [j/N] ").strip().lower() != "j":
+            if ask("Trotzdem aufzeichnen? [j/N] ", "n").strip().lower() != "j":
                 raise SystemExit("Abgebrochen.")
 
     if args.real_robot:
         if use_sim_robot:
             raise SystemExit("--real-robot ergibt mit dem SimRobot keinen Sinn.")
-        if camera_mode == "wrist-uvc":
+        webcams = [c.name for c in cam_cfgs if c.backend == "uvc"]
+        if camera_mode == "wrist-uvc" or "wrist" in webcams:
             raise SystemExit(
-                "--cameras wrist-uvc ist nur ein Test der Kamerakette (Webcam statt "
-                "Wrist-Kamera) -- an der Anlage 'wrist-real', 'real' oder 'sim' verwenden."
+                "Eine Webcam als Wrist-Kamera ist nur ein Test der Kamerakette "
+                "-- an der Anlage 'wrist-real', 'real' oder 'sim' verwenden."
             )
         if not args.block:
             raise SystemExit(
@@ -278,14 +392,28 @@ def main():
 
     try:
         captures, cam_cfgs = start_cameras(camera_mode, clock, seed=args.seed,
-                                           uvc_device=args.uvc_device)
+                                           uvc_device=args.uvc_device,
+                                           specs=args.camera)
     except Exception:
         robot.close()
         raise
 
     kin = Kinematics(robot)
     writer = DatasetWriter(args.out, camera_names=[c.name for c in cam_cfgs])
-    recorder = EpisodeRecorder(robot, captures, clock, servo_rate_hz=args.servo_rate)
+    # Livebild nur auf ausdruecklichen Wunsch (--preview): es kostet Zeit
+    # in der 15-Hz-Schleife, und die Datenqualitaet geht vor (bc/preview.py).
+    preview_writer = None
+    if args.preview:
+        preview_writer = preview.PreviewWriter(
+            args.preview, clock,
+            rate_hz=args.preview_hz or preview.DEFAULT_RATE_HZ)
+        print("Livebild nach %s (%g Hz)"
+              % (args.preview, args.preview_hz or preview.DEFAULT_RATE_HZ))
+
+    progress = EpisodeProgress(preview_writer)
+    recorder = EpisodeRecorder(robot, captures, clock,
+                               servo_rate_hz=args.servo_rate,
+                               monitor=progress)
     rng = np.random.default_rng(args.seed)
     print(
         "Lauf-Einstellungen: servo_j %.0f Hz, Rauschen %s x%.2f, Seed %d, Ablauf %s"
@@ -351,7 +479,17 @@ def main():
                 try:
                     resolved = resolve_sequence(sequence, robot)
                 except (SequenceError, KeyError) as exc:
-                    raise SystemExit("Ablauf nicht aufloesbar: %s" % exc)
+                    # Haeufigster Fall, und aus "vorhanden: " allein nicht
+                    # zu erraten: Die Punkte stehen in der Datenbank der
+                    # Control-Box und sind nur ueber den Neura-Adapter
+                    # lesbar. Der SimRobot haelt eine eigene, leere Liste.
+                    hint = ""
+                    if use_sim_robot and not robot.point_names():
+                        hint = ("\nDer SimRobot hat keine Punkte-Datenbank -- die "
+                                "Punkte liegen in der Control-Box. Entweder "
+                                "--robot neura verwenden oder ohne --sequence "
+                                "aufzeichnen (Demo-Wegpunkte um die Home-Pose).")
+                    raise SystemExit("Ablauf nicht aufloesbar: %s%s" % (exc, hint))
                 waypoints = resolved.waypoints
                 meta.update(
                     sequence=sequence.name,
@@ -408,6 +546,7 @@ def main():
 
             # 5./6. Aufzeichnen und ablegen
             log_start = len(getattr(robot, "gripper_log", []))
+            progress.start_episode(ep)
             episode = recorder.record(plan, metadata=meta)
             if getattr(robot, "gripper_log", None) is not None:
                 episode.metadata["gripper_log"] = [
@@ -415,6 +554,19 @@ def main():
                 ]
             if use_sim_robot and not episode.discarded:
                 episode.success = True  # Sim: Bahn vollstaendig == Erfolg
+            if args.ask_label and not episode.discarded:
+                # VOR dem Ablegen fragen: Verwerfen muss sich noch auf die
+                # Episode auswirken koennen, nicht erst auf die Datei.
+                success, discard = ask_label(ep, len(episode))
+                if discard:
+                    episode.discarded = True
+                    episode.discard_reason = "vom Bedienenden verworfen"
+                    # Kein Erfolgs-Label auf einer verworfenen Episode --
+                    # sonst taucht sie in der Bilanz als "ok" auf (der
+                    # SimRobot setzt es weiter oben automatisch).
+                    episode.success = None
+                else:
+                    episode.success = success
             idx = writer.append(episode)
             recorded += 1
             print(

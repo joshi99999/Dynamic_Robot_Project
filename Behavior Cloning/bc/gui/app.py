@@ -12,7 +12,7 @@ import argparse
 import logging
 import sys
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDockWidget,
                                QDoubleSpinBox, QGroupBox, QHBoxLayout, QLabel,
                                QMainWindow, QMessageBox, QPushButton, QTabWidget,
@@ -25,7 +25,7 @@ from .tab_operation import OperationTab
 from .tab_recording import RecordingTab
 from .tab_systemcheck import SystemcheckTab
 from .tab_training import TrainingTab
-from .widgets import BackendBanner, LogView, QtLogHandler
+from .widgets import BackendBanner, LogView, QtLogHandler, block_wheel
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class BackendBar(QWidget):
         super().__init__(parent)
         self.session = session
 
-        self.backend = QComboBox()
+        self.backend = block_wheel(QComboBox())
         for key in (session_module.BACKEND_SIM, session_module.BACKEND_NEURA):
             self.backend.addItem(session_module.BACKEND_LABELS[key], key)
         self.backend.setCurrentIndex(self.backend.findData(session.backend))
@@ -67,7 +67,8 @@ class BackendBar(QWidget):
             "nicht als Simulation antwortet. Software-Sperre, kein Not-Aus.")
         self.allow_real.toggled.connect(self._allow_real_toggled)
 
-        self.override = QDoubleSpinBox(minimum=0.05, maximum=1.0, singleStep=0.05, decimals=2)
+        self.override = block_wheel(QDoubleSpinBox(
+            minimum=0.05, maximum=1.0, singleStep=0.05, decimals=2))
         self.override.setValue(float(session.override))
         self.override.setToolTip("Globaler Geschwindigkeits-Override 0..1.")
         self.override.valueChanged.connect(session.set_override)
@@ -89,12 +90,23 @@ class BackendBar(QWidget):
 
         self.banner = BackendBanner()
         session.add_listener(self.banner.show_status)
+        # Der Override ist EINE Zahl fuer die ganze Sitzung (siehe
+        # session.set_override) -- aendert ihn ein Reiter, zieht die Leiste
+        # mit. Zwei Felder mit verschiedenen Werten waeren immer ein Fehler.
+        session.add_listener(self._sync_override)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(controls, 0)
         layout.addWidget(self.banner, 1)
         self._sync()
+
+    def _sync_override(self, _status=None):
+        if abs(self.override.value() - self.session.override) < 1e-12:
+            return
+        self.override.blockSignals(True)
+        self.override.setValue(float(self.session.override))
+        self.override.blockSignals(False)
 
     def _backend_changed(self):
         self.session.set_backend(self.backend.currentData())
@@ -175,7 +187,17 @@ class MainWindow(QMainWindow):
         dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable
                          | QDockWidget.DockWidgetFeature.DockWidgetFloatable)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
-        self.resizeDocks([dock], [150], Qt.Orientation.Vertical)
+        # Das Log ist ein Nachschlagewerk, kein Arbeitsbereich: klein halten,
+        # damit der Reiter darueber den Platz bekommt. Auf einem
+        # Laptopbildschirm fehlten sonst genau die 100 px, an denen sich
+        # Bildflaeche und Zeile darunter ins Gehege kamen.
+        self.log_view.setMinimumHeight(40)
+        self.log_dock = dock
+        # resizeDocks greift erst, wenn das Fenster seine Groesse hat.
+        QTimer.singleShot(0, self._shrink_log_dock)
+
+    def _shrink_log_dock(self):
+        self.resizeDocks([self.log_dock], [90], Qt.Orientation.Vertical)
 
         self.statusBar().showMessage(
             "Arbeitsverzeichnis: %s" % _bootstrap.WORKDIR)

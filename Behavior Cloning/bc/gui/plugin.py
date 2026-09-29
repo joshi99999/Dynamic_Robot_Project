@@ -49,7 +49,10 @@ class BcPlugin(object):
     def __init__(self, session, runner, tabs, container):
         self.session = session
         self.runner = runner
+        #: die vier Modus-Reiter (zum Herunterfahren)
         self.tabs = tabs
+        #: was im fremden Behaelter haengt -- nicht dasselbe, siehe attach_to
+        self.attached = list(tabs)
         self.container = container
         self._closed = False
 
@@ -66,12 +69,18 @@ class BcPlugin(object):
         self.session.close()
 
     def detach(self):
-        """Reiter wieder entfernen -- fuer Tests und zum Nachladen."""
-        for tab in self.tabs:
-            index = self.container.indexOf(tab)
+        """Reiter wieder entfernen -- fuer Tests und zum Nachladen.
+
+        Entfernt wird, was TATSAECHLICH eingehaengt wurde (``attached``).
+        Bei ``single_tab=True`` ist das EIN Reiter mit den Modi darin --
+        die Modus-Reiter selbst haengen dann gar nicht im fremden
+        Behaelter, und eine Schleife ueber sie fand nichts zu entfernen.
+        """
+        for widget in getattr(self, "attached", None) or self.tabs:
+            index = self.container.indexOf(widget)
             if index >= 0:
                 self.container.removeTab(index)
-            tab.setParent(None)
+            widget.setParent(None)
         self.shutdown()
 
 

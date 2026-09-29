@@ -136,7 +136,20 @@ class Session(object):
         self._notify()
 
     def set_override(self, value):
-        self.override = float(value)
+        """Geschwindigkeits-Override setzen -- EINE Zahl fuer die ganze Sitzung.
+
+        Der Override ist keine Einstellung eines Modus, sondern eine
+        Eigenschaft des Laufs: Er ist mitgelernt (AP 2.6), muss ueber alle
+        Episoden eines Datensatzes gleich sein (der Export erzwingt das) und
+        bei der Inferenz derselbe wie in der Aufzeichnung (apps/infer.py
+        erzwingt das). Zwei Felder mit verschiedenen Werten waeren also
+        immer ein Fehler -- deshalb halten alle Reiter denselben Wert hier.
+        """
+        value = float(value)
+        if abs(value - self.override) < 1e-12:
+            return
+        self.override = value
+        self._notify()
 
     # -- Verbindung ---------------------------------------------------------
 

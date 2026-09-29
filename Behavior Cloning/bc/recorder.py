@@ -24,12 +24,16 @@ die Episode als verworfen; zu viele Latenzbudget-Verletzungen ebenso.
 -- das Ende der Bahn ist der Uebergabepunkt ans Hauptprogramm.
 """
 
+import logging
+
 import numpy as np
 
 from . import config, dataset
 from .ports import RobotError
 from .servo import ServoInterpolator
 from .sync import Pacer, evaluate
+
+log = logging.getLogger(__name__)
 
 
 class EpisodeRecorder(object):
@@ -48,6 +52,7 @@ class EpisodeRecorder(object):
         max_skew=config.SYNC_MAX_SKEW_S,
         max_bad_ratio=config.SYNC_MAX_BAD_FRAME_RATIO,
         servo_rate_hz=config.SERVO_RATE_HZ,
+        monitor=None,
     ):
         self.robot = robot
         self.captures = list(captures)
@@ -56,6 +61,13 @@ class EpisodeRecorder(object):
         self.servo_rate_hz = servo_rate_hz
         self.max_skew = max_skew
         self.max_bad_ratio = max_bad_ratio
+        #: Optionaler Rueckruf je Takt: ``monitor(i, n, frames, report)``.
+        #: Gedacht fuer Fortschritt und Livebild in der Bedienoberflaeche
+        #: (bc/preview.py). STANDARD IST None -- die Aufzeichnungsschleife
+        #: hat 1/15 s je Takt, und jede zusaetzliche Arbeit darin gefaehrdet
+        #: genau die Datenqualitaet, um die es geht. Ein Fehler im Rueckruf
+        #: bricht die Aufnahme nie ab.
+        self.monitor = monitor
 
     def record(self, plan, metadata=None):
         """Fuehrt den Plan aus und liefert eine :class:`dataset.Episode`.
@@ -132,6 +144,14 @@ class EpisodeRecorder(object):
                 report = evaluate(t_target, timestamps, self.max_skew)
                 if not report.ok:
                     bad_frames += 1
+
+                if self.monitor is not None:
+                    try:
+                        self.monitor(i, n, frames, report)
+                    except Exception:
+                        log.exception("Monitor-Rueckruf gescheitert -- "
+                                      "Aufnahme laeuft weiter")
+                        self.monitor = None
 
                 # Observation: der ECHTE (verrauschte) Zustand
                 steps["observation.state"].append(

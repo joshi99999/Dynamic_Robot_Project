@@ -205,7 +205,7 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
 def confirm_real_robot():
     print("\n!! --real-robot: Die POLICY faehrt die REALE ANLAGE.")
     print("   Not-Aus in Reichweite? Arbeitsraum frei? Override geprueft?")
-    answer = input("   Zum Fortfahren '%s' eintippen: " % REAL_ROBOT_CONFIRMATION)
+    answer = ask("   Zum Fortfahren '%s' eintippen: " % REAL_ROBOT_CONFIRMATION)
     if answer.strip() != REAL_ROBOT_CONFIRMATION:
         raise SystemExit("Abgebrochen -- reale Anlage nicht freigegeben.")
 
@@ -240,6 +240,23 @@ def check_against_recording(info, args, robot_kind, cam_cfgs):
     return problems
 
 
+def ask(prompt, default=""):
+    """Rueckfrage im Terminal; ohne stdin die sichere Antwort.
+
+    Aus der Bedienoberflaeche laufen diese Skripte als Unterprozess mit
+    geschlossenem stdin. ``input()`` wirft dort EOFError -- und zwar unter
+    Umstaenden mitten in einem Lauf, der den Roboter bewegt. Eine
+    unbeantwortete Sicherheitsfrage ist ein Nein, kein Absturz.
+    """
+    try:
+        return input(prompt)
+    except EOFError:
+        # input() hat den Prompt schon geschrieben -- hier nur noch, was
+        # daraus wird.
+        print("[keine Eingabe moeglich -> '%s']" % default)
+        return default
+
+
 def resolve_checkpoint(path):
     path = Path(path)
     if (path / "policy" / "bc_policy.json").is_file():
@@ -260,6 +277,9 @@ def parse_args():
                         help="wie apps/record.py -- muss zur Aufzeichnung passen")
     parser.add_argument("--uvc-device", type=int, default=None,
                         help="OpenCV-Index der Webcam bei --cameras wrist-uvc (wie apps/record.py)")
+    parser.add_argument("--camera", action="append", default=None,
+                        metavar="NAME=BACKEND[:GERAET]",
+                        help="einzelnen Kameraplatz abweichend besetzen, z. B. 'scene=uvc:1' oder 'wrist=sim'; mehrfach angebbar. Ergaenzt --cameras, das den Ausgangspunkt setzt (Geraete auflisten: tools/check_cameras.py --list)")
     parser.add_argument("--real-robot", action="store_true")
     parser.add_argument("--override", type=float, default=None,
                         help="Neura-Override; Default und Pflichtwert: der der Aufzeichnung")
@@ -297,8 +317,12 @@ def main():
     robot_kind = args.robot or ("sim" if args.sim else "neura")
     use_sim_robot = robot_kind == "sim"
     camera_mode = resolve_camera_mode(args.cameras, use_sim_robot)
-    use_sim_cameras = camera_mode == "sim"
-    cam_cfgs = camera_configs(camera_mode, uvc_device=args.uvc_device)
+    try:
+        cam_cfgs = camera_configs(camera_mode, uvc_device=args.uvc_device,
+                                  specs=args.camera)
+    except ValueError as exc:
+        raise SystemExit("--camera: %s" % exc)
+    use_sim_cameras = all(c.backend == "sim" for c in cam_cfgs)
 
     info, policy = None, None
     if args.hold:
@@ -330,7 +354,7 @@ def main():
             print("\n!! KAMERA-KONFIGURATION UNBESTAETIGT:")
             for warning in warnings:
                 print("   - %s" % warning)
-            if input("Trotzdem fahren? [j/N] ").strip().lower() != "j":
+            if ask("Trotzdem fahren? [j/N] ", "n").strip().lower() != "j":
                 raise SystemExit("Abgebrochen.")
 
     if policy is None:
@@ -376,7 +400,8 @@ def main():
 
     try:
         captures, cam_cfgs = start_cameras(camera_mode, clock, seed=args.seed,
-                                           uvc_device=args.uvc_device)
+                                           uvc_device=args.uvc_device,
+                                           specs=args.camera)
     except Exception:
         robot.close()
         raise
@@ -416,7 +441,7 @@ def main():
         for ep in range(args.episodes):
             if robot.stop_requested and getattr(robot, "in_simulation", True) is not True:
                 # An der Anlage nach einem Stopp nie automatisch weiterfahren.
-                answer = input("Fahrt %d wurde gestoppt. Arbeitsraum pruefen -- naechste Fahrt? [j/N] "
+                answer = ask("Fahrt %d wurde gestoppt. Arbeitsraum pruefen -- naechste Fahrt? [j/N] "
                                % (ep - 1))
                 if answer.strip().lower() != "j":
                     print("Beendet nach Stopp.")

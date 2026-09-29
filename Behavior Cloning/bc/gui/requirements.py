@@ -13,8 +13,11 @@ fehlende Abhaengigkeit ist ein Befund, kein Absturz.
 """
 
 import importlib
+import os
 import shutil
 import socket
+import sys
+from pathlib import Path
 
 #: Schweregrad einer Voraussetzung.
 #:   REQUIRED  ohne das geht der Modus gar nicht
@@ -134,10 +137,40 @@ def cuda_probe():
     return probe
 
 
+def interpreter_tool_dirs():
+    """Ordner neben dem Interpreter, in denen mitgelieferte Programme liegen.
+
+    In der Projektumgebung (``E:\\Enviroments\\bc_env``) liegt ``ffmpeg.exe``
+    unter ``Library\\bin`` -- im PATH steht es aber nur, wenn die Umgebung
+    aktiviert wurde. Wird die GUI direkt ueber ``python.exe -m bc.gui``
+    gestartet, ist sie das nicht. ``shutil.which`` allein wuerde dann
+    "fehlt" melden, obwohl das Programm daliegt; die Unterprozesse haetten
+    dasselbe Problem (siehe runner.ProcessRunner).
+    """
+    base = Path(sys.executable).resolve().parent
+    return [d for d in (base, base / "Library" / "bin", base / "Scripts",
+                        base / "bin") if d.is_dir()]
+
+
+def find_tool(name):
+    """Programm im PATH oder neben dem Interpreter suchen. Liefert den Pfad oder None."""
+    found = shutil.which(name)
+    if found:
+        return found
+    extra = os.pathsep.join(str(d) for d in interpreter_tool_dirs())
+    return shutil.which(name, path=extra) if extra else None
+
+
 def ffmpeg_probe():
     def probe():
-        path = shutil.which("ffmpeg")
-        return bool(path), path or "nicht im PATH"
+        path = find_tool("ffmpeg")
+        if not path:
+            return False, "weder im PATH noch neben dem Interpreter"
+        if not shutil.which("ffmpeg"):
+            # Da, aber nur weil wir daneben nachgesehen haben. Die
+            # Unterprozesse bekommen den Ordner ueber ProcessRunner dazu.
+            return True, "%s (nicht im PATH -- wird den Unterprozessen ergaenzt)" % path
+        return True, path
 
     return probe
 
@@ -188,14 +221,27 @@ def systemcheck_requirements():
 
 
 def recording_requirements():
+    """Alles, was IRGENDEINE Aufnahme brauchen koennte -- nichts davon immer.
+
+    Bis 2026-09-29 waren ``opencv`` und ``neurapy`` hier REQUIRED. Das war
+    falsch: Eine Aufnahme gegen den SimRobot mit Platzhalterbildern braucht
+    weder das eine noch das andere, bekam aber ein rotes Kreuz und eine
+    Sperre. Was ein konkreter Lauf wirklich braucht, haengt am Backend und
+    an der Kamerazuordnung -- der Reiter fragt die Schluessel deshalb erst
+    beim Start ab (``gui.cameras.required_backend_keys``, ModeTab.
+    ensure_requirements). Diese Liste ist nur noch die Anzeige: was ist da,
+    was nicht.
+    """
     return [
-        _req("opencv", "OpenCV", REQUIRED, module_probe("cv2"),
-             "OpenCV (cv2) fuer Bildannahme und Skalierung"),
-        _req("neurapy", "neurapy", REQUIRED, module_probe("neurapy"),
-             _NEURAPY_HINT + " -- ohne das gibt es kein Roboter-Backend"),
+        _req("opencv", "OpenCV", OPTIONAL, module_probe("cv2"),
+             "OpenCV (cv2) -- fuer jede echte Kamera; mit Platzhalterbildern "
+             "nicht noetig"),
+        _req("neurapy", "neurapy", OPTIONAL, module_probe("neurapy"),
+             _NEURAPY_HINT + " -- nur fuer die Neura-Steuerung; gegen den "
+             "SimRobot nicht noetig"),
         _req("gxipy", "Daheng SDK (gxipy)", OPTIONAL, module_probe("gxipy"),
-             "gxipy (Galaxy SDK) fuer die Wrist-Kamera -- ohne das bleiben "
-             "Sim-Bilder und die UVC-Webcam als Ersatz"),
+             "gxipy (Galaxy SDK) -- nur, wenn einem Platz eine Daheng-Kamera "
+             "zugewiesen ist; Platzhalter und Webcam gehen ohne"),
     ]
 
 
@@ -213,16 +259,33 @@ def training_requirements():
 
 
 def operation_requirements():
+    """Ohne torch und lerobot gibt es keine Policy -- alles andere haengt am Lauf.
+
+    ``cuda`` ist seit 2026-09-29 OPTIONAL statt REQUIRED: Auf der CPU
+    braucht eine Vorhersage 384 ms und reisst den 15-Hz-Takt (gemessen
+    2026-09-23) -- eine Fahrt in der Simulation zum Nachsehen, was die
+    Policy tut, ist damit aber immer noch moeglich. Der Reiter fragt vor dem
+    Start nach, statt es zu verbieten (Festlegung Anwender: benennen statt
+    verstecken).
+    """
     return [
         _req("torch", "PyTorch", REQUIRED, module_probe("torch"),
              "PyTorch zum Laden des Modells"),
-        _req("cuda", "CUDA-Geraet", REQUIRED, cuda_probe(),
+        _req("cuda", "CUDA-Geraet", OPTIONAL, cuda_probe(),
              "eine CUDA-GPU -- auf der CPU braucht eine Vorhersage 384 ms und "
-             "reisst den 15-Hz-Takt (gemessen 2026-09-23)"),
+             "reisst den 15-Hz-Takt (gemessen 2026-09-23). Ohne GPU nur zum "
+             "Nachsehen in der Simulation, nicht an der Anlage"),
         _req("lerobot", "lerobot", REQUIRED, module_probe("lerobot"),
              "lerobot 0.6.1 -- das Modell wird in diesem Format geladen"),
-        _req("neurapy", "neurapy", REQUIRED, module_probe("neurapy"),
-             _NEURAPY_HINT + " fuer die Roboterverbindung"),
+        _req("neurapy", "neurapy", OPTIONAL, module_probe("neurapy"),
+             _NEURAPY_HINT + " -- nur fuer die Neura-Steuerung; gegen den "
+             "SimRobot nicht noetig"),
+        _req("opencv", "OpenCV", OPTIONAL, module_probe("cv2"),
+             "OpenCV (cv2) -- fuer jede echte Kamera; mit Platzhalterbildern "
+             "nicht noetig"),
+        _req("gxipy", "Daheng SDK (gxipy)", OPTIONAL, module_probe("gxipy"),
+             "gxipy (Galaxy SDK) -- nur, wenn einem Platz eine Daheng-Kamera "
+             "zugewiesen ist"),
     ]
 
 

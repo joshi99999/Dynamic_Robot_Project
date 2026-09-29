@@ -12,3 +12,4 @@ snapshot_*.png
 waypoints*.json
 datasets/
 rollouts/
+sequences/arbeitskopien/

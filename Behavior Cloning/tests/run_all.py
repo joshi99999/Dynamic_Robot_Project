@@ -58,6 +58,7 @@ MODULES = [
     "test_layering",
     "test_apps",
     "test_gui",
+    "test_camera_assignment",
     "test_daheng_api",
     "contract.test_robot_contract",
     "contract.test_camera_contract",

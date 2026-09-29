@@ -9,11 +9,13 @@ absichtlich dieselben, damit die Einbindung als Reiter nicht auffaellt.
 
 import logging
 
-from PySide6.QtCore import QObject, Qt, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, Qt, Signal, Slot
 from PySide6.QtGui import QFont, QImage, QPixmap
-from PySide6.QtWidgets import (QFrame, QGroupBox, QHBoxLayout, QLabel, QPlainTextEdit,
+from PySide6.QtWidgets import (QComboBox, QFormLayout, QFrame, QGroupBox,
+                               QHBoxLayout, QLabel, QPlainTextEdit, QPushButton,
                                QSizePolicy, QVBoxLayout)
 
+from . import cameras as cameras_module
 from . import requirements as requirements_module
 
 log = logging.getLogger(__name__)
@@ -213,3 +215,213 @@ class QtLogHandler(logging.Handler):
             self.emitter.message.emit(self.format(record).split("\n")[0], record.levelno)
         except RuntimeError:
             pass                                     # Fenster schon zu
+
+
+class CameraAssignmentView(QGroupBox):
+    """Welches Geraet liegt auf welchem Platz -- gemeinsam fuer Aufnahme und Betrieb.
+
+    Die Frage am Labortag ist nicht "welcher Kameramodus?", sondern "was
+    haengt auf *wrist*, was auf *scene*?". Genau so steht es hier. Der
+    Platzhalter ("Simulation") steht immer zur Auswahl, auch wenn Hardware
+    da ist -- zum Testen der Kette ohne Kamera ist das der kuerzeste Weg
+    (AP 0.5, Wunsch Anwender 2026-09-29).
+
+    Die Suche oeffnet UVC-Indizes probeweise und dauert; sie laeuft deshalb
+    im "io"-Pool des TaskRunner und nicht im GUI-Thread.
+    """
+
+    changed = Signal()
+
+    def __init__(self, runner, parent=None):
+        super().__init__("Zuordnung", parent)
+        self.runner = runner
+        self.inventory = cameras_module.Inventory()
+        self._boxes = {}
+        self._searching = False
+
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        for slot in cameras_module.SLOTS:
+            box = QComboBox()
+            box.setToolTip(cameras_module.SLOT_HINTS.get(slot, ""))
+            box.currentIndexChanged.connect(self._on_changed)
+            self._boxes[slot] = box
+            form.addRow(cameras_module.SLOT_LABELS.get(slot, slot), box)
+        layout.addLayout(form)
+
+        row = QHBoxLayout()
+        self.button = QPushButton("Geräte suchen")
+        self.button.setToolTip(
+            "Sucht Webcams (OpenCV-Indizes) und Daheng-Kameras (Galaxy SDK). "
+            "Dauert einen Moment, weil jeder Index probeweise geöffnet wird.")
+        self.button.clicked.connect(self.search)
+        row.addWidget(self.button)
+        row.addStretch(1)
+        layout.addLayout(row)
+
+        self.notes = QLabel("")
+        self.notes.setWordWrap(True)
+        self.notes.setStyleSheet("color:%s" % NEUTRAL)
+        layout.addWidget(self.notes)
+
+        self._fill(cameras_module.default_assignment(self.inventory))
+
+    # -- Suche --------------------------------------------------------------
+
+    def refresh(self, backend_is_sim_robot=True):
+        """Beim Reiterwechsel: nichts neu suchen, nur die Vorbelegung setzen.
+
+        Neu gesucht wird nur auf Knopfdruck -- ein Reiterwechsel darf nicht
+        jedes Mal sechs Kameraindizes aufmachen.
+        """
+        if not any(box.count() for box in self._boxes.values()):
+            self._fill(cameras_module.default_assignment(
+                self.inventory, backend_is_sim_robot))
+
+    def search(self):
+        if self._searching:
+            return
+        self._searching = True
+        self.button.setEnabled(False)
+        self.button.setText("suche …")
+        self.runner.submit(
+            cameras_module.discover,
+            on_done=self._on_found,
+            on_error=self._on_search_failed,
+            pool="io")
+
+    def _on_found(self, inventory):
+        self._searching = False
+        self.button.setEnabled(True)
+        self.button.setText("Geräte suchen")
+        self.inventory = inventory
+        keep = self.assignment()
+        self._fill(keep)
+        lines = inventory.note_lines()
+        self.notes.setText("\n".join(lines) if lines else
+                           "%d Quelle(n) gefunden." % len(inventory.devices))
+
+    def _on_search_failed(self, error):
+        self._searching = False
+        self.button.setEnabled(True)
+        self.button.setText("Geräte suchen")
+        self.notes.setText("Suche gescheitert: %s" % error)
+        log.error("Geraetesuche gescheitert: %s", error)
+
+    # -- Zuordnung ----------------------------------------------------------
+
+    def _fill(self, assignment):
+        for slot, box in self._boxes.items():
+            wanted = assignment.get(slot)
+            box.blockSignals(True)
+            box.clear()
+            for device in self.inventory.for_slot(slot):
+                label = device.label
+                if device.detail:
+                    label += "  —  " + device.detail
+                if not device.available:
+                    label += "   [liefert kein Bild]"
+                box.addItem(label, device.key)
+            if wanted is not None and box.findData(wanted) < 0:
+                # Zugewiesen, aber nicht gefunden: nicht stillschweigend
+                # wegwerfen -- am Labortag ist das die Information, dass die
+                # Kamera nicht (mehr) da ist.
+                box.addItem("%s  —  nicht gefunden" % wanted, wanted)
+            index = box.findData(wanted)
+            box.setCurrentIndex(index if index >= 0 else 0)
+            box.blockSignals(False)
+        self._on_changed()
+
+    def assignment(self):
+        """Aktuelle Zuordnung als ``{Platz: Geraeteschluessel}``."""
+        return dict((slot, box.currentData())
+                    for slot, box in self._boxes.items()
+                    if box.currentData() is not None)
+
+    def set_assignment(self, assignment):
+        self._fill(assignment)
+
+    def _on_changed(self):
+        self.changed.emit()
+
+
+def find_data(combo, value):
+    """Index des Eintrags mit diesem Nutzdatenwert, oder -1.
+
+    ``QComboBox.findData`` vergleicht wertgleiche Strings richtig, aber
+    stumpf -- und fast alle Werte hier sind PFADE. ``datasets/vm`` und
+    ``datasets\vm`` sind derselbe Ordner, aber nicht derselbe String:
+    Die Liste kommt aus ``Path`` (unter Windows mit Backslash), der
+    gesuchte Wert oft aus einem Eingabefeld, in das jemand Schraegstriche
+    getippt hat. Aufgefallen beim Auswaehlen eines gerade exportierten
+    Datensatzes -- der Eintrag war da, wurde aber nicht markiert.
+
+    ``None`` trifft den Eintrag "keiner", falls es ihn gibt.
+    """
+    if value is None:
+        return 0 if combo.count() and combo.itemData(0) is None else -1
+    wanted = str(value)
+    wanted_path = _as_path(wanted)
+    for index in range(combo.count()):
+        data = combo.itemData(index)
+        if data is None:
+            continue
+        text = str(data)
+        if text == wanted:
+            return index
+        if wanted_path is not None and _as_path(text) == wanted_path:
+            return index
+    return -1
+
+
+def _as_path(text):
+    """Vergleichbare Pfadform, oder None, wenn es kein Pfad ist."""
+    from pathlib import Path
+
+    try:
+        return Path(text).as_posix().rstrip("/").lower()
+    except (TypeError, ValueError):
+        return None
+
+
+def select_data(combo, value):
+    """Eintrag mit diesem Wert auswaehlen. Liefert True, wenn es ihn gab."""
+    index = find_data(combo, value)
+    if index >= 0:
+        combo.setCurrentIndex(index)
+        return True
+    return False
+
+
+# -- Eingabefelder, die beim Scrollen nichts verstellen --------------------
+
+def block_wheel(widget):
+    """Mausrad-Ereignisse an das Elternwidget durchreichen.
+
+    Qt aendert den Wert eines Drehfelds oder Auswahlfelds, sobald das
+    Mausrad darueber steht -- auch wenn man eigentlich nur die Seite
+    scrollen wollte. In einem Bedienfeld mit Bildlauf ist das eine
+    Fehlerquelle: Man scrollt vorbei und hat unbemerkt die Episodenzahl
+    oder den Override verstellt (Anwender, 2026-09-29).
+
+    Das Rad wirkt hier nur noch, wenn das Feld den Tastaturfokus hat --
+    dann ist es eine bewusste Eingabe. Sonst geht das Ereignis an den
+    Bildlauf darueber.
+    """
+    widget.installEventFilter(_WHEEL_GUARD)
+    # Ohne StrongFocus bekaeme das Feld den Fokus schon beim Ueberfahren.
+    widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    return widget
+
+
+class _WheelGuard(QObject):
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Wheel and not watched.hasFocus():
+            event.ignore()
+            return True                      # nicht an das Feld zustellen
+        return False
+
+
+#: Ein Filter fuer alle Felder -- er haelt keinen Zustand.
+_WHEEL_GUARD = _WheelGuard()

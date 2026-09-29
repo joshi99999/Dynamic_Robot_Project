@@ -19,9 +19,10 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-from PySide6.QtCore import QObject, QProcess, Signal, Slot
+from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal, Slot
 
 from . import _bootstrap
+from . import requirements as requirements_module
 
 log = logging.getLogger(__name__)
 
@@ -101,13 +102,20 @@ class ProcessRunner(QObject):
     def running(self):
         return self._process is not None
 
-    def start(self, argv, stdin_text=None):
+    def start(self, argv, stdin_text=None, keep_stdin=False):
         """Startet ``argv`` (ohne Python-Programm) im Ordner "Behavior Cloning".
 
         ``-u`` erzwingt ungepufferte Ausgabe, sonst kommt bei einem langen
         Testlauf minutenlang nichts an. ``stdin_text`` bedient Skripte, die
         eine Eingabe erwarten (z. B. das Freigabewort von run_all.py) --
         die GUI hat da ihre eigene Rueckfrage schon gestellt.
+
+        ``keep_stdin`` laesst den Eingabekanal OFFEN, damit spaeter noch
+        geantwortet werden kann (:meth:`send`). Gebraucht wird das fuer die
+        Bewertung je Episode: ``apps/record.py --ask-label`` haelt nach
+        jeder Episode an und wartet auf eine Zeile. Sonst wird der Kanal
+        sofort geschlossen -- ein Skript, das dann doch fragt, bekommt EOF
+        und nimmt seinen sicheren Zweig (apps/record.py: ``ask()``).
         """
         if self.running:
             raise RuntimeError("Es laeuft bereits eine Pruefung.")
@@ -124,13 +132,26 @@ class ProcessRunner(QObject):
         process.finished.connect(self._on_finished)
         process.errorOccurred.connect(self._on_error)
 
-        environment = process.processEnvironment()
+        # ACHTUNG: QProcess.processEnvironment() ist LEER, solange nichts
+        # gesetzt wurde -- wer da hineinschreibt, startet den Unterprozess
+        # mit genau diesen paar Variablen und ohne alles andere. lerobot
+        # scheitert dann schon beim Import ("Could not determine home
+        # directory", USERPROFILE fehlt). Deshalb von der Systemumgebung
+        # ausgehen und nur ergaenzen.
+        environment = QProcessEnvironment.systemEnvironment()
         # Umlaute und Sonderzeichen der Skriptausgabe nicht an der
         # Windows-Codepage scheitern lassen.
         environment.insert("PYTHONIOENCODING", "utf-8")
         environment.insert("PYTHONUTF8", "1")
         environment.insert("PYTHONPATH", os.pathsep.join(
             [str(_bootstrap.WORKDIR), str(_bootstrap.REPO_ROOT)]))
+        # Programme, die neben dem Interpreter liegen (ffmpeg in
+        # Library\bin), sind nur im PATH, wenn die Umgebung aktiviert
+        # wurde. Beim Start ueber python.exe -m bc.gui ist sie das nicht --
+        # lerobot wuerde beim Export dann kein ffmpeg finden.
+        tool_dirs = [str(d) for d in requirements_module.interpreter_tool_dirs()]
+        environment.insert("PATH", os.pathsep.join(
+            tool_dirs + [environment.value("PATH", os.environ.get("PATH", ""))]))
         process.setProcessEnvironment(environment)
 
         self._process = process
@@ -138,7 +159,26 @@ class ProcessRunner(QObject):
         self.started.emit(command)
         if stdin_text is not None:
             process.write(stdin_text.encode("utf-8"))
-        process.closeWriteChannel()
+        if not keep_stdin:
+            process.closeWriteChannel()
+
+    def send(self, text):
+        """Eine Zeile an den laufenden Unterprozess schicken.
+
+        Nur sinnvoll, wenn mit ``keep_stdin=True`` gestartet wurde.
+        Liefert True, wenn geschrieben werden konnte.
+        """
+        if self._process is None:
+            return False
+        if not text.endswith("\n"):
+            text += "\n"
+        written = self._process.write(text.encode("utf-8"))
+        return written > 0
+
+    def close_stdin(self):
+        """Eingabekanal schliessen -- danach bekommt das Skript EOF."""
+        if self._process is not None:
+            self._process.closeWriteChannel()
 
     def stop(self):
         """Bricht den laufenden Unterprozess ab."""
