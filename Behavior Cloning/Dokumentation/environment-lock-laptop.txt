@@ -1,0 +1,9 @@
+numpy==2.2.6
+opencv-python==4.13.0.92
+prettytable==3.18.0
+pygame==2.6.1
+PySide6_Essentials==6.11.2
+pywin32==312
+scipy==1.17.1
+shiboken6==6.11.2
+wcwidth==0.9.1

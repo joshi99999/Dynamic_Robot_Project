@@ -57,7 +57,7 @@ from bc.policy import ChunkEnsembler, ChunkExecutor, HoldPolicy, PredictionTooSl
 from bc.ports import MotionRefused, RobotError
 from bc.recorder import _to_schema_size
 from bc.safety import Watchdog, geofence_check
-from bc.servo import ServoGuard, ServoInterpolator, TargetLimiter
+from bc.servo import ServoGuard, ServoInterpolator, TargetLimiter, substeps_for
 from bc.sync import Pacer
 
 #: Wortlaut fuer --real-robot (wie apps/record.py).
@@ -91,7 +91,7 @@ def build_observation(robot, captures):
 
 def run_episode(robot, captures, executor, clock, max_steps, workspace,
                 end_joints=None, end_gripper=None, min_steps=0, threaded_watchdog=True,
-                progress=print):
+                progress=print, servo_rate_hz=config.SERVO_RATE_HZ):
     """Eine Policy-Fahrt. Rueckgabe: Log-dict (Arrays je Takt + Zusammenfassung).
 
     Ende = Endstellung +-END_TOL_RAD UND (falls bekannt) Greiferzustand wie am
@@ -112,10 +112,10 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
     # laufenden Servostrom an. Der Arm steht, die Beobachtung bleibt gueltig.
     obs, state = build_observation(robot, captures)
     first = (obs, state, executor.next_action(obs))
-    interp = ServoInterpolator().reset(state.joints)
+    interp = ServoInterpolator(servo_rate_hz=servo_rate_hz).reset(state.joints)
     limiter = TargetLimiter().reset(state.joints)
     robot.activate_servo("position")
-    pacer = Pacer(clock, config.SERVO_RATE_HZ).start()  # nach der Aktivierung
+    pacer = Pacer(clock, servo_rate_hz).start()  # nach der Aktivierung
     stop_reason, at_end, prev_gripper = None, 0, None
     try:
         q, v, a = interp.hold()
@@ -230,9 +230,10 @@ def check_against_recording(info, args, robot_kind, cam_cfgs):
     if missing:
         problems.append("Kameras %s fehlen (vorhanden %s)" % (missing, camera_names))
     rec = info.get("recording", {})
-    if rec.get("servo_rate_hz") is not None and float(rec["servo_rate_hz"]) != config.SERVO_RATE_HZ:
-        problems.append("servo_j-Rate Aufzeichnung %.0f Hz, jetzt %.0f Hz"
-                        % (rec["servo_rate_hz"], config.SERVO_RATE_HZ))
+    if rec.get("servo_rate_hz") is not None and float(rec["servo_rate_hz"]) != args.servo_rate:
+        problems.append("servo_j-Rate Aufzeichnung %.0f Hz, jetzt %.0f Hz "
+                        "(--servo-rate %.0f)"
+                        % (rec["servo_rate_hz"], args.servo_rate, rec["servo_rate_hz"]))
     if robot_kind == "neura" and rec.get("override") is not None and float(rec["override"]) != args.override:
         problems.append("Override Aufzeichnung %.2f, jetzt %.2f" % (rec["override"], args.override))
     if rec.get("robot") and rec["robot"] != robot_kind:
@@ -283,6 +284,11 @@ def parse_args():
     parser.add_argument("--real-robot", action="store_true")
     parser.add_argument("--override", type=float, default=None,
                         help="Neura-Override; Default und Pflichtwert: der der Aufzeichnung")
+    parser.add_argument("--servo-rate", type=float, default=config.SERVO_RATE_HZ,
+                        help="servo_j-Senderate in Hz, Vielfaches von %.0f. MUSS die "
+                             "der Aufzeichnung sein (AP 1.5.1) -- der Abgleich gegen "
+                             "die Metadaten des Checkpoints bricht sonst ab."
+                             % config.CONTROL_RATE_HZ)
     parser.add_argument("--realtime", action="store_true",
                         help="SimRobot mit echter Uhr (Latenz der Vorhersage wirkt wie an der Anlage)")
     parser.add_argument("--episodes", type=int, default=1)
@@ -307,6 +313,11 @@ def parse_args():
     args = parser.parse_args()
     if not args.hold and not args.checkpoint:
         parser.error("--checkpoint fehlt (oder --hold fuer den Verdrahtungstest)")
+    # Siehe apps/record.py: lieber hier scheitern als nach dem Bestromen.
+    try:
+        substeps_for(args.servo_rate)
+    except ValueError as exc:
+        parser.error(str(exc))
     return args
 
 
@@ -460,7 +471,8 @@ def main():
             t0 = time.perf_counter()
             log = run_episode(robot, captures, executor, clock, max_steps, workspace,
                               end_joints=end, end_gripper=end_gripper, min_steps=min_steps,
-                              threaded_watchdog=not isinstance(clock, SimClock))
+                              threaded_watchdog=not isinstance(clock, SimClock),
+                              servo_rate_hz=args.servo_rate)
             wall = time.perf_counter() - t0
             rollout = {"tcp": np.vstack([log["tcp"], log["final_tcp"][None]]) if len(log["tcp"]) else log["final_tcp"][None],
                        "gripper_cmd": np.append(log["gripper_cmd"], log["gripper_cmd"][-1] if len(log["gripper_cmd"]) else 0.0),

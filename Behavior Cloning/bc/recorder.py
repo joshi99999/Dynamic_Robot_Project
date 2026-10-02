@@ -53,6 +53,9 @@ class EpisodeRecorder(object):
         max_bad_ratio=config.SYNC_MAX_BAD_FRAME_RATIO,
         servo_rate_hz=config.SERVO_RATE_HZ,
         monitor=None,
+        max_follow_error_rad=config.RECORDER_MAX_FOLLOW_ERROR_RAD,
+        follow_error_steps=config.RECORDER_FOLLOW_ERROR_STEPS,
+        min_follow_ratio=config.RECORDER_MIN_FOLLOW_RATIO,
     ):
         self.robot = robot
         self.captures = list(captures)
@@ -61,6 +64,11 @@ class EpisodeRecorder(object):
         self.servo_rate_hz = servo_rate_hz
         self.max_skew = max_skew
         self.max_bad_ratio = max_bad_ratio
+        #: Schleppfehler-Abbruch (config.RECORDER_*). ``None`` schaltet ab --
+        #: nur fuer Werkzeuge, die bewusst ohne Arm laufen.
+        self.max_follow_error_rad = max_follow_error_rad
+        self.follow_error_steps = int(follow_error_steps)
+        self.min_follow_ratio = float(min_follow_ratio)
         #: Optionaler Rueckruf je Takt: ``monitor(i, n, frames, report)``.
         #: Gedacht fuer Fortschritt und Livebild in der Bedienoberflaeche
         #: (bc/preview.py). STANDARD IST None -- die Aufzeichnungsschleife
@@ -107,11 +115,20 @@ class EpisodeRecorder(object):
 
         bad_frames = 0
         discard_reason = ""
+        follow_bad = 0  # Takte in Folge mit zu grossem Schleppfehler
+        worst_follow = 0.0
+        cmd_hist = []   # Sollwerte der letzten Takte (Kriterium b)
+        meas_hist = []  # zugehoerige Messungen
         self.robot.activate_servo("position")
         # Takt erst NACH dem Aktivieren starten: die Aktivierung dauert an
         # der VM einige 10 ms -- bei 60 Hz zaehlte das bisher als 3
         # Ueberlaeufe je Episode, obwohl kein Sollwert zu spaet kam.
         pacer = Pacer(self.clock, self.servo_rate_hz).start()
+        # Laufzeitmessung fuer timing_findings(): Kosten je Aufruf und
+        # Dauer der Episode. Nur Metadaten, kein Teil des Schemas.
+        t_start = self.clock.now()
+        servo_s = []
+        read_s = []
         try:
             prev_gripper = None
             for i in range(n):
@@ -123,7 +140,9 @@ class EpisodeRecorder(object):
                     if self.robot.stop_requested:
                         break
                     t_target = pacer.tick()
+                    t0 = self.clock.now()
                     self.robot.servo_j(q_cmd, v_cmd, a_cmd)
+                    servo_s.append(self.clock.now() - t0)
                 if self.robot.stop_requested:
                     discard_reason = "schutzstopp"
                     break
@@ -133,7 +152,95 @@ class EpisodeRecorder(object):
                     self.robot.gripper_command(g >= config.GRIPPER_THRESHOLD)
                 prev_gripper = g
 
+                t0 = self.clock.now()
                 state = self.robot.read_state()
+                read_s.append(self.clock.now() - t0)
+
+                # Folgt der Arm ueberhaupt? Der Sollwert des Takts i ist mit
+                # dem letzten Zwischenschritt gerade gesendet worden -- die
+                # Messung muss jetzt in seiner Naehe liegen. Tut sie das ueber
+                # mehrere Takte nicht, nimmt die Steuerung die Sollwerte nicht
+                # mehr an (Befund 2026-10-01: RCSC_102 kappt die PC-Steuerung,
+                # servo_j meldet trotzdem weiter "in Ordnung"). Ohne diese
+                # Pruefung landet eine Episode mit stehendem Arm als
+                # "vollstaendig" auf der Platte.
+                #
+                # Kein Not-Halt an dieser Stelle: im beobachteten Fall steht
+                # der Arm bereits, ein Stopp wuerde nur die naechste Episode
+                # mit einer irrefuehrenden Meldung scheitern lassen. Der
+                # Abbruch beendet den Sollwertstrom, das finally deaktiviert
+                # das Servo-Interface -- mehr gehoert hier nicht hin (AP 4.2).
+                if self.max_follow_error_rad is not None:
+                    cmd_now = np.asarray(plan.joints_noisy[i], dtype=float)
+                    meas_now = np.asarray(state.joints, dtype=float)
+                    follow_err = float(np.max(np.abs(meas_now - cmd_now)))
+                    worst_follow = max(worst_follow, follow_err)
+                    cmd_hist.append(cmd_now)
+                    meas_hist.append(meas_now)
+                    if len(cmd_hist) > self.follow_error_steps + 1:
+                        cmd_hist.pop(0)
+                        meas_hist.pop(0)
+
+                    grund = ""
+                    # (a) Absolut: der Arm haengt zu weit hinter dem Sollwert.
+                    if follow_err > self.max_follow_error_rad:
+                        follow_bad += 1
+                        if follow_bad >= self.follow_error_steps:
+                            grund = (
+                                "%.3f rad Schleppfehler ueber %d Takte "
+                                "(Grenze %.2f rad)"
+                                % (follow_err, follow_bad,
+                                   self.max_follow_error_rad)
+                            )
+                    else:
+                        follow_bad = 0
+                    # (b) Massstabsfrei: der Sollwert ist gewandert, der Arm
+                    # nicht. Faengt den toten Steuerkanal auch auf kurzen oder
+                    # langsamen Bahnen, wo (a) nie anschlaegt.
+                    if not grund and len(cmd_hist) > self.follow_error_steps:
+                        schritt = np.abs(cmd_hist[-1] - cmd_hist[0])
+                        gelenk = int(np.argmax(schritt))
+                        d_cmd = float(schritt[gelenk])
+                        d_meas = float(np.max(np.abs(meas_hist[-1] - meas_hist[0])))
+                        if (d_cmd > config.START_POSE_TOL_RAD
+                                and d_meas < self.min_follow_ratio * d_cmd):
+                            # Sollgeschwindigkeit mitnennen: sie unterscheidet
+                            # die beiden Ursachen, die hier zusammenlaufen
+                            # (siehe unten). Ohne sie raet der Bedienende.
+                            tempo = d_cmd / (self.follow_error_steps / self.rate_hz)
+                            grund = (
+                                "Sollwert wanderte %.3f rad, der Arm nur "
+                                "%.3f rad ueber %d Takte (Gelenk %d, "
+                                "Sollgeschwindigkeit %.2f rad/s)"
+                                % (d_cmd, d_meas, self.follow_error_steps,
+                                   gelenk + 1, tempo)
+                            )
+                    if grund:
+                        # Zwei Ursachen fuehren hierher, und sie sehen gleich
+                        # aus. Beide nennen, statt eine zu raten (Befund
+                        # 2026-10-01: zweimal war es die erste, nicht die
+                        # zweite -- die Meldung zeigte trotzdem auf die
+                        # zweite und haette die Suche fehlgeleitet):
+                        #
+                        # 1. Der Controller DARF nicht so schnell. Der
+                        #    Override deckelt die Gelenkgeschwindigkeit;
+                        #    liegt die Sollgeschwindigkeit darueber,
+                        #    saettigt er und der Abstand waechst monoton.
+                        # 2. Der PC-Steuerkanal ist weg (RCSC_102). Dann
+                        #    steht der Arm ganz, und zwar sofort.
+                        #
+                        # Unterscheidbar am Verlauf: waechst der Schleppfehler
+                        # allmaehlich, ist es (1); springt er, ist es (2).
+                        discard_reason = (
+                            "arm folgt nicht: %s (Takt %d von %d). "
+                            "Pruefen: reicht der Override fuer diese "
+                            "Sollgeschwindigkeit, oder ist der PC-Steuerkanal "
+                            "weg (RCSC_102)? Der Verlauf von "
+                            "aux.joints_command gegen observation.state "
+                            "unterscheidet beides." % (grund, i, n)
+                        )
+                        break
+
                 frames = {}
                 timestamps = {"robot": state.t_joints}
                 for cap in self.captures:
@@ -190,6 +297,7 @@ class EpisodeRecorder(object):
                 steps["next.done"].append(np.array([False], dtype=bool))
         finally:
             self.robot.deactivate_servo()
+        duration = self.clock.now() - t_start
 
         recorded = len(steps["observation.state"])
         if recorded == 0:
@@ -218,7 +326,14 @@ class EpisodeRecorder(object):
                 "planned_steps": n,
                 "recorded_steps": recorded,
                 "bad_frame_ratio": bad_ratio,
+                "max_follow_error_rad": worst_follow,
                 "pacer_overruns": pacer.overruns,
+                "duration_s": duration,
+                # Soll-Dauer der GEFAHRENEN Takte -- bei einem Abbruch
+                # zaehlt nur, was tatsaechlich gefahren wurde.
+                "planned_duration_s": recorded / float(self.rate_hz),
+                "servo_j_ms": _ms_stats(servo_s),
+                "read_state_ms": _ms_stats(read_s),
                 "noise_rejects": plan.rejects,
                 "rate_hz": self.rate_hz,
                 "servo_rate_hz": self.servo_rate_hz,
@@ -246,3 +361,72 @@ def _to_schema_size(image):
     return np.ascontiguousarray(
         cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA), dtype=np.uint8
     )
+
+
+def _ms_stats(werte_s):
+    """median / p95 / max in Millisekunden, oder None ohne Messwerte."""
+    if not werte_s:
+        return None
+    ms = np.sort(np.asarray(werte_s, dtype=float) * 1e3)
+    return {
+        "median": float(np.median(ms)),
+        "p95": float(ms[min(len(ms) - 1, int(round(0.95 * (len(ms) - 1))))]),
+        "max": float(ms[-1]),
+        "n": int(len(ms)),
+    }
+
+
+def timing_findings(metadata):
+    """Hinweise zur Laufzeit einer Episode -- fuer die Ausgabe nach dem Lauf.
+
+    Befund 2026-10-01/02: Laeuft die Taktschleife zu langsam, wird die Bahn
+    langsamer abgefahren als geplant -- und die Episode sieht trotzdem
+    gesund aus (0 % schlechte Frames, kein Abbruch). Bei 90 und 120 Hz
+    Senderate lief sie 1,6-1,7-fach zu langsam, ohne dass etwas warnte. Die
+    Ausfuehrungsgeschwindigkeit wird aber mitgelernt (AP 2.6).
+
+    Ursache und Abhilfe werden nur VERMUTET und als solche benannt: hohe
+    Aufrufkosten passen zu einem ausgelasteten Rechner (VM auf dem Laptop,
+    Akkubetrieb, Energiesparmodus), koennen aber auch von der Steuerung
+    kommen. Rueckgabe: Liste von Textzeilen, leer wenn alles passt.
+    """
+    out = []
+    dauer = metadata.get("duration_s")
+    soll = metadata.get("planned_duration_s")
+    if not dauer or not soll:
+        return out
+    faktor = dauer / soll
+    if faktor <= config.RECORDER_SLOW_FACTOR_WARN:
+        return out
+
+    out.append(
+        "Bahn lief %.2f-fach langsamer als geplant (%.1f s statt %.1f s). Die "
+        "Ausfuehrungsgeschwindigkeit wird mitgelernt (AP 2.6) -- Episode fuer "
+        "den Datensatz pruefen." % (faktor, dauer, soll))
+
+    servo = metadata.get("servo_j_ms") or {}
+    read = metadata.get("read_state_ms") or {}
+    rate = float(metadata.get("rate_hz") or config.CONTROL_RATE_HZ)
+    servo_rate = float(metadata.get("servo_rate_hz") or config.SERVO_RATE_HZ)
+    k = int(round(servo_rate / rate))
+    if servo.get("median") is not None and read.get("median") is not None:
+        takt = k * servo["median"] + read["median"]
+        budget = 1e3 / rate
+        out.append(
+            "Aufrufkosten je Takt: %d x servo_j (%.1f ms) + read_state "
+            "(%.1f ms) = %.0f ms bei %.0f ms Budget."
+            % (k, servo["median"], read["median"], takt, budget))
+        if takt > budget and k > 1:
+            out.append(
+                "Mit %g Hz Senderate passt das nicht in den Takt -- eine "
+                "kleinere servo_j-Rate senkt die Last (in der Aufnahme-"
+                "Oberflaeche einstellbar)." % servo_rate)
+        if servo["median"] > config.SERVO_J_HOST_HINT_MS:
+            out.append(
+                "servo_j ist mit %.1f ms deutlich teurer als ausgelegt "
+                "(~%.1f ms). Das passt zu einem ausgelasteten Rechner -- bei "
+                "der VM: Netzteil, Energiemodus 'Beste Leistung', VM neu "
+                "starten (Known-Issues-Neura-Sim.md, Punkt 4). Moeglich ist "
+                "auch eine langsame Steuerung."
+                % (servo["median"], config.SERVO_J_DESIGN_MS))
+    return out

@@ -129,6 +129,15 @@ def compose(frames, height=DEFAULT_HEIGHT, overlay=None):
             image = frame.image
             if image.ndim == 2:
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            else:
+                # Kamerabilder sind laut Port-Vertrag RGB (bc/ports.py), alles
+                # hier danach ist OpenCV-Welt und damit BGR: die Textfarben
+                # unten, cv2.imwrite fuer das Livebild, ImageView.set_image in
+                # der Oberflaeche. Ohne diese Umrechnung waren Rot und Blau in
+                # Vorschau und Livebild vertauscht -- der "Blaustich", den der
+                # Galaxy Viewer nicht zeigte (Labortag 2026-10-01). Die
+                # aufgezeichneten Daten waren nie betroffen.
+                image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
             scale = float(height) / image.shape[0]
             tile = cv2.resize(image, (max(1, int(image.shape[1] * scale)), height),
                               interpolation=cv2.INTER_AREA)

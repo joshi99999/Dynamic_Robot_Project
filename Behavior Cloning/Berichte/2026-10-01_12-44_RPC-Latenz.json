@@ -1,0 +1,61 @@
+{
+  "erzeugt": "2026-10-01T12:44:20",
+  "adresse": "192.168.2.13:65432",
+  "wiederholungen": 30,
+  "reihen": {
+    "TCP-Verbindung allein (ohne Nutzlast)": {
+      "min": 0.7975101470947266,
+      "median": 1.2687444686889648,
+      "p95": 1003.1330585479736,
+      "max": 1007.6172351837158,
+      "n": 30
+    },
+    "roh-RPC get_current_joint_angles": {
+      "min": 9.055852890014648,
+      "median": 12.524843215942383,
+      "p95": 32.43708610534668,
+      "max": 35.511016845703125,
+      "n": 30
+    },
+    "neurapy get_current_joint_angles": {
+      "min": 9.280681610107422,
+      "median": 14.677882194519043,
+      "p95": 33.16497802734375,
+      "max": 44.336795806884766,
+      "n": 30
+    },
+    "neurapy ..._with_timestamp": {
+      "min": 11.907339096069336,
+      "median": 18.54884624481201,
+      "p95": 37.995100021362305,
+      "max": 85.87121963500977,
+      "n": 30
+    },
+    "neurapy compute_forward_kinematics": {
+      "min": 5.126476287841797,
+      "median": 6.783723831176758,
+      "p95": 18.28312873840332,
+      "max": 22.505521774291992,
+      "n": 30
+    },
+    "Versatz Roboter <-> Kamera (Sim)": {
+      "min": 10.797739028930664,
+      "median": 17.72022247314453,
+      "p95": 41.574954986572266,
+      "max": 51.833152770996094,
+      "n": 30
+    }
+  },
+  "befunde": [
+    [
+      "warnung",
+      "Ein Takt braucht 84 ms, erlaubt sind 67 ms. Der Arm bekommt seine Sollwerte zu spaet -- das ist die Ursache fuer abbrechende Bahnen (RCSC_102) UND fuer die als 'Latenzbudget' verworfenen Episoden."
+    ],
+    [
+      "fehler",
+      "10 % der Takte reissen das Budget allein durch die Controller-Latenz. Eine perfekte Kamera aendert daran nichts."
+    ]
+  ],
+  "takt_ms_geschaetzt": 84.04409885406494,
+  "takt_ms_budget": 66.66666666666667
+}

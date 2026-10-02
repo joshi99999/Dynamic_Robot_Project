@@ -1,0 +1,79 @@
+{
+  "erzeugt": "2026-10-01T13:58:10",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen.",
+  "control_rate_hz": 15.0,
+  "servo_rate_hz_konfiguriert": 60.0,
+  "reihen": {
+    "servo_j (Haltebefehl)": {
+      "min": 12.22681999206543,
+      "median": 22.42887020111084,
+      "p95": 39.0470027923584,
+      "max": 80.53064346313477,
+      "n": 30
+    },
+    "read_state() (Winkel + FK)": {
+      "min": 18.07427406311035,
+      "median": 30.73561191558838,
+      "p95": 51.00440979003906,
+      "max": 51.60927772521973,
+      "n": 30
+    }
+  },
+  "takte": {
+    "60": {
+      "min": 53.56240272521973,
+      "median": 123.68428707122803,
+      "p95": 161.38720512390137,
+      "max": 165.0083065032959,
+      "n": 30,
+      "substeps": 4,
+      "erreichbare_rate_hz": 8.085101379321644,
+      "passt": false
+    },
+    "30": {
+      "min": 44.24858093261719,
+      "median": 67.19660758972168,
+      "p95": 98.28305244445801,
+      "max": 106.91046714782715,
+      "n": 30,
+      "substeps": 2,
+      "erreichbare_rate_hz": 14.881703643517845,
+      "passt": false
+    },
+    "15": {
+      "min": 32.019853591918945,
+      "median": 58.0897331237793,
+      "p95": 72.95083999633789,
+      "max": 79.21957969665527,
+      "n": 30,
+      "substeps": 1,
+      "erreichbare_rate_hz": 17.2147459839275,
+      "passt": true
+    }
+  },
+  "befunde": [
+    [
+      "warnung",
+      "Konfiguriert ist SERVO_RATE_HZ = 60, gehalten wird erst 15 Hz. Bis zur Umstellung faehrt der Recorder die Bahn langsamer als geplant."
+    ],
+    [
+      "ok",
+      "Der Arm stand still, wie erwartet."
+    ],
+    [
+      "ok",
+      "Keine kritische Meldung nach der Messung."
+    ]
+  ],
+  "in_simulation": true,
+  "diagnose_vorher": {
+    "critical": false,
+    "issues": {}
+  },
+  "drift_rad": 0.0,
+  "diagnose_nachher": {
+    "critical": false,
+    "issues": {}
+  },
+  "letzter_servo_code": null
+}

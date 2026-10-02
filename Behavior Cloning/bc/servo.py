@@ -27,17 +27,30 @@ from . import config
 from .ports import ServoLimitError
 
 
+def substeps_for(servo_rate_hz, control_rate_hz=config.CONTROL_RATE_HZ):
+    """Zwischenschritte je Takt -- wirft, wenn die Raten nicht aufgehen.
+
+    Eigene Funktion, damit ``apps/record.py`` und ``apps/infer.py`` eine
+    falsche ``--servo-rate`` beim Auswerten der Kommandozeile ablehnen
+    koennen, statt erst nach dem Bestromen mitten im Aufbau.
+    """
+    ratio = float(servo_rate_hz) / float(control_rate_hz)
+    substeps = int(round(ratio))
+    if substeps < 1 or abs(ratio - substeps) > 1e-9:
+        raise ValueError(
+            "servo_j-Senderate (%.3f Hz) muss ein ganzzahliges Vielfaches "
+            "der Regelrate (%.3f Hz) sein -- moeglich sind %s Hz"
+            % (servo_rate_hz, control_rate_hz,
+               ", ".join("%g" % (k * control_rate_hz) for k in range(1, 9)))
+        )
+    return substeps
+
+
 class ServoInterpolator(object):
     """Zerlegt 15-Hz-Ziele in Zwischenschritte fuer servo_j."""
 
     def __init__(self, control_rate_hz=config.CONTROL_RATE_HZ, servo_rate_hz=config.SERVO_RATE_HZ):
-        ratio = servo_rate_hz / control_rate_hz
-        substeps = int(round(ratio))
-        if substeps < 1 or abs(ratio - substeps) > 1e-9:
-            raise ValueError(
-                "SERVO_RATE_HZ (%.3f) muss ein ganzzahliges Vielfaches von "
-                "CONTROL_RATE_HZ (%.3f) sein" % (servo_rate_hz, control_rate_hz)
-            )
+        substeps = substeps_for(servo_rate_hz, control_rate_hz)
         self.substeps = substeps
         self.control_period = 1.0 / control_rate_hz
         self.servo_rate_hz = servo_rate_hz

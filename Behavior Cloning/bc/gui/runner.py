@@ -23,6 +23,7 @@ from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal, Slot
 
 from . import _bootstrap
 from . import requirements as requirements_module
+from ..adapters import Cancelled
 
 log = logging.getLogger(__name__)
 
@@ -32,8 +33,17 @@ class TaskRunner(QObject):
 
     Pools:
         "io"     Datei- und Pruefarbeit (2 Threads)
+        "camera" Kameras suchen und oeffnen -- streng nacheinander
         "robot"  alles, was mit dem Roboter spricht -- streng nacheinander
         "stop"   Nothalt, wird nie von einer laufenden Bewegung blockiert
+
+    "camera" ist eigen, weil ein Kameratreiber haengen kann (Labortag
+    2026-10-01: Geraetesuche und Vorschau liessen sich nicht abbrechen,
+    die Oberflaeche wirkte eingefroren). Ein haengender Treiberaufruf
+    laesst sich aus Python nicht unterbrechen; er soll dann wenigstens nur
+    die Kameras blockieren und nicht die Datei- und Pruefarbeit im
+    "io"-Pool. Ein Thread, weil dasselbe Geraet nicht zweimal gleichzeitig
+    geoeffnet werden darf.
     """
 
     _deliver = Signal(object, object)
@@ -43,6 +53,7 @@ class TaskRunner(QObject):
         self._deliver.connect(self._on_deliver)
         self.pools = {
             "io": ThreadPoolExecutor(2, "bcgui-io"),
+            "camera": ThreadPoolExecutor(1, "bcgui-camera"),
             "robot": ThreadPoolExecutor(1, "bcgui-robot"),
             "stop": ThreadPoolExecutor(1, "bcgui-stop"),
         }
@@ -55,6 +66,10 @@ class TaskRunner(QObject):
             try:
                 value = fn()
                 self._deliver.emit(on_done, value)
+            except Cancelled as exc:
+                # Vom Bedienenden gewollt -- kein Fehler, kein Traceback im Log.
+                log.info("Abgebrochen.")
+                self._deliver.emit(on_error, exc)
             except Exception as exc:               # Meldung im GUI-Thread
                 log.error("%s", exc, exc_info=not isinstance(exc, (RuntimeError, ValueError)))
                 self._deliver.emit(on_error, exc)

@@ -1016,3 +1016,42 @@ def test_defaults_are_not_written_out(tmp_path):
     assert data["sequence"][0] == {"point": "A", "motion": "ptp"}
     assert set(data["sequence"][1]) == {"point", "motion", "blend", "optional",
                                         "approach"}
+
+
+def test_servo_rate_only_in_argv_when_it_differs():
+    """Der Normalfall bleibt eine kurze Kommandozeile.
+
+    Die Senderate steht ohnehin in den Metadaten jeder Episode; sie zusaetzlich
+    immer anzuhaengen wuerde den angezeigten Aufruf verrauschen und den Default
+    an zwei Stellen festschreiben.
+    """
+    gleich = recording.record_argv("out", servo_rate=config.SERVO_RATE_HZ)
+    assert "--servo-rate" not in gleich
+
+    anders = recording.record_argv("out", servo_rate=30.0)
+    assert anders[anders.index("--servo-rate") + 1] == "30"
+
+    ohne = recording.record_argv("out")
+    assert "--servo-rate" not in ohne
+
+
+def test_compose_turns_rgb_frames_into_bgr_for_display():
+    """Labortag 2026-10-01: Blaustich in der Vorschau, Galaxy Viewer normal.
+
+    Kamerabilder kommen als RGB (bc/ports.py), ImageView und cv2.imwrite
+    erwarten BGR. compose() ist die Grenze -- ein rotes Kamerabild muss
+    danach im BGR-Sinne rot sein, also im LETZTEN Kanal.
+    """
+    import numpy as np
+
+    class _Frame(object):
+        def __init__(self, image):
+            self.image = image
+
+    rot_rgb = np.zeros((60, 80, 3), dtype=np.uint8)
+    rot_rgb[:, :, 0] = 255  # RGB: Rot im ersten Kanal
+    board = bc_preview.compose({"wrist": _Frame(rot_rgb)}, height=60)
+
+    mitte = board[40, 40]  # unterhalb der Beschriftung
+    assert mitte[2] == 255 and mitte[0] == 0, (
+        "Rot liegt nach compose() nicht im BGR-Rotkanal: %s" % (mitte,))

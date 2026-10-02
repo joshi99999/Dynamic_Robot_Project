@@ -121,7 +121,7 @@ def record_argv(out, robot_kind="sim", episodes=1, sequence=None,
                 noise_fixed=False, seed=None, block=None, session=None,
                 light=None, camera_pose=None, object_note=None,
                 ask_label=False, preview=None, preview_hz=None,
-                real_robot=False):
+                real_robot=False, servo_rate=None):
     """Kommandozeile fuer apps/record.py (ohne das Python-Programm)."""
     if not out:
         raise ValueError("Kein Zielordner angegeben.")
@@ -136,6 +136,10 @@ def record_argv(out, robot_kind="sim", episodes=1, sequence=None,
         argv += ["--noise-scale", "%g" % float(noise_scale)]
     if noise_fixed:
         argv.append("--noise-fixed")
+    # Nur anhaengen, wenn abweichend: der Normalfall bleibt eine kurze,
+    # lesbare Kommandozeile, und der Default steht an einer Stelle.
+    if servo_rate is not None and float(servo_rate) != config.SERVO_RATE_HZ:
+        argv += ["--servo-rate", "%g" % float(servo_rate)]
     argv += ["--episodes", str(int(episodes)), "--out", str(out)]
     if seed is not None:
         argv += ["--seed", str(int(seed))]

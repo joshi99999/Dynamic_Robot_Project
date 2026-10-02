@@ -231,3 +231,130 @@ def test_discard_on_emergency_stop():
     assert not robot._servo_active
     # Abgebrochene Episode: kein Uebergabepunkt markiert
     assert not episode.arrays["next.done"].any()
+
+
+class DeafRobot(SimRobot):
+    """Nimmt Sollwerte an, bewegt sich aber nicht (Testhelfer).
+
+    Bildet den Befund vom 2026-10-01 nach: die Steuerung kappte die
+    PC-Steuerung (RCSC_102), ``servo_j`` meldete weiter "in Ordnung", und
+    der Arm stand. Ohne Schleppfehler-Pruefung lief der Recorder die
+    gesamte Bahn durch und legte 218 Takte Datenmuell als "vollstaendig" ab.
+    """
+
+    def servo_j(self, joint_angles, velocity=None, acceleration=None):
+        gehalten = self._joints.copy()
+        super().servo_j(joint_angles, velocity, acceleration)
+        self._joints = gehalten  # Sollwert quittiert, nichts bewegt
+
+
+def test_discard_when_arm_does_not_follow():
+    """Kriterium (b): der Sollwert wandert, der Arm nicht.
+
+    Massstabsfrei -- greift auch hier, wo die ganze Bahn nur rund 0,12 rad
+    Gelenkhub hat und die absolute Schwelle (0,30 rad) nie erreicht wird.
+    Genau diese Bahnlaenge ist der Grund, warum es (a) allein nicht tut.
+    """
+    clock, robot, captures = _setup(robot_cls=DeafRobot)
+    plan = _plan(robot, gripper=False)
+    recorder = EpisodeRecorder(robot, captures, clock)
+    episode = recorder.record(plan)
+
+    assert episode.discarded
+    assert episode.discard_reason.startswith("arm folgt nicht")
+    assert "Sollwert wanderte" in episode.discard_reason
+    # Nicht die ganze Bahn, und nichts stillschweigend aufgefuellt
+    assert len(episode) < len(plan)
+    assert len(episode.arrays["observation.state"]) == len(episode)
+    # Kein Uebergabepunkt auf einer abgebrochenen Episode
+    assert not episode.arrays["next.done"].any()
+    assert not robot._servo_active
+    # Der Schleppfehler steht als Zahl in den Metadaten, nicht nur im Text
+    assert episode.metadata["max_follow_error_rad"] > 0.0
+
+
+def test_discard_on_absolute_follow_error():
+    """Kriterium (a): der Arm bewegt sich, haengt aber zu weit zurueck."""
+    clock, robot, captures = _setup(robot_cls=DeafRobot)
+    plan = _plan(robot, gripper=False)
+    # Schwelle unter den Gelenkhub der Bahn legen, Kriterium (b) abschalten:
+    # so wird ausschliesslich (a) geprueft.
+    recorder = EpisodeRecorder(
+        robot, captures, clock, max_follow_error_rad=0.02,
+        follow_error_steps=2, min_follow_ratio=0.0,
+    )
+    episode = recorder.record(plan)
+
+    assert episode.discarded
+    assert episode.discard_reason.startswith("arm folgt nicht")
+    assert "Schleppfehler" in episode.discard_reason
+    assert episode.metadata["max_follow_error_rad"] > 0.02
+
+
+def test_following_arm_is_not_discarded_for_follow_error():
+    """Gegenprobe: der normale Lauf darf von keinem der Kriterien getroffen werden."""
+    clock, robot, captures = _setup()
+    plan = _plan(robot, gripper=True)
+    episode = EpisodeRecorder(robot, captures, clock).record(plan)
+
+    assert not episode.discarded
+    assert len(episode) == len(plan)
+    assert episode.metadata["max_follow_error_rad"] <= config.RECORDER_MAX_FOLLOW_ERROR_RAD
+
+
+# -- Laufzeit-Hinweise (timing_findings) --------------------------------------
+
+def _meta(dauer, soll, servo_ms, read_ms, servo_rate=60.0):
+    return {
+        "duration_s": dauer,
+        "planned_duration_s": soll,
+        "rate_hz": 15.0,
+        "servo_rate_hz": servo_rate,
+        "servo_j_ms": {"median": servo_ms},
+        "read_state_ms": {"median": read_ms},
+    }
+
+
+def test_timing_findings_silent_for_a_healthy_run():
+    """Gesunde Laeufe (2026-10-02: Faktor 1,01-1,04) bleiben ohne Hinweis."""
+    from bc.recorder import timing_findings
+
+    assert timing_findings(_meta(14.7, 14.5, 3.0, 5.0)) == []
+
+
+def test_timing_findings_name_slowdown_budget_and_suspected_host():
+    """Der Laptop im Akkubetrieb (2026-10-01): servo_j 22,4 ms bei 60 Hz."""
+    from bc.recorder import timing_findings
+
+    lines = timing_findings(_meta(33.0, 14.5, 22.4, 19.5))
+    text = "\n".join(lines)
+    assert "2.28-fach langsamer" in text
+    assert "4 x servo_j" in text
+    assert "kleinere servo_j-Rate" in text
+    assert "ausgelasteten Rechner" in text and "Moeglich ist" in text
+
+
+def test_timing_findings_blame_the_rate_not_the_host_when_calls_are_cheap():
+    """120 Hz auf einem gesunden Rechner: zu viele Aufrufe, nicht zu teure."""
+    from bc.recorder import timing_findings
+
+    lines = timing_findings(_meta(24.0, 14.5, 9.0, 8.0, servo_rate=120.0))
+    text = "\n".join(lines)
+    assert "kleinere servo_j-Rate" in text
+    assert "ausgelasteten Rechner" not in text
+
+
+def test_recorder_measures_duration_and_call_costs():
+    """Durchgehend: langsame Steuerung -> Metadaten und Hinweis stimmen."""
+    from bc.adapters.sim_robot import FaultProfile
+    from bc.recorder import timing_findings
+
+    clock, robot, captures = _setup(faults=FaultProfile(latency_s=0.03))
+    plan = _plan(robot, gripper=False)
+    episode = EpisodeRecorder(robot, captures, clock).record(plan)
+    meta = episode.metadata
+
+    assert meta["servo_j_ms"]["median"] > 29.9  # SimClock-Arithmetik: 29,9999...
+    assert meta["read_state_ms"]["median"] > 29.9
+    assert meta["duration_s"] > 1.1 * meta["planned_duration_s"]
+    assert timing_findings(meta), "zu langsame Episode ohne Hinweis"

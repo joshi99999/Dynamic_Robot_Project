@@ -269,3 +269,177 @@ def test_move_to_joints_uses_move_joint_and_checks_target():
         assert False, "RobotError erwartet (Ziel nicht erreicht)"
     except RobotError:
         pass
+
+
+class UrdfMatchingClient(FakeNeuraClient):
+    """Fake-Steuerung, deren FK exakt die URDF-Kette des Projekts ist.
+
+    Damit laesst sich der Vortest aus :meth:`NeuraRobot._check_local_fk`
+    hardwarefrei pruefen: stimmt das Modell, soll read_state() lokal
+    rechnen; weicht es ab, muss die Steuerung massgeblich bleiben.
+    """
+
+    def __init__(self, offset_m=0.0, **kwargs):
+        super().__init__(**kwargs)
+        from bc.urdf import KinematicChain
+
+        self._chain = KinematicChain.from_urdf(config.URDF_PATH)
+        self._offset = float(offset_m)
+
+    def _pose_quat(self, joint_angles):
+        T = self._chain.fk(np.asarray(joint_angles, dtype=float))
+        quat = geometry.matrix_to_quat(T[:3, :3])
+        pos = T[:3, 3].copy()
+        pos[2] += self._offset  # kuenstliche Modellabweichung
+        return np.concatenate([pos, quat])
+
+    def compute_forward_kinematics(self, joint_angles, target_frame, representation):
+        self._log("compute_forward_kinematics")
+        return list(geometry.pose_quat_to_rpy(self._pose_quat(joint_angles)))
+
+    def get_flange_pose(self):
+        return list(geometry.pose_quat_to_rpy(self._pose_quat(self.joints)))
+
+    def get_tcp_pose_quaternion(self):
+        return list(self._pose_quat(self.joints))
+
+
+def test_local_fk_used_when_urdf_matches_controller():
+    bot = NeuraRobot(robot=UrdfMatchingClient()).connect()
+
+    assert bot.local_fk_active
+    assert bot.local_fk_check["pos_err_m"] <= config.LOCAL_FK_TOL_POS_M
+    # Mehrere Stellungen geprueft, nicht nur die aktuelle -- bei lauter
+    # Nullen waere ein invertiertes Achsvorzeichen unsichtbar.
+    assert bot.local_fk_check["stellungen"] >= 4
+
+    # read_state() rechnet die Pose jetzt lokal: kein FK-Aufruf mehr
+    bot.robot.calls.clear()
+    state = bot.read_state()
+    assert not any(name == "compute_forward_kinematics" for name, _, _ in bot.robot.calls)
+    # ... und liefert trotzdem dieselbe Pose wie die Steuerung
+    erwartet = bot.fk(state.joints, frame="tool")
+    assert np.allclose(state.tcp_quat, erwartet, atol=1e-9)
+
+
+def test_local_fk_refused_when_urdf_deviates():
+    bot = NeuraRobot(robot=UrdfMatchingClient(offset_m=0.02)).connect()
+
+    assert not bot.local_fk_active
+    assert bot.local_fk_check["pos_err_m"] > config.LOCAL_FK_TOL_POS_M
+    assert "weicht von der Steuerung ab" in bot.local_fk_check["grund"]
+
+    # Ohne bestaetigtes Modell bleibt die Steuerung massgeblich
+    bot.robot.calls.clear()
+    bot.read_state()
+    assert any(name == "compute_forward_kinematics" for name, _, _ in bot.robot.calls)
+
+
+def test_local_fk_can_be_switched_off():
+    bot = NeuraRobot(robot=UrdfMatchingClient(), local_fk=False).connect()
+
+    assert not bot.local_fk_active
+    assert bot.local_fk_check["grund"] == "per Konfiguration aus"
+
+
+class ModeClient(FakeNeuraClient):
+    """Fake mit Betriebsmodus und Diagnose -- fuer init_program-Faelle.
+
+    ``teach``: steht im Teach-Modus (init_program scheitert dann).
+    ``critical``: Fehlerzustand nach RCSC_10x (init_program scheitert dann).
+    """
+
+    def __init__(self, teach=False, critical=False, **kwargs):
+        super().__init__(**kwargs)
+        self.teach = teach
+        self.critical = critical
+
+    def is_robot_in_teach_mode(self):
+        self._log("is_robot_in_teach_mode")
+        return self.teach
+
+    def switch_to_automatic_mode(self):
+        self._log("switch_to_automatic_mode")
+        self.teach = False
+
+    def get_diagnostics(self):
+        if self.critical:
+            return {"critical": True, "issues": {"other_errors": ["undefined error"]}}
+        return {"critical": False, "issues": {}}
+
+    def program_status(self):
+        return "NOT_RUNNING"
+
+    def init_program(self):
+        self._log("init_program")
+        if self.teach or self.critical:
+            raise Exception("Unable to switch to play mode. Check if robot in automatic mode")
+
+
+def _schnell(fn):
+    """init_program-Wiederholungen ohne Wartezeit (6 x 1 s im Ernstfall)."""
+    from bc.adapters import neura as neura_module
+
+    alt = neura_module.INIT_PROGRAM_RETRY_S
+    neura_module.INIT_PROGRAM_RETRY_S = 0.0
+    try:
+        return fn()
+    finally:
+        neura_module.INIT_PROGRAM_RETRY_S = alt
+
+
+def test_readonly_connect_does_not_init_program():
+    """Lesend verbinden geht auch im Teach-Modus und im Fehlerzustand.
+
+    Vorher scheiterte schon die GUI-Verbindung daran, und drei Werkzeuge
+    mussten am Adapter vorbei arbeiten (Laptop-Inbetriebnahme-Befunde 3).
+    """
+    for client in (ModeClient(teach=True), ModeClient(critical=True)):
+        robot = NeuraRobot(robot=client).connect()
+        assert "init_program" not in _names(client)
+        robot.read_state()  # lesen geht
+
+
+def test_automatic_switch_happens_before_init_program():
+    client = ModeClient(teach=True)
+    NeuraRobot(robot=client).connect(power_on=True, ensure_automatic=True)
+    names = _names(client)
+    assert names.index("switch_to_automatic_mode") < names.index("init_program")
+
+
+def test_first_motion_after_readonly_connect_inits_program_once():
+    client = ModeClient()
+    robot = NeuraRobot(robot=client).connect()
+    assert "init_program" not in _names(client)
+    robot.activate_servo()
+    names = _names(client)
+    assert names.count("init_program") == 1
+    assert names.index("init_program") < names.index("activate_servo_interface")
+    robot.deactivate_servo()
+    robot.activate_servo()
+    assert _names(client).count("init_program") == 1  # nicht bei jedem Mal
+
+
+def test_stop_requires_a_new_init_program():
+    client = ModeClient()
+    robot = NeuraRobot(robot=client).connect(power_on=True)
+    assert _names(client).count("init_program") == 1
+    robot.emergency_stop()
+    robot.clear_stop()
+    assert _names(client).count("init_program") == 2
+
+
+def test_init_failure_names_the_real_cause():
+    """Die Meldung des Controllers nennt immer den Modus -- der Adapter fragt nach."""
+    def scheitern(client):
+        try:
+            _schnell(lambda: NeuraRobot(robot=client).connect(power_on=True))
+        except RobotError as exc:
+            return str(exc)
+        raise AssertionError("RobotError erwartet")
+
+    text = scheitern(ModeClient(critical=True))
+    assert "FEHLERZUSTAND" in text and "Reset Control" in text
+
+    text = scheitern(ModeClient(teach=True))
+    assert "TEACH-MODUS" in text

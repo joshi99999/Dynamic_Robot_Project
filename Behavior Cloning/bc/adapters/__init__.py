@@ -93,7 +93,17 @@ def sim_device():
                         "statisches Muster, keine Hardware")
 
 
-def list_uvc_devices(probe_range=UVC_PROBE_RANGE):
+class Cancelled(Exception):
+    """Suche oder Oeffnen wurde vom Bedienenden abgebrochen."""
+
+
+def _check_cancel(cancel):
+    """``cancel``: None oder ein Objekt mit ``is_set()`` (threading.Event)."""
+    if cancel is not None and cancel.is_set():
+        raise Cancelled("abgebrochen")
+
+
+def list_uvc_devices(probe_range=UVC_PROBE_RANGE, cancel=None):
     """UVC-/Webcam-Indizes durchprobieren.
 
     OpenCV kennt keine Enumeration; ein Index gilt als vorhanden, wenn er
@@ -114,16 +124,19 @@ def list_uvc_devices(probe_range=UVC_PROBE_RANGE):
         previous = logging_api.getLogLevel()
         logging_api.setLogLevel(logging_api.LOG_LEVEL_ERROR)
     try:
-        found = _probe_uvc(cv2, probe_range)
+        found = _probe_uvc(cv2, probe_range, cancel)
     finally:
         if logging_api is not None:
             logging_api.setLogLevel(previous)
     return found, None
 
 
-def _probe_uvc(cv2, probe_range):
+def _probe_uvc(cv2, probe_range, cancel=None):
     found = []
     for index in range(probe_range):
+        # Abbruch zwischen zwei Indizes: ein einzelnes Oeffnen ist ein
+        # Treiberaufruf und laesst sich nicht unterbrechen.
+        _check_cancel(cancel)
         cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
         try:
             if not cap.isOpened():
@@ -175,7 +188,7 @@ def list_daheng_devices():
     return found, None
 
 
-def list_devices(uvc=True, daheng=True, probe_range=UVC_PROBE_RANGE):
+def list_devices(uvc=True, daheng=True, probe_range=UVC_PROBE_RANGE, cancel=None):
     """Alles, was sich einem Kameraplatz zuweisen laesst.
 
     Rueckgabe: ``{"devices": [CameraDevice, ...], "notes": {backend: Text}}``.
@@ -189,13 +202,14 @@ def list_devices(uvc=True, daheng=True, probe_range=UVC_PROBE_RANGE):
     devices = [sim_device()]
     notes = {}
     if uvc:
-        found, note = list_uvc_devices(probe_range)
+        found, note = list_uvc_devices(probe_range, cancel)
         devices.extend(found)
         if note:
             notes["uvc"] = note
         elif not found:
             notes["uvc"] = "keine Webcam gefunden (Indizes 0-%d geprueft)" % (probe_range - 1)
     if daheng:
+        _check_cancel(cancel)
         found, note = list_daheng_devices()
         devices.extend(found)
         if note:

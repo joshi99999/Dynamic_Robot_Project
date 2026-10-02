@@ -94,7 +94,11 @@
 		<origin rpy="0 0 0" xyz="-0.078069 0.19 0"/>
 		<parent link="elfin_link1"/>
 		<child link="elfin_link2"/>
-		<axis xyz="-1 0 0"/>
+		<!-- KORREKTUR 2026-08-27 (Sim-Inbetriebnahme-Befunde.md 2.2), erneut
+		     eingepflegt 2026-10-01: war "-1 0 0". Das Vorzeichen von Achse 2
+		     war gegen die Steuerung invertiert. Bestimmt durch Vergleich der
+		     Controller-FK mit der Kette ueber 50 Gelenkstellungen. -->
+		<axis xyz="1 0 0"/>
 		<limit effort="200" lower="-2.35" upper="2.35" velocity="1.57"/>
 	</joint>
 	<gazebo reference="elfin_joint2">
@@ -286,7 +290,12 @@
 <!-- =================================================================== -->
 
 	<joint name="elfin_end_joint" type="fixed">
-		<origin rpy="1.57079632679 1.57079632679 0" xyz="0 -0.0735 0"/>
+		<!-- KORREKTUR 2026-08-27 (Sim-Inbetriebnahme-Befunde.md 2.2), erneut
+		     eingepflegt 2026-10-01: xyz war "0 -0.0735 0". Der Flanschabstand
+		     war 14,5 mm zu lang. Der Versatz wurde im Tool-Frame zu exakt
+		     [0, 0, -14,5] mm bei Streuung 0 bestimmt, also ein Modellmass und
+		     kein Rauschen. -->
+		<origin rpy="1.57079632679 1.57079632679 0" xyz="0 -0.059 0"/>
 		<parent link="elfin_link6"/>
 		<child link="elfin_end_link"/>
 	</joint>

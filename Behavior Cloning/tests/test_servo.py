@@ -7,6 +7,7 @@ import numpy as np
 import _fixtures
 from bc.clock import SimClock
 from bc.ports import RobotError, ServoLimitError
+from bc import servo
 from bc.servo import ServoGuard, ServoInterpolator, TargetLimiter
 
 
@@ -113,3 +114,33 @@ def test_hold_and_rate_validation():
         assert False, "ValueError erwartet (kein ganzzahliges Vielfaches)"
     except ValueError:
         pass
+
+
+def test_substeps_for_accepts_whole_multiples():
+    assert servo.substeps_for(15.0, 15.0) == 1
+    assert servo.substeps_for(30.0, 15.0) == 2
+    assert servo.substeps_for(60.0, 15.0) == 4
+
+
+def test_substeps_for_names_the_possible_rates():
+    """Die Fehlermeldung muss sagen, was stattdessen geht.
+
+    Sie landet ueber apps/record.py --servo-rate direkt vor dem Bedienenden;
+    "ist kein Vielfaches" allein wuerde ihn raten lassen.
+    """
+    try:
+        servo.substeps_for(25.0, 15.0)
+    except ValueError as exc:
+        text = str(exc)
+    else:
+        raise AssertionError("25 Hz haette abgelehnt werden muessen")
+    assert "30" in text and "60" in text
+
+
+def test_interpolator_rejects_the_same_rates():
+    for bad in (0.0, 25.0, 7.5):
+        try:
+            servo.ServoInterpolator(servo_rate_hz=bad)
+        except ValueError:
+            continue
+        raise AssertionError("%g Hz haette abgelehnt werden muessen" % bad)

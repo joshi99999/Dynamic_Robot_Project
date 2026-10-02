@@ -127,6 +127,53 @@ POLICY_MAX_JOINT_SPEED_RADS = 0.8
 #: nicht mehr "vor dem Arm", sondern woanders -- Abbruch.
 SERVO_MAX_TARGET_GAP_RAD = 0.35
 
+#: Schleppfehler-Abbruch des Recorders (AP 2.4/4.2): groesster zulaessiger
+#: Abstand (rad, je Gelenk) zwischen dem Sollwert eines Takts und der dort
+#: GEMESSENEN Stellung, und wie viele Takte in Folge er anliegen darf.
+#:
+#: Befund 2026-10-01 (Labortag): Die Steuerung kappte waehrend der Fahrt
+#: die PC-Steuerung (RCSC_102). ``servo_j`` meldete weiter einen Code < 3,
+#: der Recorder zeichnete 218 von 218 Takten auf -- und der Arm hatte sich
+#: in einer Episode KEINEN EINZIGEN Gelenkwinkel bewegt. Die Episode kam
+#: als "vollstaendig, verworfen wegen Latenzbudget" auf die Platte, also
+#: mit einer Begruendung, die auf die Kameras zeigt. Genau das verhindert
+#: diese Pruefung: der Arm folgt oder die Episode bricht ab.
+#:
+#: Werte: gute VM-Laeufe lagen bei einem Schleppfehler von max 0,12 rad
+#: (ep_00000/ep_00003), der tote Kanal bei konstant 1,1 rad ab Takt 6.
+#: 0,30 rad liegt deutlich ueber dem Nachlauf und weit unter dem Ausfall.
+#: Vier Takte in Folge, damit ein einzelner Ausreisser nichts abbricht.
+#: VORLAEUFIG -- an der Anlage ist der echte Nachlauf neu zu messen
+#: (schnellere Fahrt = groesserer Nachlauf), siehe
+#: Dokumentation/Taktzeit-und-RPC-Latenz.md.
+RECORDER_MAX_FOLLOW_ERROR_RAD = 0.30
+RECORDER_FOLLOW_ERROR_STEPS = 4
+
+#: Zweites, MASSSTABSFREIES Kriterium fuer dieselbe Pruefung: Anteil der
+#: kommandierten Bewegung, den der Arm ueber das Fenster mindestens
+#: zuruecklegen muss.
+#:
+#: Noetig, weil die absolute Schwelle oben an kurzen oder langsamen Bahnen
+#: nicht greift: bewegt sich die ganze Bahn nur um 0,12 rad, erreicht auch
+#: ein voellig stehender Arm nie 0,30 rad Schleppfehler. Dieses Kriterium
+#: fragt stattdessen "der Sollwert ist gewandert -- ist der Arm mit?" und
+#: ist damit unabhaengig von Bahnlaenge und Geschwindigkeit. Waehrend des
+#: Greifer-Dwells wandert der Sollwert nicht, es loest dort also nicht aus.
+RECORDER_MIN_FOLLOW_RATIO = 0.10
+
+#: Ab welchem Verhaeltnis Ist- zu Soll-Dauer der Recorder nach einer
+#: Episode warnt (bc.recorder.timing_findings). Gesunde Laeufe lagen am
+#: 2026-10-02 bei 1,01-1,04; die zu schnellen Senderaten (90/120 Hz) bei
+#: 1,62-1,70 -- ohne dass sonst etwas auffiel.
+RECORDER_SLOW_FACTOR_WARN = 1.10
+
+#: Auslegungsannahme fuer einen servo_j-Aufruf (gemessen am PC, VM
+#: 2026-09-15, siehe SERVO_RATE_HZ) und die Schwelle, ab der ein Hinweis
+#: auf einen ausgelasteten Rechner erscheint (Vierfaches). Auf dem Laptop
+#: im Akkubetrieb lag servo_j bei 22,4 ms (2026-10-01).
+SERVO_J_DESIGN_MS = 2.5
+SERVO_J_HOST_HINT_MS = 4 * SERVO_J_DESIGN_MS
+
 #: Maximale Gelenkwinkelaenderung zwischen zwei Trajektorienschritten.
 #: Erkennt Konfigurationsspruenge und Singularitaetsdurchgaenge auch dann,
 #: wenn die IK formal eine Loesung liefert. Referenz aus dem Vortest
@@ -213,6 +260,30 @@ RESET_JOINT_ACCELERATION = 20.0
 #: Tool/Frame geteacht worden -- dann stimmen Plan und Programm nicht.
 POINT_CROSSCHECK_TOL_POS_M = 2.0e-3
 POINT_CROSSCHECK_TOL_ROT_RAD = 2.0e-2
+
+#: Soll ``NeuraRobot.read_state()`` die TCP-Pose LOKAL aus der URDF-Kette
+#: rechnen statt per ``compute_forward_kinematics``?
+#:
+#: Grund (Befund 2026-10-01, Labortag): read_state() kostete zwei
+#: RPC-Roundtrips. Der zweite -- die FK -- liegt ZWISCHEN dem Zeitstempel
+#: der Gelenkmessung und dem Abgriff der Kamerabilder und erzeugt damit
+#: genau den Versatz, den bc/sync.py als "Frame ueber dem Latenzbudget"
+#: meldet. Lokal gerechnet entfaellt beides: ein Aufruf weniger je Takt,
+#: und Roboter- und Bildzeitstempel liegen unmittelbar nebeneinander.
+#:
+#: SICHERHEIT: Der Adapter prueft beim Verbinden, ob die lokale Kette die
+#: Steuerung reproduziert (NeuraRobot._check_local_fk). Weicht sie ab,
+#: wird NICHT lokal gerechnet -- die Steuerung bleibt massgeblich. Die
+#: Uebereinstimmung ist bisher nur gegen die virtuelle Steuerung belegt
+#: (0,00 mm ueber 50 Stuetzstellen, Sim-Inbetriebnahme-Befunde.md
+#: Abschnitt 5); an der Anlage entscheidet der Vortest.
+NEURA_LOCAL_FK = True
+
+#: Toleranz dieses Vortests. Enger als POINT_CROSSCHECK_*, weil es hier
+#: nicht um geteachte Punkte geht, sondern um dieselbe Rechnung auf beiden
+#: Seiten -- eine echte Abweichung ist ein Modellfehler, kein Teach-Fehler.
+LOCAL_FK_TOL_POS_M = 1.0e-4
+LOCAL_FK_TOL_ROT_RAD = 1.0e-3
 
 # --------------------------------------------------------------------------
 # Rauscheinspielung (AP 2.4)

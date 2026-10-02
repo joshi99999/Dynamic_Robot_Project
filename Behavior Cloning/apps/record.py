@@ -37,6 +37,7 @@ import _bootstrap  # noqa: F401
 import numpy as np
 
 from bc import config, metrics, preview
+from bc.servo import substeps_for
 from bc.adapters import (
     CAMERA_MODES,
     camera_configs,
@@ -51,7 +52,7 @@ from bc.dataset import DatasetWriter
 from bc.kinematics import Kinematics
 from bc.noise import PlanRejected, generate_plan
 from bc.ports import MotionRefused
-from bc.recorder import EpisodeRecorder
+from bc.recorder import EpisodeRecorder, timing_findings
 from bc.sequence import SequenceError, load_sequence, resolve_sequence
 from bc.trajectory import Waypoint, build_ideal_trajectory
 
@@ -296,6 +297,12 @@ def parse_args():
     args = parser.parse_args()
     if args.sequence and args.waypoints:
         parser.error("--sequence und --waypoints schliessen sich aus")
+    # Vor allem anderen pruefen: eine unpassende Senderate soll hier
+    # scheitern, nicht nach dem Bestromen mitten im Aufbau.
+    try:
+        substeps_for(args.servo_rate)
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.seed is None:
         args.seed = int(np.random.SeedSequence().entropy % (2**31))
     return args
@@ -365,11 +372,21 @@ def main():
             "gripper_mode": robot.gripper_mode,
             "override": args.override,
             "timestamp_source": "host",
+            # Welcher FK-Weg lief? Lokal ist ein RPC-Roundtrip weniger je
+            # Takt und kein Versatz zwischen Roboter- und Bildzeitstempel --
+            # beim Vergleich zweier Aufnahmen gehoert das in die Metadaten.
+            "local_fk": robot.local_fk_active,
+            "local_fk_check": robot.local_fk_check,
         }
         print(
             "Neura: is_robot_in_simulation()=%r, Tool=%r, Greifer=%s, Override=%.2f"
             % (robot.in_simulation, robot.tool_name, robot.gripper_mode, args.override)
         )
+        if robot.local_fk_active:
+            print("   FK lokal aus der URDF-Kette (ein RPC-Aufruf je Takt weniger).")
+        else:
+            print("   FK ueber die Steuerung: %s"
+                  % (robot.local_fk_check or {}).get("grund", "unbekannt"))
         if args.override < 1.0:
             # Gemessen VM 2026-09-14 (tools/check_sim_robot.py): Override 0.2
             # bremst den servo_j-Strom -- Nachlauf ~1 s statt 67 ms bei 1.0.
@@ -581,6 +598,10 @@ def main():
                     ", %d Rausch-Rejects" % plan.rejects if plan.rejects else "",
                 )
             )
+            # Laufzeit: eine zu langsam gefahrene Bahn sieht sonst gesund aus
+            # (0 % schlechte Frames, kein Abbruch) und wird trotzdem mitgelernt.
+            for zeile in timing_findings(episode.metadata):
+                print("   HINWEIS: %s" % zeile)
     finally:
         for cap in captures:
             cap.stop()

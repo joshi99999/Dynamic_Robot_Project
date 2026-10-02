@@ -59,6 +59,25 @@ INIT_PROGRAM_RETRY_S = 1.0
 #: ist, sonst gilt das Servo als im Fehler.
 SERVO_ERROR_CODE_MIN = 3
 
+#: Stellungen fuer den FK-Vortest (:meth:`NeuraRobot._check_local_fk`).
+#: NICHT angefahren -- sie werden nur an ``compute_forward_kinematics``
+#: uebergeben, der Arm bleibt stehen.
+#:
+#: Warum mehrere, und warum keine mit lauter Nullen: Am 2026-10-01 stand
+#: die VM auf [0,0,0,0,0,0]. Dort ist ein INVERTIERTES Achsvorzeichen
+#: unsichtbar (sin(0) = 0, cos(0) = 1) -- ein Vortest an dieser einen
+#: Stellung meldete 14,5 mm Abweichung, waehrend dieselbe Kette ueber die
+#: 50 Golden-Stuetzstellen bis zu 1850 mm und 161 Grad danebenlag. Jede
+#: Achse muss also mindestens einmal ungleich null sein, und die
+#: Vorzeichen muessen wechseln. Werte liegen innerhalb
+#: config.JOINT_LIMITS_RAD.
+PROBE_JOINTS = (
+    (0.30, -0.40, 0.50, -0.60, 0.70, -0.80),
+    (-0.50, 0.60, -0.70, 0.80, -0.90, 1.00),
+    (0.90, 0.30, -1.10, 0.40, -0.50, 0.60),
+    (-1.00, -0.70, 0.80, -0.30, 1.20, -0.40),
+)
+
 #: Greifer-Betriebsarten, ermittelt beim Verbinden.
 GRIPPER_HARDWARE = "hardware"  # Greifer konfiguriert -> grasp()/release()
 GRIPPER_LOGGED = "logged"  # Simulation ohne Greifer -> nur protokolliert
@@ -95,7 +114,8 @@ class NeuraRobot(RobotPort, PointSourcePort):
     """
 
     def __init__(
-        self, robot=None, override=config.DEFAULT_OVERRIDE, allow_real=False, servo_guard=None
+        self, robot=None, override=config.DEFAULT_OVERRIDE, allow_real=False,
+        servo_guard=None, local_fk=config.NEURA_LOCAL_FK
     ):
         self._robot = robot
         #: Sprung-/Geschwindigkeitsfilter fuer jeden servo_j-Sollwert
@@ -108,6 +128,8 @@ class NeuraRobot(RobotPort, PointSourcePort):
         self._gripper_mode = None
         self._gripper_closed = False
         self._servo_active = False
+        #: init_program() gelaufen und seitdem kein stop()? Siehe connect().
+        self._program_ready = False
         self._stop_requested = threading.Event()
         #: Protokoll der Greiferbefehle im Modus GRIPPER_LOGGED:
         #: Liste von (host_time, geschlossen).
@@ -119,6 +141,14 @@ class NeuraRobot(RobotPort, PointSourcePort):
         #: Letzter vom Controller gemeldeter Zeitstempel (nur Diagnose, s.
         #: get_joint_angles_ts) -- None, wenn keiner geliefert wurde.
         self.last_controller_timestamp = None
+        #: Gewuenschte Betriebsart der FK in read_state (config.NEURA_LOCAL_FK).
+        #: Ob sie TATSAECHLICH greift, entscheidet der Vortest beim Verbinden.
+        self._local_fk_wanted = bool(local_fk)
+        self._local_fk_active = False
+        self._chain = None
+        #: Ergebnis des Vortests (Diagnose/Metadaten): dict mit Abweichung
+        #: und Begruendung, oder None solange nicht verbunden.
+        self.local_fk_check = None
 
     # -- Eigenschaften -----------------------------------------------------
 
@@ -152,6 +182,20 @@ class NeuraRobot(RobotPort, PointSourcePort):
         Die Simulationspruefung laeuft als ALLERERSTES, vor jedem anderen
         Aufruf. ``power_on``/``ensure_automatic`` gelten als Bewegungsvorbereitung
         und werden ohne Freigabe verweigert.
+
+        ``init_program()`` laeuft NUR bei Bewegungsvorbereitung -- es setzt
+        Automatik und einen fehlerfreien Controller voraus. Frueher lief es
+        immer, und rein lesende Verbindungen scheiterten damit im
+        Teach-Modus oder nach einem RCSC-Fehler: die GUI liess sich nicht
+        verbinden, und drei Werkzeuge (export_points, import_points und ein
+        Reset-Werkzeug) mussten am Adapter vorbei arbeiten
+        (Laptop-Inbetriebnahme-Befunde.md 3, Punkt 1 der Liste). Wer nach
+        einem lesenden ``connect()`` doch bewegt, bekommt ``init_program``
+        beim ersten Bewegungsbefehl (:meth:`_ensure_program`).
+
+        Der Wechsel in den Automatikmodus steht VOR ``init_program()`` --
+        umgekehrt griff ``ensure_automatic`` aus dem Teach-Modus nie, weil
+        der Aufruf davor bereits scheiterte.
         """
         if self._robot is None:
             from neurapy.robot import Robot  # lokal, damit Import ohne HW geht
@@ -163,17 +207,26 @@ class NeuraRobot(RobotPort, PointSourcePort):
         if (power_on or ensure_automatic) and not self._motion_allowed:
             raise MotionRefused(self._refusal_message("power_on"))
 
-        self._init_program()
-        if power_on:
-            self._call("power_on")
+        self._program_ready = False
+        prepare = power_on or ensure_automatic
         if ensure_automatic and self._call_safe("is_robot_in_teach_mode"):
             self._call("switch_to_automatic_mode")
             time.sleep(1.0)
+        if prepare:
+            self._init_program()
+        if power_on:
+            self._call("power_on")
         if self._override is not None:
-            self._call("set_override", self._override)
+            # Lesend verbunden darf das nicht scheitern -- eine Steuerung im
+            # Fehlerzustand soll sich gerade noch untersuchen lassen.
+            if prepare:
+                self._call("set_override", self._override)
+            else:
+                self._call_safe("set_override", self._override)
 
         self.tool_name = self._call_safe("get_selected_tool_name")
         self._gripper_mode = self._detect_gripper_mode()
+        self._check_local_fk()
         return self
 
     def close(self):
@@ -183,6 +236,7 @@ class NeuraRobot(RobotPort, PointSourcePort):
         if self._servo_active:
             self._call_safe("deactivate_servo_interface")
             self._servo_active = False
+        self._program_ready = False
         self._call_safe("stop")
 
     def _query_simulation(self):
@@ -204,6 +258,116 @@ class NeuraRobot(RobotPort, PointSourcePort):
     def _require_motion(self, action):
         if not self._motion_allowed:
             raise MotionRefused(self._refusal_message(action))
+
+    # -- Lokale Vorwaertskinematik -----------------------------------------
+
+    @property
+    def local_fk_active(self):
+        """Rechnet ``read_state()`` die TCP-Pose lokal statt per RPC?
+
+        Erst nach ``connect()`` aussagekraeftig -- vorher immer ``False``.
+        """
+        return self._local_fk_active
+
+    def _check_local_fk(self):
+        """Vortest: reproduziert die URDF-Kette die FK der Steuerung?
+
+        Nur wenn ja, rechnet ``read_state()` die Pose lokal (ein
+        RPC-Roundtrip weniger je Takt, und kein Versatz mehr zwischen
+        Roboter- und Bildzeitstempel). Weicht die Kette ab, bleibt die
+        Steuerung massgeblich -- lieber langsam und richtig.
+
+        Abgelehnt wird ausserdem, wenn ein Tool hinterlegt ist: die Kette
+        in ``bc/data/lara5_candidate.urdf`` endet am Flansch und kennt
+        keinen Tool-Offset. Mit Tool waere die lokale Pose stillschweigend
+        um den Offset falsch -- genau der Fehler, den der Vortest in
+        ``has_tool_offset()`` fuer die Posen ohnehin schon abfaengt.
+        """
+        self._local_fk_active = False
+        self.local_fk_check = None
+        if not self._local_fk_wanted:
+            self.local_fk_check = {"aktiv": False, "grund": "per Konfiguration aus"}
+            return
+        try:
+            if self.has_tool_offset():
+                self.local_fk_check = {
+                    "aktiv": False,
+                    "grund": "Tool %r hinterlegt -- die URDF-Kette kennt "
+                             "keinen Tool-Offset" % (self.tool_name,),
+                }
+                return
+        except Exception as exc:
+            self.local_fk_check = {
+                "aktiv": False,
+                "grund": "Tool-Vortest gescheitert (%s)" % exc,
+            }
+            return
+
+        try:
+            from ..urdf import KinematicChain
+
+            chain = KinematicChain.from_urdf(config.URDF_PATH)
+            pos_err = 0.0
+            rot_err = 0.0
+            schlechteste = None
+            for q in self._fk_probe_joints():
+                lokal = self._pose_from_chain(chain, q)
+                steuerung = self.fk(q, frame="tool")
+                dp = float(np.linalg.norm(lokal[:3] - steuerung[:3]))
+                dr = geometry.quat_angle_between(lokal[3:7], steuerung[3:7])
+                if dp > pos_err or dr > rot_err:
+                    schlechteste = list(q)
+                pos_err = max(pos_err, dp)
+                rot_err = max(rot_err, dr)
+        except Exception as exc:
+            self.local_fk_check = {
+                "aktiv": False,
+                "grund": "Vergleich gescheitert (%s)" % exc,
+            }
+            return
+
+        passt = (
+            pos_err <= config.LOCAL_FK_TOL_POS_M
+            and rot_err <= config.LOCAL_FK_TOL_ROT_RAD
+        )
+        self.local_fk_check = {
+            "aktiv": passt,
+            "pos_err_m": pos_err,
+            "rot_err_rad": rot_err,
+            "schlechteste_stellung": schlechteste,
+            "stellungen": len(PROBE_JOINTS),
+            "urdf": str(config.URDF_PATH),
+            "grund": "" if passt else (
+                "URDF-Kette weicht von der Steuerung ab (bis %.6f m, %.6f rad "
+                "ueber %d Stellungen) -- FK bleibt beim Controller. Das Modell "
+                "gehoert geprueft, bevor daraus geplant wird."
+                % (pos_err, rot_err, len(PROBE_JOINTS))
+            ),
+        }
+        if passt:
+            self._chain = chain
+            self._local_fk_active = True
+
+    def _fk_probe_joints(self):
+        """Stellungen fuer den Vortest -- NICHTS WIRD BEWEGT.
+
+        ``compute_forward_kinematics`` rechnet fuer beliebige uebergebene
+        Winkel; der Arm bleibt stehen. Zusaetzlich zur aktuellen Stellung
+        wird deshalb gegen :data:`PROBE_JOINTS` geprueft.
+        """
+        proben = [list(q) for q in PROBE_JOINTS]
+        try:
+            proben.insert(0, [float(v) for v in self.get_joint_angles()])
+        except Exception:
+            pass
+        return [q[: self.dof] for q in proben if len(q) >= self.dof]
+
+    @staticmethod
+    def _pose_from_chain(chain, joints):
+        """Kettenende (= Flansch = Tool ohne Tool-Offset) als [X,Y,Z,QW,QX,QY,QZ]."""
+        T = chain.fk(np.asarray(joints, dtype=float))
+        quat = geometry.matrix_to_quat(T[:3, :3])
+        return np.concatenate([T[:3, 3], quat])
 
     def _detect_gripper_mode(self):
         """Greifer vorhanden? Sonst in der Simulation nur protokollieren.
@@ -270,19 +434,62 @@ class NeuraRobot(RobotPort, PointSourcePort):
         letzte = None
         for versuch in range(INIT_PROGRAM_RETRIES):
             try:
-                return self._call("init_program")
+                result = self._call("init_program")
+                self._program_ready = True
+                return result
             except Exception as exc:
                 letzte = exc
                 if versuch + 1 < INIT_PROGRAM_RETRIES:
                     time.sleep(INIT_PROGRAM_RETRY_S)
         raise RobotError(
-            "init_program() auch nach %d Versuchen in %.1f s abgelehnt: %s. "
-            "Die Meldung nennt den Betriebsmodus, gemeint ist meist ein noch "
-            "laufendes Programm oder ein nicht quittierter Fehler -- "
-            "program_status() und get_diagnostics() pruefen, notfalls "
-            "reset_errors() bzw. reset_control()."
-            % (INIT_PROGRAM_RETRIES, INIT_PROGRAM_RETRIES * INIT_PROGRAM_RETRY_S, letzte)
+            "init_program() auch nach %d Versuchen in %.1f s abgelehnt (%s). %s"
+            % (INIT_PROGRAM_RETRIES, INIT_PROGRAM_RETRIES * INIT_PROGRAM_RETRY_S,
+               letzte, self._init_failure_hint())
         )
+
+    def _init_failure_hint(self):
+        """Was hinter einem abgelehnten ``init_program`` steckt -- nachgefragt.
+
+        Die Meldung des Controllers nennt IMMER den Betriebsmodus ("Check if
+        robot in automatic mode"), auch wenn der Modus stimmt. Drei
+        verschiedene Ursachen sehen damit gleich aus (Befund 2026-10-01).
+        Statt sie dem Bedienenden zum Raten zu ueberlassen, wird gefragt:
+        beide Aufrufe sind lesend und funktionieren auch im Fehlerzustand.
+        """
+        diag = self._call_safe("get_diagnostics")
+        teach = self._call_safe("is_robot_in_teach_mode")
+        if isinstance(diag, dict) and diag.get("critical"):
+            return (
+                "Die Steuerung steht im FEHLERZUSTAND (get_diagnostics: "
+                "critical, %s) -- typisch nach einem gekappten PC-Steuerkanal "
+                "(RCSC_102/105). Der Zustand loest sich nicht von selbst: im "
+                "Teach-Pendant PC-Menue -> Reset Control, danach Automatik. "
+                "In der VM auf schwachem Rechner zuerst die Host-Leistung "
+                "pruefen (Known-Issues-Neura-Sim.md, Punkt 4)."
+                % (diag.get("issues"),)
+            )
+        if teach is True:
+            return (
+                "Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf "
+                "Automatik schalten -- oder mit ensure_automatic=True "
+                "verbinden (apps/record.py und apps/infer.py tun das)."
+            )
+        return (
+            "Weder Fehlerzustand noch Teach-Modus erkennbar -- meist laeuft "
+            "noch ein Programm (program_status: %r). Einige Sekunden warten "
+            "und erneut versuchen." % (self._call_safe("program_status"),)
+        )
+
+    def _ensure_program(self):
+        """``init_program`` vor dem ersten Bewegungsbefehl, falls noch offen.
+
+        Gegenstueck zu :meth:`connect`, das bei lesender Verbindung kein
+        ``init_program`` mehr ruft. Nach jedem ``stop()`` ist es erneut
+        noetig ("Motion cannot be executed! Try executing after running
+        r.init_program()", VM 2026-09-17).
+        """
+        if not self._program_ready:
+            self._init_program()
 
     def list_methods(self):
         """Alle vom Controller angebotenen Funktionen (Diagnose)."""
@@ -330,9 +537,21 @@ class NeuraRobot(RobotPort, PointSourcePort):
 
         Die TCP-Pose wird aus DERSELBEN Gelenkmessung per FK berechnet --
         ``t_pose`` ist deshalb gleich ``t_joints``.
+
+        Die FK laeuft LOKAL ueber die URDF-Kette, sofern der Vortest beim
+        Verbinden sie gegen die Steuerung bestaetigt hat (siehe
+        :meth:`_check_local_fk`). Das spart je Takt einen RPC-Roundtrip --
+        und vor allem lag dieser Roundtrip ZWISCHEN dem Zeitstempel der
+        Gelenkmessung und dem Abgriff der Kamerabilder im Recorder. Er war
+        damit der Hauptanteil des Versatzes, den bc/sync.py als "Frame
+        ueber dem Latenzbudget" meldete (Befund 2026-10-01). Ohne
+        bestaetigte Kette bleibt die Steuerung massgeblich.
         """
         joints, t_joints = self.get_joint_angles_ts()
-        tcp_quat = self.fk(joints, frame="tool")
+        if self._local_fk_active:
+            tcp_quat = self._pose_from_chain(self._chain, joints)
+        else:
+            tcp_quat = self.fk(joints, frame="tool")
         return RobotState(
             t=host_time(),
             joints=np.asarray(joints, dtype=float),
@@ -457,6 +676,7 @@ class NeuraRobot(RobotPort, PointSourcePort):
 
     def activate_servo(self, mode="position"):
         self._require_motion("activate_servo")
+        self._ensure_program()
         # Startstellung des Filters VOR der Aktivierung messen: der erste
         # Sollwert muss nahe an der Ist-Stellung liegen.
         self.servo_guard.reset(self.get_joint_angles(), host_time())
@@ -517,6 +737,7 @@ class NeuraRobot(RobotPort, PointSourcePort):
     def move_to_joints(self, joints):
         """Blockierende PTP-Fahrt (``move_joint``) mit Zielkontrolle."""
         self._require_motion("move_to_joints")
+        self._ensure_program()
         if self._servo_active:
             raise RobotError("move_to_joints bei aktivem Servo-Interface")
         target = [float(v) for v in joints]
@@ -562,6 +783,7 @@ class NeuraRobot(RobotPort, PointSourcePort):
         mode = self._gripper_mode
         if mode == GRIPPER_HARDWARE:
             self._require_motion("gripper_command")
+            self._ensure_program()
             self._call("grasp" if close else "release")
         elif mode == GRIPPER_LOGGED:
             self.gripper_log.append((host_time(), close))
@@ -583,6 +805,7 @@ class NeuraRobot(RobotPort, PointSourcePort):
         Hardware-Not-Aus (AP 4.2).
         """
         self._stop_requested.set()
+        self._program_ready = False
         self._call_safe("stop")
         self._call_safe("stop_movelinear_online")
         self._call_safe("deactivate_servo_interface")

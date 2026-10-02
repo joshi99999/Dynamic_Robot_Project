@@ -24,6 +24,7 @@ Beides erst nach Absprache mit der anderen Gruppe.
 """
 
 import logging
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
@@ -68,6 +69,9 @@ class RecordingTab(ModeTab):
         self.process.started.connect(self._on_started)
         self._progress = None
         self._captures = None
+        #: Abbruchsignal eines laufenden Oeffnens der Vorschau, sonst None
+        #: (Muster wie widgets.CameraAssignment.search).
+        self._preview_cancel = None
         self._live_path = None
         self._rates = RateMeter()
         self._sequence_source = None
@@ -423,7 +427,12 @@ class RecordingTab(ModeTab):
 
         self.episodes = block_wheel(QSpinBox())
         self.episodes.setRange(1, 500)
-        self.episodes.setValue(2)
+        # Standard 1: an der Anlage gehoert zu einem Aufruf genau eine
+        # Episode (recording.episode_advice). Mehrere sind nur dort
+        # sinnvoll, wo kein Objekt im Spiel ist -- das stellt man bewusst
+        # ein, statt es an der Anlage versehentlich mitzunehmen
+        # (Labortag 2026-10-01).
+        self.episodes.setValue(1)
         self.episodes.valueChanged.connect(self._update_command)
         form.addRow("Episoden", self.episodes)
 
@@ -457,6 +466,34 @@ class RecordingTab(ModeTab):
             "sein (der Export erzwingt das) und ist mitgelernt (AP 2.6).")
         self.override.valueChanged.connect(self.session.set_override)
         form.addRow("Override", self.override)
+
+        # servo_j-Senderate: in der VM muss sie herunter, an der Anlage
+        # vermutlich nicht (Dokumentation/Taktzeit-und-RPC-Latenz.md, 8).
+        # Deshalb je Lauf einstellbar statt als globale Konstante -- so
+        # steht der Wert im Protokoll und in den Metadaten der Episode.
+        self.servo_rate = block_wheel(QComboBox())
+        for k in range(1, 9):
+            hz = k * config.CONTROL_RATE_HZ
+            self.servo_rate.addItem(
+                "%g Hz  (%d Teilschritt%s)" % (hz, k, "" if k == 1 else "e"), hz)
+        self.servo_rate.setCurrentIndex(
+            int(round(config.SERVO_RATE_HZ / config.CONTROL_RATE_HZ)) - 1)
+        self.servo_rate.setToolTip(
+            "Wie fein die Sollwerte zwischen zwei Regeltakten gesendet werden. "
+            "Höher ist ruhiger, kostet aber Zeit im Takt: jeder Teilschritt ist "
+            "ein eigener Aufruf an die Steuerung. Hält der Takt nicht, wird die "
+            "Bahn langsamer abgefahren — und diese Geschwindigkeit wird "
+            "mitgelernt (AP 2.6).\n\n"
+            "MUSS bei Aufzeichnung und Inferenz gleich sein (AP 1.5.1): eine "
+            "Policy aus 30-Hz-Daten lässt sich nur mit 30 Hz fahren. "
+            "apps/infer.py bricht bei Abweichung ab.\n\n"
+            "Messen mit tools/check_servo_timing.py, rechnen mit "
+            "tools/check_rate_budget.py.")
+        self.servo_rate.currentIndexChanged.connect(self._update_command)
+        form.addRow("servo_j-Rate", self.servo_rate)
+        self.servo_rate_hint = QLabel("")
+        self.servo_rate_hint.setWordWrap(True)
+        form.addRow("", self.servo_rate_hint)
 
         layout.addLayout(form)
 
@@ -767,6 +804,7 @@ class RecordingTab(ModeTab):
                       else None),
             noise_scale=self.noise_scale.value(),
             noise_fixed=self.noise_fixed.isChecked(),
+            servo_rate=self.servo_rate.currentData(),
             block=self.block.text().strip() or None,
             light=self.light.text().strip() or None,
             camera_pose=self.camera_pose.text().strip() or None,
@@ -784,6 +822,18 @@ class RecordingTab(ModeTab):
 
         status = self.session.status()
         assignment = self.cameras.assignment()
+        hz = self.servo_rate.currentData()
+        if hz is not None and float(hz) != config.SERVO_RATE_HZ:
+            self.servo_rate_hint.setText(
+                "Abweichend vom Standard (%g Hz). Die Rate landet in den "
+                "Metadaten und muss bei der Inferenz dieselbe sein — eine "
+                "Policy aus diesen Daten lässt sich nur mit %g Hz fahren."
+                % (config.SERVO_RATE_HZ, float(hz)))
+            self.servo_rate_hint.setStyleSheet("color:%s" % WARN)
+        else:
+            self.servo_rate_hint.setText("")
+            self.servo_rate_hint.setStyleSheet("color:%s" % NEUTRAL)
+
         advice = recording_module.episode_advice(
             status.is_real_plant, self.episodes.value())
         self.episode_hint.setText(advice or "")
@@ -811,7 +861,9 @@ class RecordingTab(ModeTab):
     # -- Vorschau -----------------------------------------------------------
 
     def toggle_preview(self):
-        if self.preview_timer.isActive() or self._captures:
+        if self._preview_cancel is not None:
+            self.cancel_preview_open()
+        elif self.preview_timer.isActive() or self._captures:
             self.stop_preview()
         else:
             self.start_preview()
@@ -834,15 +886,50 @@ class RecordingTab(ModeTab):
                 "Die Vorschau", cameras_module.required_backend_keys(assignment),
                 "Mit Platzhalterbildern geht sie ohne alles."):
             return
-        self.btn_preview.setEnabled(False)
-        self.btn_preview.setText("öffne …")
-        configs = cameras_module.to_configs(assignment)
-        self.runner.submit(lambda: _open_captures(configs),
-                           on_done=self._preview_started,
-                           on_error=self._preview_failed,
-                           pool="io")
+        import threading
 
-    def _preview_started(self, captures):
+        cancel = threading.Event()
+        self._preview_cancel = cancel
+        self.btn_preview.setText("Abbrechen")
+        self.sources_line.setStyleSheet("color:%s" % NEUTRAL)
+        self.sources_line.setText(
+            "Wartet auf einen vorherigen Kamerazugriff, der noch nicht "
+            "zurückgekehrt ist …" if self.runner.busy("camera")
+            else "Kameras werden geöffnet …")
+        configs = cameras_module.to_configs(assignment)
+        self.runner.submit(lambda: _open_captures(configs, cancel),
+                           on_done=lambda caps: self._preview_started(caps, cancel),
+                           on_error=lambda err: self._preview_failed(err, cancel),
+                           pool="camera")
+
+    def cancel_preview_open(self):
+        """Oeffnen abbrechen -- sofort, ohne auf den Treiber zu warten.
+
+        Kehrt das Oeffnen spaeter doch noch zurueck, werden die Kameras in
+        _preview_started gleich wieder geschlossen: sie sollen nicht
+        unbemerkt belegt bleiben, wenn danach eine Aufnahme sie braucht.
+        """
+        if self._preview_cancel is None:
+            return
+        self._preview_cancel.set()
+        self._preview_cancel = None
+        self.btn_preview.setEnabled(True)
+        self.btn_preview.setText("Vorschau starten")
+        self.sources_line.setText("Öffnen abgebrochen.")
+        self.sources_line.setStyleSheet("color:%s" % NEUTRAL)
+        log.info("Vorschau: Oeffnen abgebrochen")
+
+    def _preview_started(self, captures, cancel):
+        if cancel is not self._preview_cancel:
+            # Abgebrochen, waehrend der Treiber noch oeffnete: Geraete
+            # sofort wieder freigeben.
+            for capture in captures:
+                try:
+                    capture.stop()
+                except Exception:
+                    log.exception("Kamera schliessen gescheitert")
+            return
+        self._preview_cancel = None
         self._captures = captures
         self._rates = RateMeter()
         self.btn_preview.setEnabled(True)
@@ -851,7 +938,10 @@ class RecordingTab(ModeTab):
         log.info("Vorschau offen: %s",
                  ", ".join(c.name for c in captures))
 
-    def _preview_failed(self, error):
+    def _preview_failed(self, error, cancel):
+        if cancel is not self._preview_cancel:
+            return  # Abbruch oder veraltetes Oeffnen
+        self._preview_cancel = None
         self._captures = None
         self.btn_preview.setEnabled(True)
         self.btn_preview.setText("Vorschau starten")
@@ -861,6 +951,8 @@ class RecordingTab(ModeTab):
         log.error("Vorschau gescheitert: %s", error)
 
     def stop_preview(self):
+        if self._preview_cancel is not None:
+            self.cancel_preview_open()
         self.preview_timer.stop()
         captures, self._captures = self._captures, None
         if captures:
@@ -997,6 +1089,16 @@ class RecordingTab(ModeTab):
 
         # Die Vorschau muss weg: apps/record.py oeffnet dieselben Kameras.
         self.stop_preview()
+        if self.runner.busy("camera"):
+            # Ein abgebrochenes Oeffnen haengt noch im Treiber und haelt
+            # womoeglich ein Geraet -- record.py wuerde daran scheitern,
+            # mit einer Meldung, die nicht auf die Ursache zeigt.
+            QMessageBox.information(
+                self, "Kamera noch belegt",
+                "Ein Kamerazugriff der Oberfläche (Vorschau oder Gerätesuche) "
+                "ist noch nicht zurückgekehrt. Die Aufnahme würde dieselbe "
+                "Kamera öffnen wollen.\n\nIn ein paar Sekunden erneut starten.")
+            return
 
         self._progress = recording_module.RecordProgress(
             total_episodes=self.episodes.value())
@@ -1201,18 +1303,28 @@ class RateMeter(object):
         self._first.clear()
 
 
-def _open_captures(configs):
+def _open_captures(configs, cancel=None):
     """Kameras oeffnen und starten -- laeuft im Arbeitsthread.
 
     Geht ueber ``bc.capture`` und ``bc.adapters`` wie der Recorder, damit
     die Vorschau dieselbe Kette prueft, die spaeter aufzeichnet.
+
+    ``cancel`` (threading.Event) wird zwischen den Kameras und waehrend
+    des Wartens auf das erste Bild geprueft. Das Oeffnen selbst ist ein
+    Treiberaufruf und laesst sich nicht unterbrechen.
     """
     from .. import capture as capture_module
-    from ..adapters import open_camera
+    from ..adapters import Cancelled, open_camera
+    from ..ports import CameraError
+
+    def pruefen():
+        if cancel is not None and cancel.is_set():
+            raise Cancelled("abgebrochen")
 
     started = []
     try:
         for cfg in configs:
+            pruefen()
             if cfg.backend == "sim":
                 from ..adapters.cam_sim import SimCamera
                 from ..clock import RealClock
@@ -1225,7 +1337,21 @@ def _open_captures(configs):
             started.append(cap)
         for cap in started:
             if isinstance(cap, capture_module.ThreadedCapture):
-                cap.wait_for_frame(timeout=10.0)
+                # In kurzen Stuecken warten, damit ein Abbruch durchkommt --
+                # wait_for_frame(10 s) am Stueck hielte ihn bis zu 10 s auf.
+                frist = time.monotonic() + 10.0
+                while True:
+                    pruefen()
+                    try:
+                        cap.wait_for_frame(timeout=0.25)
+                        break
+                    except CameraError:
+                        if cap.error is not None:
+                            raise  # echter Kamerafehler, nicht nur "noch nichts"
+                        if time.monotonic() > frist:
+                            raise CameraError(
+                                "Kamera '%s' lieferte innerhalb 10 s keinen "
+                                "Frame" % cap.name)
     except Exception:
         for cap in started:
             try:

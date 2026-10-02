@@ -237,7 +237,10 @@ class CameraAssignmentView(QGroupBox):
         self.runner = runner
         self.inventory = cameras_module.Inventory()
         self._boxes = {}
-        self._searching = False
+        #: Abbruchsignal der laufenden Suche (threading.Event) oder None.
+        #: Zugleich Kennung: ein Ergebnis, das zu einem anderen Signal
+        #: gehoert, stammt aus einer abgebrochenen Suche und wird verworfen.
+        self._search_cancel = None
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -254,8 +257,9 @@ class CameraAssignmentView(QGroupBox):
         self.button = QPushButton("Geräte suchen")
         self.button.setToolTip(
             "Sucht Webcams (OpenCV-Indizes) und Daheng-Kameras (Galaxy SDK). "
-            "Dauert einen Moment, weil jeder Index probeweise geöffnet wird.")
-        self.button.clicked.connect(self.search)
+            "Dauert einen Moment, weil jeder Index probeweise geöffnet wird. "
+            "Während der Suche wird der Knopf zu \"Abbrechen\".")
+        self.button.clicked.connect(self._button_clicked)
         row.addWidget(self.button)
         row.addStretch(1)
         layout.addLayout(row)
@@ -279,21 +283,57 @@ class CameraAssignmentView(QGroupBox):
             self._fill(cameras_module.default_assignment(
                 self.inventory, backend_is_sim_robot))
 
-    def search(self):
-        if self._searching:
-            return
-        self._searching = True
-        self.button.setEnabled(False)
-        self.button.setText("suche …")
-        self.runner.submit(
-            cameras_module.discover,
-            on_done=self._on_found,
-            on_error=self._on_search_failed,
-            pool="io")
+    @property
+    def searching(self):
+        return self._search_cancel is not None
 
-    def _on_found(self, inventory):
-        self._searching = False
-        self.button.setEnabled(True)
+    def _button_clicked(self):
+        if self.searching:
+            self.cancel_search()
+        else:
+            self.search()
+
+    def search(self):
+        if self.searching:
+            return
+        import threading
+
+        cancel = threading.Event()
+        self._search_cancel = cancel
+        self.button.setText("Abbrechen")
+        if self.runner.busy("camera"):
+            # Ein frueherer, abgebrochener Kamerazugriff haengt noch im
+            # Treiber. Diese Suche wartet dahinter -- sagen, warum nichts
+            # passiert, statt still zu stehen.
+            self.notes.setText("Wartet auf einen vorherigen Kamerazugriff, "
+                               "der noch nicht zurückgekehrt ist …")
+        else:
+            self.notes.setText("Suche läuft …")
+        self.runner.submit(
+            lambda: cameras_module.discover(cancel=cancel),
+            on_done=lambda inventory: self._on_found(inventory, cancel),
+            on_error=lambda error: self._on_search_failed(error, cancel),
+            pool="camera")
+
+    def cancel_search(self):
+        """Sofort zurueck in den Ruhezustand; das Ergebnis wird verworfen.
+
+        Die Suche selbst haelt erst zwischen zwei Geraeten an -- ein
+        einzelnes Oeffnen ist ein Treiberaufruf. Die Oberflaeche wartet
+        darauf nicht.
+        """
+        if self._search_cancel is None:
+            return
+        self._search_cancel.set()
+        self._search_cancel = None
+        self.button.setText("Geräte suchen")
+        self.notes.setText("Suche abgebrochen.")
+        log.info("Geraetesuche abgebrochen")
+
+    def _on_found(self, inventory, cancel):
+        if cancel is not self._search_cancel:
+            return  # abgebrochen -- Ergebnis gehoert zu keiner Suche mehr
+        self._search_cancel = None
         self.button.setText("Geräte suchen")
         self.inventory = inventory
         keep = self.assignment()
@@ -302,9 +342,10 @@ class CameraAssignmentView(QGroupBox):
         self.notes.setText("\n".join(lines) if lines else
                            "%d Quelle(n) gefunden." % len(inventory.devices))
 
-    def _on_search_failed(self, error):
-        self._searching = False
-        self.button.setEnabled(True)
+    def _on_search_failed(self, error, cancel):
+        if cancel is not self._search_cancel:
+            return  # Abbruch oder veraltete Suche: nichts zu melden
+        self._search_cancel = None
         self.button.setText("Geräte suchen")
         self.notes.setText("Suche gescheitert: %s" % error)
         log.error("Geraetesuche gescheitert: %s", error)

@@ -1,0 +1,89 @@
+{
+  "erzeugt": "2026-10-01T13:22:14",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen (Dokumentation/Taktzeit-und-RPC-Latenz.md).",
+  "adresse": "192.168.2.13:65432",
+  "wiederholungen": 30,
+  "reihen": {
+    "TCP-Verbindung allein (ohne Nutzlast)": {
+      "min": 0.36072731018066406,
+      "median": 0.9304285049438477,
+      "p95": 1003.8621425628662,
+      "max": 1007.2851181030273,
+      "n": 30
+    },
+    "roh-RPC get_current_joint_angles": {
+      "min": 6.066083908081055,
+      "median": 10.887622833251953,
+      "p95": 23.810863494873047,
+      "max": 1011.7030143737793,
+      "n": 30
+    },
+    "neurapy get_current_joint_angles": {
+      "min": 6.026506423950195,
+      "median": 8.736371994018555,
+      "p95": 20.930767059326172,
+      "max": 30.834674835205078,
+      "n": 30
+    },
+    "neurapy ..._with_timestamp": {
+      "min": 5.615472793579102,
+      "median": 8.180618286132812,
+      "p95": 15.532255172729492,
+      "max": 16.53289794921875,
+      "n": 30
+    },
+    "neurapy compute_forward_kinematics": {
+      "min": 2.917051315307617,
+      "median": 4.703044891357422,
+      "p95": 7.225751876831055,
+      "max": 8.73708724975586,
+      "n": 30
+    },
+    "Versatz Roboter <-> Kamera (Sim)": {
+      "min": 6.568431854248047,
+      "median": 11.271119117736816,
+      "p95": 17.93837547302246,
+      "max": 19.875288009643555,
+      "n": 30
+    },
+    "Dauerlauf get_current_joint_angles": {
+      "min": 6.230354309082031,
+      "median": 11.458158493041992,
+      "p95": 25.0394344329834,
+      "max": 44.85821723937988,
+      "n": 560
+    }
+  },
+  "befunde": [
+    [
+      "ok",
+      "Die Aufrufkosten passen in den Takt."
+    ],
+    [
+      "ok",
+      "Der Versatz bleibt unter der Grenze."
+    ],
+    [
+      "info",
+      "Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar."
+    ],
+    [
+      "ok",
+      "Keine Haenger bei getaktetem Verkehr -- die 1000-ms-Werte aus Abschnitt 1 sind ein Artefakt des Messbursts."
+    ]
+  ],
+  "takt_ms_geschaetzt": 47.82915115356445,
+  "takt_ms_budget": 66.66666666666667,
+  "mehrere_je_verbindung": {
+    "beantwortet": 1,
+    "dauern_ms": [
+      6.93
+    ],
+    "hinweis": "Server schliesst nach dem Aufruf"
+  },
+  "dauerlauf_haenger": {
+    "0.2s": 0,
+    "0.5s": 0,
+    "1.0s": 0
+  }
+}

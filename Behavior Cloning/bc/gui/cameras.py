@@ -80,9 +80,13 @@ class Inventory(object):
         return lines
 
 
-def discover(uvc=True, daheng=True):
-    """Geraete suchen. Dauert (UVC-Indizes werden geoeffnet) -- Arbeitsthread."""
-    found = list_devices(uvc=uvc, daheng=daheng)
+def discover(uvc=True, daheng=True, cancel=None):
+    """Geraete suchen. Dauert (UVC-Indizes werden geoeffnet) -- Arbeitsthread.
+
+    ``cancel`` (threading.Event) bricht zwischen zwei Geraeten ab und wirft
+    dann ``bc.adapters.Cancelled``.
+    """
+    found = list_devices(uvc=uvc, daheng=daheng, cancel=cancel)
     return Inventory(found["devices"], found["notes"])
 
 
