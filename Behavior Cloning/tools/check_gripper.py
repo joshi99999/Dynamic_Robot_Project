@@ -187,14 +187,28 @@ def main():
     worst = max([s["end_ms_max"] or 0.0 for s in summary.values()] or [0.0])
     blocking = max(s["rpc_ms_max"] for s in summary.values())
     print("\n  Arbeitswert GRIPPER_DWELL_S = %.0f ms" % dwell_ms)
-    if worst:
-        print("  -> %s" % ("reicht (groesste gemessene Schliesszeit %.0f ms)" % worst
-                           if worst <= dwell_ms else
-                           "ZU KURZ: groesste Schliesszeit %.0f ms -- Dwell vor der Aufzeichnung erhoehen"
-                           % worst))
+    # Urteile im gemeinsamen Format [OK]/[WARNUNG]/[FEHLER] (bc/gui/checks.py)
+    detected = sum(1 for r in results if r.get("end_s") is not None)
+    if not worst:
+        print("  [WARNUNG] Keine Backenbewegung im Bild erkannt (%d/%d) -- ROI auf die "
+              "Backen legen (--roi) und mit --save-frames pruefen. Ohne Bewegung "
+              "laesst sich die Totzeit nicht beurteilen." % (detected, len(results)))
+    elif worst <= dwell_ms:
+        print("  [OK] Dwell reicht: groesste gemessene Schliesszeit %.0f ms <= %.0f ms. "
+              "So kurz wie moeglich festlegen, dann GRIPPER_DWELL_VERIFIED = True."
+              % (worst, dwell_ms))
+    else:
+        print("  [FEHLER] Dwell zu kurz: groesste Schliesszeit %.0f ms > %.0f ms -- "
+              "GRIPPER_DWELL_S vor der Aufzeichnung erhoehen." % (worst, dwell_ms))
+    if worst and detected < len(results):
+        print("  [WARNUNG] Bewegung nur in %d von %d Schaltvorgaengen erkannt -- "
+              "ROI/Schwelle pruefen." % (detected, len(results)))
     if blocking > 1e3 / config.SERVO_RATE_HZ:
-        print("  !! grasp()/release() blockiert bis %.0f ms -- laenger als ein servo_j-Intervall "
-              "(%.1f ms). Greiferbefehl muss vor der Aufzeichnung aus dem Takt-Thread heraus."
+        print("  [FEHLER] grasp()/release() blockiert bis %.0f ms -- laenger als ein "
+              "servo_j-Intervall (%.1f ms). Greiferbefehl muss vor der Aufzeichnung "
+              "aus dem Takt-Thread heraus." % (blocking, 1e3 / config.SERVO_RATE_HZ))
+    else:
+        print("  [OK] Greiferbefehl blockiert hoechstens %.0f ms (servo_j-Intervall %.1f ms)."
               % (blocking, 1e3 / config.SERVO_RATE_HZ))
 
     out = Path(args.out) if args.out else Path("Berichte") / (

@@ -118,8 +118,22 @@ Rest der Pipeline.
 Voraussetzungsmeldungen.
 
 *Systemcheck* — führt `tests/run_all.py` und die `tools/check_*.py` als
-Unterprozesse aus, gestaffelt nach hardwarefrei / lesend / mit Bewegung,
-Rückfrage vor jeder Bewegung.
+Unterprozesse aus, gestaffelt nach hardwarefrei / Hardware ohne Bewegung /
+mit Bewegung, Rückfrage vor allem, was bewegt, bestromt oder den Greifer
+schaltet. Seit 2026-10-04 alle Mess- und Prüfwerkzeuge für den Labortag
+(22 Punkte, Reihenfolge wie in `Dokumentation/Anlagentag-Checkliste.md`):
+
+* **Einstellungen je Punkt** (ROI, Zyklen, Overrides, Kamera, Ordner …);
+  darunter die fertige Kommandozeile zum Kopieren.
+* **Bewertung:** Die Werkzeuge schreiben ihr Urteil als
+  `[OK]` / `[WARNUNG]` / `[FEHLER]` / `[INFO]` — der Reiter sammelt es je
+  Punkt, schlimmste zuerst, und färbt die Liste danach. Das Urteil fällt im
+  Werkzeug, gilt also im Terminal genauso.
+* **Protokoll speichern** legt Bewertung und vollständige Ausgabe als
+  `Berichte/<Datum>_Systemcheck.txt` ab.
+* **Reale Anlage:** Es gilt der Haken „Reale Anlage freigeben“ in der
+  Backend-Leiste. Ist er gesetzt, laufen Werkzeuge, die das kennen, mit
+  `--real-robot` und bekommen das Freigabewort.
 
 *Training* (2026-09-29) — die ganze Kette aus dem Reiter heraus:
 
@@ -194,6 +208,35 @@ auf der Platte, werden aber markiert und kommen nicht in den Datensatz.
 Ohne den Haken bleibt eine Episode **unbewertet** — `apps/export.py
 --require-success` lässt sie dann später aus. Gegen den SimRobot setzt
 `record.py` das Label weiterhin automatisch auf „erfolgreich".
+
+### Trockenlauf ohne Greifer
+
+„Trockenlauf ohne Greifer" (`apps/record.py --no-gripper`) ist für
+**Bahntests, solange in der Steuerung kein Greifer konfiguriert ist** —
+etwa weil die Pinbelegung zur Control-Box noch fehlt (Anlage 2026-10-05,
+Tool `ZimmerLWR50` angelegt, `gripper_name` leer). Ohne den Haken bricht
+`record.py` an der realen Anlage vorher ab, und `gripper_command()` würde
+sonst mitten in der Fahrt werfen — beim ersten Greiferschritt der Sequenz,
+mit dem Arm über dem Teil.
+
+Der Arm fährt dabei die **vollständige** Bahn, der Greifer schaltet nicht.
+Kein Werkstück einlegen.
+
+Solche Episoden sind **für den Datensatz gesperrt**, an zwei unabhängigen
+Stellen:
+
+* `apps/record.py` setzt `discarded` und den Grund „Trockenlauf ohne
+  Greifer" — zuletzt und ohne Ausnahme, auch wenn die Bewertung oben
+  „erfolgreich" gesagt hat.
+* `bc/lerobot_io.scan_sources` weist sie zusätzlich über die Metadaten
+  (`gripper_mode == "dry_run"`) ab, falls jemand `discarded` in der
+  `meta.json` von Hand zurücksetzt.
+
+Der Grund für beide Sperren ist derselbe: Die Greiferbefehle stehen im
+Action-Vektor, haben physisch aber nie stattgefunden. Eine Policy, die
+darauf trainiert, lernt auf einer Lüge. In den Metadaten steht deshalb
+`gripper_mode: "dry_run"` und nicht `"logged"` — letzteres heißt
+Simulation, ersteres echte Bewegung.
 
 *Betrieb* (2026-09-29):
 

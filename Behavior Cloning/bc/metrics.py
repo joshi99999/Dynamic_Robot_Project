@@ -153,3 +153,122 @@ def format_summary(summary):
         % (s["true"], s["false"], s["unlabeled"])
     )
     return "\n".join(lines)
+
+
+# -- Qualitaet einer einzelnen Aufnahme (Systemcheck, tools/check_episodes.py) --
+
+#: Anteil verspaeteter servo_j-Aufrufe (pacer_overruns / Aufrufe), ab dem der
+#: Takt als nicht gehalten gilt. Gesunde VM-Laeufe am PC: 0-3 Ueberlaeufe je
+#: Episode (< 1 %); Laptop 2026-10-02/03: 13-45 %.
+QUALITY_OVERRUN_WARN = 0.05
+#: Median-Schleppfehler (rad, groesstes Gelenk) zwischen gesendetem Sollwert
+#: und gemessener Stellung im selben Takt. Override 1.0: 0.002 rad;
+#: Override 0.2: 0.078 rad -- der Arm lief der Bahn 4-10 Grad hinterher
+#: (Auswertung 2026-10-03).
+QUALITY_FOLLOW_MEDIAN_WARN_RAD = 0.03
+#: Ist- gegen Soll-Beschleunigung (p95, groesstes Gelenk). Glatte Befehle,
+#: aber ein Vielfaches an Ist-Beschleunigung = Stop-and-go ("Ruckeln").
+#: VM am PC nach der 60-Hz-Interpolation: ~2.5x; Laptop mit verspaeteten
+#: Befehlen 4.8-5.8x. Mit fester Taktbreite gerechnet -- bei unregelmaessigen
+#: Takten ueberzeichnet das etwas, die Richtung stimmt.
+QUALITY_ACCEL_RATIO_WARN = 3.0
+
+
+def episode_quality(arrays, metadata, discarded=False, discard_reason=""):
+    """Kennzahlen und Urteile zu EINER aufgezeichneten Episode.
+
+    Beantwortet die Fragen aus der Auswertung vom 2026-10-03: Hat der Rechner
+    den Takt gehalten? Folgt der Arm der Bahn (oder laeuft er hinterher, z. B.
+    wegen eines kleinen Overrides)? Faehrt er glatt oder im Stop-and-go?
+
+    ``arrays`` wie in dataset.load_episode (Schluessel mit Punkt). Rueckgabe:
+    ``(kennzahlen, urteile)`` mit urteile = Liste von (Stufe, Text), Stufe
+    "ok" | "warnung" | "fehler" | "info".
+    """
+    from . import config
+    from .recorder import timing_findings
+
+    rate = float(metadata.get("rate_hz") or config.CONTROL_RATE_HZ)
+    dt = 1.0 / rate
+    state = np.asarray(arrays["observation.state"][:, :6], dtype=float)
+    command = np.asarray(arrays.get("aux.joints_command", state), dtype=float)
+
+    follow = np.abs(state - command).max(axis=1)
+    figures = {
+        "steps": int(len(state)),
+        "override": metadata.get("override"),
+        "servo_rate_hz": metadata.get("servo_rate_hz"),
+        "follow_median_rad": float(np.median(follow)),
+        "follow_max_rad": float(follow.max()),
+        "bad_frame_ratio": metadata.get("bad_frame_ratio"),
+        "duration_factor": None,
+        "overrun_ratio": None,
+        "accel_ratio_p95": None,
+    }
+    if metadata.get("duration_s") and metadata.get("planned_duration_s"):
+        figures["duration_factor"] = metadata["duration_s"] / metadata["planned_duration_s"]
+    calls = (metadata.get("servo_j_ms") or {}).get("n")
+    if calls and metadata.get("pacer_overruns") is not None:
+        figures["overrun_ratio"] = metadata["pacer_overruns"] / float(calls)
+    if len(state) > 4:
+        acc_ist = np.abs(np.diff(state, n=2, axis=0)).max(axis=1) / dt ** 2
+        acc_soll = np.abs(np.diff(command, n=2, axis=0)).max(axis=1) / dt ** 2
+        soll = float(np.percentile(acc_soll, 95))
+        if soll > 1e-6:
+            figures["accel_ratio_p95"] = float(np.percentile(acc_ist, 95)) / soll
+
+    verdicts = []
+    if discarded:
+        verdicts.append(("fehler", "verworfen: %s" % (discard_reason or "ohne Grund")))
+
+    overrun = figures["overrun_ratio"]
+    if overrun is not None:
+        if overrun > QUALITY_OVERRUN_WARN:
+            verdicts.append((
+                "warnung",
+                "Takt nicht gehalten: %.0f %% der servo_j-Aufrufe kamen zu spaet "
+                "(%d von %d). Die Bahn wird dann im Stop-and-go gefahren."
+                % (100 * overrun, metadata["pacer_overruns"], calls)))
+        else:
+            verdicts.append(("ok", "Takt gehalten (%.1f %% verspaetete servo_j)."
+                             % (100 * overrun)))
+    # Erste Zeile ist der Befund (zu langsam), die weiteren erklaeren ihn.
+    for k, line in enumerate(timing_findings(metadata)):
+        verdicts.append(("warnung" if k == 0 else "info", line))
+
+    override = metadata.get("override")
+    if figures["follow_median_rad"] > QUALITY_FOLLOW_MEDIAN_WARN_RAD:
+        reason = (" Override %.2f begrenzt die Geschwindigkeit -- das Tempo im "
+                  "Planer senken, nicht den Override." % override
+                  if override is not None and override < 1.0 else "")
+        verdicts.append((
+            "warnung",
+            "Arm laeuft der Bahn hinterher: Schleppfehler Median %.3f rad, max "
+            "%.3f rad. Die Daten zeigen dann eine Bahn, die so nicht gefahren "
+            "wurde.%s" % (figures["follow_median_rad"], figures["follow_max_rad"], reason)))
+    else:
+        verdicts.append(("ok", "Arm folgt der Bahn (Schleppfehler Median %.3f rad, max %.3f rad)."
+                         % (figures["follow_median_rad"], figures["follow_max_rad"])))
+    limit = config.RECORDER_MAX_FOLLOW_ERROR_RAD
+    if figures["follow_max_rad"] > 0.5 * limit:
+        verdicts.append((
+            "warnung",
+            "Schleppfehler max %.3f rad liegt bei %.0f %% der Abbruchgrenze (%.2f rad) "
+            "-- mit mehr Rauschen wuerden Episoden verworfen."
+            % (figures["follow_max_rad"], 100 * figures["follow_max_rad"] / limit, limit)))
+
+    ratio = figures["accel_ratio_p95"]
+    if ratio is not None:
+        if ratio > QUALITY_ACCEL_RATIO_WARN:
+            verdicts.append((
+                "warnung",
+                "Ruckeln: Ist-Beschleunigung %.1f-fach ueber dem Sollwert (p95). Bei "
+                "glatten Befehlen heisst das Stop-and-go -- meist verspaetete "
+                "Befehle (Rechner), siehe Takt." % ratio))
+        else:
+            verdicts.append(("ok", "Bahn glatt (Ist-Beschleunigung %.1f-fach Soll, p95)." % ratio))
+
+    bad = figures["bad_frame_ratio"]
+    if bad:
+        verdicts.append(("info", "%.1f %% der Takte ausserhalb des Latenzbudgets." % (100 * bad)))
+    return figures, verdicts

@@ -86,6 +86,22 @@ def test_scan_selects_episodes_and_detects_tempo_conflicts(tmp_path):
     assert both["skipped"]["verworfen (schutzstopp)"] == 1
 
 
+def test_dry_run_episodes_never_reach_the_export(tmp_path):
+    """Trockenlauf ohne Greifer: die Greiferbefehle stehen im Action-Vektor,
+    haben aber nie stattgefunden. apps/record.py verwirft solche Episoden
+    bereits; diese Pruefung haelt sie auch dann draussen, wenn jemand
+    ``discarded`` in der meta.json von Hand zurueckgesetzt hat."""
+    trocken = _episode()
+    trocken.metadata["gripper_mode"] = "dry_run"
+    # ABSICHTLICH nicht verworfen -- genau der Fall, den die zweite Sperre
+    # abfangen muss.
+    root = _record(tmp_path / "trocken", [trocken, _episode()])
+
+    scan = lerobot_io.scan_sources([root])
+    assert len(scan["episodes"]) == 1
+    assert scan["skipped"]["Trockenlauf ohne Greifer"] == 1
+
+
 def test_scan_refuses_other_schema(tmp_path):
     root = _record(tmp_path / "a", [_episode()])
     index = json.loads((root / "index.json").read_text(encoding="utf-8"))

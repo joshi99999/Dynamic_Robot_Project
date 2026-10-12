@@ -312,3 +312,29 @@ def test_requires_two_waypoints():
         assert False, "ValueError erwartet"
     except ValueError:
         pass
+
+
+def test_slower_transit_speed_means_smaller_steps_and_longer_path():
+    """Planer-Tempo je Lauf (record.py --transit-speed, GUI): halbes Tempo,
+    halbe Schrittweite -- und damit halb so grosse Spruenge, wenn ein
+    Sollwert verspaetet ankommt (Auswertung 2026-10-03)."""
+    wps = [_wp(0, 0, 0.5), _wp(0.30, 0, 0.5)]
+    normal = build_ideal_trajectory(wps)
+    slow = build_ideal_trajectory(wps, transit_speed=config.TRANSIT_SPEED_MS / 2)
+    step = lambda t: np.linalg.norm(np.diff(t.poses_quat[:, :3], axis=0), axis=1).max()
+    # ganzzahlige Taktzahl je Segment: hoechstens ein Bruchteil Abweichung
+    assert abs(step(slow) / step(normal) - 0.5) < 0.02
+    # nicht ganz doppelt so lang: die Rampendauer (SEGMENT_RAMP_S) bleibt fest
+    assert len(slow) > 1.6 * len(normal)
+
+
+def test_planner_speed_problems():
+    from bc.trajectory import planner_speed_problems
+
+    assert planner_speed_problems(config.TRANSIT_SPEED_MS, config.APPROACH_SPEED_MS,
+                                  config.PTP_JOINT_SPEED_RADS) == []
+    assert planner_speed_problems(0.08, 0.03, 0.3) == []
+    zu_schnell = planner_speed_problems(0.15, 0.05, 0.9)
+    assert len(zu_schnell) == 1 and "PTP" in zu_schnell[0]
+    vertauscht = planner_speed_problems(0.04, 0.06, 0.3)
+    assert any("schneller als Transit" in p for p in vertauscht)

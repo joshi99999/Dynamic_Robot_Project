@@ -259,6 +259,29 @@ def joint_derivatives(joints, rate_hz=config.CONTROL_RATE_HZ):
     return velocity, acceleration
 
 
+def planner_speed_problems(transit_speed, approach_speed, ptp_joint_speed):
+    """Was an einem je Lauf eingestellten Planer-Tempo nicht stimmt (AP 2.6).
+
+    Leere Liste = in Ordnung. Gemeinsam fuer ``record.py`` und die GUI, damit
+    beide dieselben Grenzen ziehen (config.PLANNER_*_RANGE_*).
+    """
+    problems = []
+    for label, value, (low, high), unit in (
+        ("Transit", transit_speed, config.PLANNER_TRANSIT_SPEED_RANGE_MS, "m/s"),
+        ("Endanflug", approach_speed, config.PLANNER_APPROACH_SPEED_RANGE_MS, "m/s"),
+        ("PTP", ptp_joint_speed, config.PLANNER_PTP_SPEED_RANGE_RADS, "rad/s"),
+    ):
+        if not low <= float(value) <= high:
+            problems.append("%s-Tempo %g %s ausserhalb %g-%g %s"
+                            % (label, value, unit, low, high, unit))
+    if float(approach_speed) > float(transit_speed):
+        # Der Endanflug ist der langsame, genaue Teil -- schneller als der
+        # Transit ist ein Vertipper, kein Wunsch.
+        problems.append("Endanflug (%g m/s) schneller als Transit (%g m/s)"
+                        % (approach_speed, transit_speed))
+    return problems
+
+
 def segment_progress(nominal_duration, dt, ramp=config.SEGMENT_RAMP_S):
     """Bahnparameter s in (0, 1] je Takt fuer EIN Segment, mit Rampen.
 

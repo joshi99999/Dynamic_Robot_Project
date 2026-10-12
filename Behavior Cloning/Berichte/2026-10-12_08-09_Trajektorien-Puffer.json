@@ -1,0 +1,76 @@
+{
+  "erzeugt": "2026-10-12T08:09:46",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": true,
+  "argumente": {
+    "move": true,
+    "tests": "referenz,komplett,knoten15,anschluss,leerlauf,stopp",
+    "joint": 1,
+    "amplitude": null,
+    "dauer": 4.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "override": 1.0,
+    "doku": false,
+    "real_robot": false
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "referenz": {
+      "kennzahlen": {
+        "proben": 280,
+        "leserate_hz": 38.30344651239247,
+        "groesste_luecke_ms": 107.54179954528809,
+        "verzug_ms": 600.0000000000007,
+        "folgefehler_rms_mrad": 71.53358863215695,
+        "verzug_am_rand": true,
+        "auslenkung_rad": 0.15016238574218765,
+        "dauer_faktor": 1.6983921807044282,
+        "welligkeit_prozent": 73.97463600418412,
+        "stillstand_prozent": 20.192307692307693,
+        "v_ist_max": 0.20996757600993954,
+        "v_plan_max": 0.11780972450961724,
+        "spitze_hz": 7.198228128460687,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 23.944571502009126,
+        "ende_s": 6.768112506866461
+      },
+      "lesedauer_ms": 24.981141090393066,
+      "lesefehler": 0,
+      "taktueberlaeufe": 187,
+      "nicht_deutbar": [
+        "Mitschrieb nur 38 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen",
+        "Bahn lief 1.70-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht)",
+        "Verzug am Rand des Suchbereichs (600 ms) -- Zeitachse passt nicht zur Planung"
+      ]
+    }
+  },
+  "befunde": [
+    [
+      "warnung",
+      "referenz nicht deutbar: Mitschrieb nur 38 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen; Bahn lief 1.70-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht); Verzug am Rand des Suchbereichs (600 ms) -- Zeitachse passt nicht zur Planung."
+    ],
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

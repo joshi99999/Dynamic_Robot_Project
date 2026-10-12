@@ -1,0 +1,312 @@
+Systemcheck 2026-10-05_13-00
+============================================================
+
+Steuerung pruefen (nur lesen): durchgelaufen -- 2 Warnungen, 3 ok
+    [WARNUNG] Zeitbasis weicht um -1791196419277581.250 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+    [WARNUNG] Kein Greifer-Tool im Controller -- alle Posen beziehen sich auf den Flansch, nicht auf die Greiferspitze (AP 2.4, Vortest Punkt 0).
+Kinematik und Achsgrenzen: durchgelaufen -- 1 Warnung, 5 ok
+    [WARNUNG] Achsgrenzen mit Datenblatt/Pendant abgleichen und dann config.JOINT_LIMITS_VERIFIED = True setzen (der ServoGuard nutzt sie)
+IK-Absicherungen: fehlgeschlagen (Rueckgabewert 1)
+RPC-Latenz messen: durchgelaufen -- 3 ok
+    [INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+Punkte sichern: fehlgeschlagen (Rueckgabewert 1) -- 1 Fehler, 1 Warnung
+    [WARNUNG] is_robot_in_simulation() ist nicht True -- diese Sicherung
+    [FEHLER] 2 angeforderte Punkte fehlen in der Steuerung.
+Roboter-Contract: fehlgeschlagen -- 11 Tests bestanden, 1 fehlgeschlagen
+
+============================================================
+Vollstaendige Ausgabe
+============================================================
+
+$ -u tools/check_sim_robot.py
+ 
+============================================================
+0. Verbindung und Identitaet
+============================================================
+Socket 192.168.2.13:65432
+Server-Version v5.0.8
+Client-Version v5.0.8
+is_robot_in_simulation() False
+get_diagnostics() {'critical': False, 'issues': {}}
+ 
+============================================================
+1. Funktionsumfang gegen den Bedarf der Pipeline (AP 1.5.1)
+============================================================
+Funktionen insgesamt 210
+[OK] Alle Pflichtfunktionen vorhanden.
+Override 0.2
+ 
+============================================================
+2. Zustandsabgriff und Tool-Geometrie
+============================================================
+get_current_joint_angles() [0.7096, 0.0863, 1.7368, 0.1162, 1.4023, -0.0186]
+Zeitstempel roh 1791198210475539.8
+Zeitstempel-Abstand zur Hostzeit -1791196419277581.250 s
+[WARN] Zeitbasis weicht um -1791196419277581.250 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+Tool-Offset hinterlegt False
+[WARN] Kein Greifer-Tool im Controller -- alle Posen beziehen sich auf den Flansch, nicht auf die Greiferspitze (AP 2.4, Vortest Punkt 0).
+ 
+============================================================
+3. Kinematik ueber den Adapter (FK/IK-Rueckprobe)
+============================================================
+fk(q) -> Pose [XYZ|QWXYZ] [0.3107, 0.2918, 0.3298, 0.0586, 0.3439, -0.9364, -0.0393]
+ik(fk(q)) -> q [0.7096, 0.0863, 1.7368, 0.1162, 1.4023, -0.0186]
+max |q_ik - q| 0.00000 rad
+[OK] IK-Rueckprobe seedtreu (0.00000 rad).
+FK-Rueckprobe Positionsfehler 0.000000 m
+[OK] FK-Rueckprobe innerhalb der Toleranz.
+Laufzeit fk() inkl. TCP-Roundtrip 2.1 ms
+ 
+(Bewegungs-, Servo- und Greifertests uebersprungen -- --move)
+ 
+============================================================
+Zusammenfassung
+============================================================
+WARN Zeitbasis weicht um -1791196419277581.250 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+WARN Kein Greifer-Tool im Controller -- alle Posen beziehen sich auf den Flansch, nicht auf die Greiferspitze (AP 2.4, Vortest Punkt 0).
+ 
+3 ok, 2 Warnungen, 0 Fehler
+ 
+Hinweis: is_robot_in_simulation() == False -- ANLAGENMESSUNG.
+-> Steuerung pruefen (nur lesen): durchgelaufen -- 2 Warnungen, 3 ok
+ 
+$ -u tools/check_kinematics.py
+ 
+============================================================
+0. Verbindung (ohne Bestromung)
+============================================================
+is_robot_in_simulation() False
+Tool NoTool
+Server-Version v5.0.8
+Tool-Offset hinterlegt False
+ 
+============================================================
+1. Controller-FK gegen die VM-Referenz (50 Stellungen, Frames wrist, elbow, tool)
+============================================================
+wrist: max Positions-/Winkelfehler 0.00 mm / 0.0000 rad
+[OK] Frame wrist: Controller-FK wie in der VM
+elbow: max Positions-/Winkelfehler 0.00 mm / 0.0000 rad
+[OK] Frame elbow: Controller-FK wie in der VM
+tool: max Positions-/Winkelfehler 0.00 mm / 0.0000 rad
+[OK] Frame tool: Controller-FK wie in der VM
+ 
+============================================================
+2. IK-Rueckprobe an den Referenzposen
+============================================================
+ohne Loesung 0 von 50
+max |q_ik - q_ref| 0.00000 rad
+[OK] IK-Rueckprobe: 0 ohne Loesung, max 0.0000 rad
+ 
+============================================================
+3. Gemeldete TCP-Pose gegen FK der aktuellen Stellung
+============================================================
+aktuelle Stellung [0.7096, 0.0864, 1.7368, 0.1162, 1.4023, -0.0186]
+Abweichung 0.00 mm / 0.0000 rad
+[OK] get_tcp_pose_quaternion vs. FK: 0.00 mm
+ 
+============================================================
+4. Achsgrenzen
+============================================================
+J1 config (URDF, unverifiziert) [-3.140, 3.140] rad
+J2 config (URDF, unverifiziert) [-2.350, 2.350] rad
+J3 config (URDF, unverifiziert) [-2.610, 2.610] rad
+J4 config (URDF, unverifiziert) [-3.140, 3.140] rad
+J5 config (URDF, unverifiziert) [-2.560, 2.560] rad
+J6 config (URDF, unverifiziert) [-3.140, 3.140] rad
+Controller-Funktionen mit 'limit' -
+[WARN] Achsgrenzen mit Datenblatt/Pendant abgleichen und dann config.JOINT_LIMITS_VERIFIED = True setzen (der ServoGuard nutzt sie)
+ 
+============================================================
+Zusammenfassung
+============================================================
+WARN Achsgrenzen mit Datenblatt/Pendant abgleichen und dann config.JOINT_LIMITS_VERIFIED = True setzen (der ServoGuard nutzt sie)
+Protokoll: Berichte\2026-10-05_12-59_Kinematik-Anlage.json
+-> Kinematik und Achsgrenzen: durchgelaufen -- 1 Warnung, 5 ok
+ 
+$ -u tools/check_ik.py
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tools\check_ik.py", line 23, in <module>
+from neurapy.robot import Robot
+ModuleNotFoundError: No module named 'neurapy.robot'
+-> IK-Absicherungen: fehlgeschlagen (Rueckgabewert 1)
+ 
+$ -u tools/check_rpc_latency.py --wiederholungen 30 --dauerlauf 10
+ 
+====================================================================
+0. Verbindung (nichts wird bewegt, nichts bestromt)
+====================================================================
+Steuerung: 192.168.2.13:65432
+Server meldet: v5.0.8
+Aktuelle Gelenkstellung: [0.7096, 0.0863, 1.7368, 0.1162, 1.4023, -0.0186]
+ 
+====================================================================
+1. Anteile eines einzelnen Aufrufs
+====================================================================
+min med p95 max
+TCP-Verbindung allein (ohne Nutzlast) 0.4 0.5 1003.1 1004.0 ms
+roh-RPC get_current_joint_angles 3.1 3.7 5.8 11.7 ms
+neurapy get_current_joint_angles 3.1 3.5 4.3 4.3 ms
+neurapy ..._with_timestamp 3.1 3.5 5.0 8.7 ms
+neurapy compute_forward_kinematics 1.7 2.3 3.0 5.0 ms
+ 
+Aufschluesselung (Median):
+Socket-Aufbau 0.5 ms
+Serverzeit darueber 3.1 ms
+NeuraPy-Client darueber -0.2 ms
+ 
+====================================================================
+2. Hochrechnung auf den 15-Hz-Takt des Recorders
+====================================================================
+Budget je Takt (15 Hz) 66.7 ms
+davon je Aufruf bei 6 Aufrufen je Takt 11.1 ms
+Gemessen je Takt (servo_j mit den Kosten von
+get_current_joint_angles angesetzt) 19.8 ms
+-> Schleife laeuft 0.3-fach zu langsam (50.6 Hz statt 15 Hz)
+[OK] Die Aufrufkosten passen in den Takt.
+ 
+====================================================================
+3. Versatz, den der Recorder als 'Frame ueber Budget' meldet
+====================================================================
+read_state() stempelt die Gelenke in der Mitte des Winkel-Aufrufs;
+die Kamerabilder werden erst NACH der FK abgegriffen. Die Differenz
+ist reine Controller-Latenz -- unabhaengig von der Kamera.
+min med p95 max
+Versatz Roboter <-> frischester Frame 3.4 3.9 4.7 4.9 ms
+Grenze SYNC_MAX_SKEW_S: 30 ms -- darueber: 0 von 30 (0 %)
+[OK] Der Versatz bleibt unter der Grenze.
+ 
+====================================================================
+4. Nimmt die Steuerung mehrere Aufrufe je Verbindung an?
+====================================================================
+Entscheidet, ob eine stehende Verbindung im Adapter ueberhaupt
+moeglich ist. Drei Aufrufe nacheinander auf EINEM Socket:
+Aufruf 1: 2.5 ms
+Server schliesst nach dem Aufruf
+[INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+ 
+====================================================================
+5. Haenger bei getaktetem Verkehr (nicht im Burst)
+====================================================================
+10 s lang mit 60 Hz aufrufen -- so, wie der Recorder es tut.
+min med p95 max
+Dauerlauf, 601 Aufrufe 3.1 3.8 4.8 13.4 ms
+ueber 200 ms: 0 von 601 (0.0 %)
+ueber 500 ms: 0 von 601 (0.0 %)
+ueber 1000 ms: 0 von 601 (0.0 %)
+[OK] Keine Haenger bei getaktetem Verkehr -- die 1000-ms-Werte aus Abschnitt 1 sind ein Artefakt des Messbursts.
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-05_12-59_RPC-Latenz.json
+Geltungsbereich: Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen (Dokumentation/Taktzeit-und-RPC-Latenz.md).
+-> RPC-Latenz messen: durchgelaufen -- 3 ok
+ 
+$ -u tools/export_points.py --sequence sequences/pick_to_station.json
+ 
+============================================================
+0. Verbindung und Herkunft
+============================================================
+socket 192.168.2.13:65432
+server_version v5.0.8
+client_version v5.0.8
+in_simulation False
+tool NoTool
+ 
+[WARN] is_robot_in_simulation() ist nicht True -- diese Sicherung
+stammt moeglicherweise von der REALEN Anlage. Dateinamen
+entsprechend waehlen, damit sie nicht mit VM-Punkten mischt.
+ 
+============================================================
+1. Punkte in der Steuerung
+============================================================
+Punkte insgesamt 36
+APPROACH_01
+CLEAR_FOV
+GP1
+GP10
+GP11
+GP12
+GP13
+GP14
+GP15
+GP16
+GP2
+GP3
+GP4
+GP5
+GP6
+GP7
+GP8
+GP9
+Grip
+GripRotate
+GripSafe
+Hauptpos_cartesian
+Hauptpos_cartesian2
+Home
+PICK
+PRE_PICK
+PRE_PLACE
+Parking
+Rotate
+RotateGripSafe
+RotateGripSafe_1
+SafeRotateIn
+Testpunkt1
+Testpunkt2
+Vorpos_cartesian
+Vorpos_cartesian2
+ 
+============================================================
+2. Auslesen
+============================================================
+CLEAR_FOV J=[0.006245, -0.759337, 1.782538, -2.1e-05, 1.646942, 0.006307]
+APPROACH_01 J=[0.018341, -0.040966, 1.63025, 0.000677, 1.549838, -0.01862]
+PICK J=[0.018507, 0.328111, 1.697916, 0.000582, 1.103222, -0.018664]
+PRE_PLACE J=[0.709631, 0.086328, 1.736832, 0.116211, 1.402291, -0.01859]
+APPROACH_02 NICHT IN DER STEUERUNG
+PRE_GRASP NICHT IN DER STEUERUNG
+ 
+============================================================
+3. Ergebnis
+============================================================
+gesichert 4 Punkte
+nicht gefunden 2 (APPROACH_02, PRE_GRASP)
+Datei sequences\points_2026-10-05_12-59.json
+ 
+Zurueckspielen auf eine andere Steuerung:
+python tools/import_points.py sequences\points_2026-10-05_12-59.json
+ 
+[FAIL] 2 angeforderte Punkte fehlen in der Steuerung.
+-> Punkte sichern: fehlgeschlagen (Rueckgabewert 1) -- 1 Fehler, 1 Warnung
+ 
+$ -u tests/run_all.py --robot=neura contract.test_robot_contract --real-robot
+!! robot-Backend: neura (HARDWARE)
+!! --real-robot: Tests laufen gegen die REALE Steuerung (Greifer schaltet).
+Not-Aus in Reichweite, Greifer frei? 'ANLAGE' eintippen: 
+== contract.test_robot_contract ==
+OK test_dof
+OK test_emergency_stop_contract
+OK test_fk_matches_reported_pose
+OK test_fk_supports_collision_frames
+FAIL test_gripper_command_is_nonblocking_and_tracked
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 109, in run_module
+fn(*args)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\contract\test_robot_contract.py", line 154, in test_gripper_command_is_nonblocking_and_tracked
+robot.gripper_command(not before)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 791, in gripper_command
+raise RobotError(
+bc.ports.RobotError: Kein Greifer konfiguriert (Tool 'NoTool') und keine Simulation -- Greiferbefehl nicht ausfuehrbar.
+OK test_ik_roundtrip_and_seed
+[31;20m[2026-10-05 12:59:41][neurapy_logger][ERROR] : compute_inverse_kinematics call with args (), {'target_pose': [10.0, 10.0, 10.0, 1.0, 0.0, 0.0, 0.0], 'reference_joint': [0.7095380197465412, 0.0863066426980951, 1.7368898193355444, 0.1161413705999803, 1.40237340053827, -0.018653446065187505], 'representation': 'quaternion'}, failed with exception Inverse Kinematics solution could not be found. Ensure that the target_pose and reference angle are valid and reachable. :(robot.py:117)[0m
+OK test_ik_unreachable_raises_ikerror
+OK test_link_positions_contract
+OK test_move_to_current_joints_is_noop
+OK test_read_state_contract
+OK test_servo_guard_refuses_jump
+OK test_servo_lifecycle
+ 
+============================================================
+11 Tests bestanden, 1 fehlgeschlagen
+FAIL contract.test_robot_contract::test_gripper_command_is_nonblocking_and_tracked
+-> Roboter-Contract: fehlgeschlagen -- 11 Tests bestanden, 1 fehlgeschlagen
+ 

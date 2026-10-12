@@ -121,7 +121,8 @@ def record_argv(out, robot_kind="sim", episodes=1, sequence=None,
                 noise_fixed=False, seed=None, block=None, session=None,
                 light=None, camera_pose=None, object_note=None,
                 ask_label=False, preview=None, preview_hz=None,
-                real_robot=False, servo_rate=None):
+                real_robot=False, servo_rate=None, transit_speed=None,
+                approach_speed=None, ptp_speed=None, no_gripper=False):
     """Kommandozeile fuer apps/record.py (ohne das Python-Programm)."""
     if not out:
         raise ValueError("Kein Zielordner angegeben.")
@@ -140,6 +141,12 @@ def record_argv(out, robot_kind="sim", episodes=1, sequence=None,
     # lesbare Kommandozeile, und der Default steht an einer Stelle.
     if servo_rate is not None and float(servo_rate) != config.SERVO_RATE_HZ:
         argv += ["--servo-rate", "%g" % float(servo_rate)]
+    for flag, value, default in (
+            ("--transit-speed", transit_speed, config.TRANSIT_SPEED_MS),
+            ("--approach-speed", approach_speed, config.APPROACH_SPEED_MS),
+            ("--ptp-speed", ptp_speed, config.PTP_JOINT_SPEED_RADS)):
+        if value is not None and abs(float(value) - default) > 1e-9:
+            argv += [flag, "%g" % float(value)]
     argv += ["--episodes", str(int(episodes)), "--out", str(out)]
     if seed is not None:
         argv += ["--seed", str(int(seed))]
@@ -157,6 +164,8 @@ def record_argv(out, robot_kind="sim", episodes=1, sequence=None,
             argv += ["--preview-hz", "%g" % float(preview_hz)]
     if real_robot:
         argv.append("--real-robot")
+    if no_gripper:
+        argv.append("--no-gripper")
     return argv
 
 

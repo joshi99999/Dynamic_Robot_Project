@@ -1055,3 +1055,112 @@ def test_compose_turns_rgb_frames_into_bgr_for_display():
     mitte = board[40, 40]  # unterhalb der Beschriftung
     assert mitte[2] == 255 and mitte[0] == 0, (
         "Rot liegt nach compose() nicht im BGR-Rotkanal: %s" % (mitte,))
+
+
+def test_planner_speeds_only_in_argv_when_they_differ():
+    gleich = recording.record_argv(
+        "out", transit_speed=config.TRANSIT_SPEED_MS,
+        approach_speed=config.APPROACH_SPEED_MS, ptp_speed=config.PTP_JOINT_SPEED_RADS)
+    for flag in ("--transit-speed", "--approach-speed", "--ptp-speed"):
+        assert flag not in gleich
+
+    langsam = recording.record_argv("out", transit_speed=0.08, approach_speed=0.03,
+                                    ptp_speed=0.3)
+    assert langsam[langsam.index("--transit-speed") + 1] == "0.08"
+    assert langsam[langsam.index("--approach-speed") + 1] == "0.03"
+    assert langsam[langsam.index("--ptp-speed") + 1] == "0.3"
+
+
+# -- Pruefkatalog: Parameter, reale Anlage, Bewertung (2026-10-04) ---------
+
+def test_every_catalogue_script_exists_and_knows_its_flags():
+    """Ein Tippfehler im Schalter faellt sonst erst am Labortag auf."""
+    for check in checks.catalogue():
+        script = checks.WORKDIR / check.argv[0]
+        assert script.is_file(), "%s: %s fehlt" % (check.key, script)
+        source = script.read_text(encoding="utf-8")
+        flags = [a for a in check.argv[1:] if a.startswith("--")]
+        flags += [p.flag for p in check.params if p.flag]
+        if check.real_flag:
+            flags.append("--real-robot")
+        for flag in flags:
+            # "--x-range=" ist nur die Schreibweise (wegen negativer Werte):
+            # argparse kennt den Schalter als "--x-range", run_all.py
+            # liest "--camera=" selbst aus.
+            name = flag.split("=")[0]
+            assert '"%s"' % name in source or name + "=" in source,                 "%s: %s unbekannt" % (check.key, flag)
+
+
+def test_build_argv_uses_params_and_skips_empty_values():
+    check = checks.find("gripper")
+    argv = check.build_argv({"roi": "", "cycles": 3, "save_frames": ""})
+    assert argv[:1] == ["tools/check_gripper.py"]
+    assert argv[argv.index("--cycles") + 1] == "3"
+    assert "--roi" not in argv and "--save-frames" not in argv
+    assert "--real-robot" not in argv
+
+    real = check.build_argv({}, real=True)
+    assert real[-1] == "--real-robot"
+    assert check.stdin_for(real=True) == checks.REAL_ROBOT_KEYWORD
+
+    contract = checks.find("camera_contract").build_argv({"camera": "uvc", "uvc_device": "1"})
+    assert "--camera=uvc" in contract and "--uvc-device=1" in contract
+
+
+def test_servo_timing_answers_its_own_question_also_at_the_plant():
+    # check_servo_timing fragt "Fortfahren? [j/N]" -- nicht nach ANLAGE.
+    check = checks.find("servo_timing")
+    assert check.stdin_for(real=False) == "j\n"
+    assert check.stdin_for(real=True) == "j\n"
+
+
+def test_checks_without_real_flag_never_get_it():
+    for check in checks.catalogue():
+        if not check.real_flag:
+            assert "--real-robot" not in check.build_argv({}, real=True), check.key
+
+
+def test_free_checks_open_no_hardware():
+    for check in checks.catalogue():
+        if check.level == checks.FREE:
+            assert "neurapy" not in check.needs, check.key
+            assert "gxipy" not in check.needs, check.key
+
+
+def test_power_and_gripper_checks_ask_first():
+    for key in ("servo_timing", "gripper", "controller_move", "robot_contract"):
+        assert checks.find(key).confirm, key
+
+
+def test_verdicts_are_parsed_in_all_tool_dialects():
+    text = ("  [OK] Takt gehalten\n"
+            "  [WARNUNG] Bildalter p95 40 ms\n"
+            "  [WARN] Versionen weichen ab\n"
+            "  [FAIL] servo_j fehlt\n"
+            "  [INFO] nur ein Hinweis\n"
+            "OK: Werte wirken plausibel.\n"
+            "FEHLER: nvidia-smi nicht gefunden\n"
+            "  normale Zeile [OK] mittendrin zaehlt nicht\n")
+    levels = [level for level, _t in checks.parse_verdicts(text)]
+    assert levels == ["ok", "warnung", "warnung", "fehler", "info", "ok", "fehler"]
+
+
+def test_outcome_state_follows_the_worst_verdict():
+    check = checks.find("episodes")
+    assert checks.Outcome(check, 0, "  [OK] gut\n").state == "bestanden"
+    warned = checks.Outcome(check, 0, "  [OK] gut\n  [WARNUNG] Ruckeln\n")
+    assert warned.state == "Befunde"
+    assert "1 Warnung" in warned.summary() and "1 ok" in warned.summary()
+    # Rueckgabewert 0, aber das Werkzeug urteilt FEHLER -> fehlgeschlagen
+    assert checks.Outcome(check, 0, "  [FEHLER] Dwell zu kurz\n").state == "fehlgeschlagen"
+    assert checks.Outcome(check, None, "").state == "abgebrochen"
+
+
+def test_protocol_lists_findings_and_full_output():
+    outcome = checks.Outcome(checks.find("gripper"), 0,
+                             "  [OK] blockiert nicht\n  [FEHLER] Dwell zu kurz\n")
+    text = checks.protocol_text([outcome], "ganze Ausgabe", "2026-10-04_10-00")
+    assert "Greifer-Totzeit messen" in text
+    assert "[FEHLER] Dwell zu kurz" in text
+    assert "blockiert nicht" not in text.split("Vollstaendige Ausgabe")[0]
+    assert text.endswith("ganze Ausgabe")

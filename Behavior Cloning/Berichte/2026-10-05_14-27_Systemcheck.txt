@@ -1,0 +1,311 @@
+Systemcheck 2026-10-05_14-27
+============================================================
+
+RPC-Latenz messen: durchgelaufen -- 3 ok
+    [INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+Punkte sichern: fehlgeschlagen (Rueckgabewert 1) -- 1 Fehler, 1 Warnung
+    [WARNUNG] is_robot_in_simulation() ist nicht True -- diese Sicherung
+    [FEHLER] 1 angeforderte Punkte fehlen in der Steuerung.
+Roboter-Contract: fehlgeschlagen -- 9 Tests bestanden, 3 fehlgeschlagen
+
+============================================================
+Vollstaendige Ausgabe
+============================================================
+
+$ -u tools/check_rpc_latency.py --wiederholungen 30 --dauerlauf 10
+ 
+====================================================================
+0. Verbindung (nichts wird bewegt, nichts bestromt)
+====================================================================
+Steuerung: 192.168.2.13:65432
+Server meldet: v5.0.8
+Aktuelle Gelenkstellung: [0.7089, 0.0856, 1.7375, 0.1154, 1.4031, -0.0192]
+ 
+====================================================================
+1. Anteile eines einzelnen Aufrufs
+====================================================================
+min med p95 max
+TCP-Verbindung allein (ohne Nutzlast) 0.2 0.4 1003.8 1003.8 ms
+roh-RPC get_current_joint_angles 3.0 3.8 5.8 6.0 ms
+neurapy get_current_joint_angles 2.6 3.1 4.5 6.6 ms
+neurapy ..._with_timestamp 2.7 3.1 4.4 5.2 ms
+neurapy compute_forward_kinematics 1.5 1.8 2.1 2.7 ms
+ 
+Aufschluesselung (Median):
+Socket-Aufbau 0.4 ms
+Serverzeit darueber 3.4 ms
+NeuraPy-Client darueber -0.6 ms
+ 
+====================================================================
+2. Hochrechnung auf den 15-Hz-Takt des Recorders
+====================================================================
+Budget je Takt (15 Hz) 66.7 ms
+davon je Aufruf bei 6 Aufrufen je Takt 11.1 ms
+Gemessen je Takt (servo_j mit den Kosten von
+get_current_joint_angles angesetzt) 17.5 ms
+-> Schleife laeuft 0.3-fach zu langsam (57.1 Hz statt 15 Hz)
+[OK] Die Aufrufkosten passen in den Takt.
+ 
+====================================================================
+3. Versatz, den der Recorder als 'Frame ueber Budget' meldet
+====================================================================
+read_state() stempelt die Gelenke in der Mitte des Winkel-Aufrufs;
+die Kamerabilder werden erst NACH der FK abgegriffen. Die Differenz
+ist reine Controller-Latenz -- unabhaengig von der Kamera.
+min med p95 max
+Versatz Roboter <-> frischester Frame 3.0 3.6 4.6 8.5 ms
+Grenze SYNC_MAX_SKEW_S: 30 ms -- darueber: 0 von 30 (0 %)
+[OK] Der Versatz bleibt unter der Grenze.
+ 
+====================================================================
+4. Nimmt die Steuerung mehrere Aufrufe je Verbindung an?
+====================================================================
+Entscheidet, ob eine stehende Verbindung im Adapter ueberhaupt
+moeglich ist. Drei Aufrufe nacheinander auf EINEM Socket:
+Aufruf 1: 3.2 ms
+Server schliesst nach dem Aufruf
+[INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+ 
+====================================================================
+5. Haenger bei getaktetem Verkehr (nicht im Burst)
+====================================================================
+10 s lang mit 60 Hz aufrufen -- so, wie der Recorder es tut.
+min med p95 max
+Dauerlauf, 601 Aufrufe 2.8 3.7 5.5 16.1 ms
+ueber 200 ms: 0 von 601 (0.0 %)
+ueber 500 ms: 0 von 601 (0.0 %)
+ueber 1000 ms: 0 von 601 (0.0 %)
+[OK] Keine Haenger bei getaktetem Verkehr -- die 1000-ms-Werte aus Abschnitt 1 sind ein Artefakt des Messbursts.
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-05_14-20_RPC-Latenz.json
+Geltungsbereich: Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen (Dokumentation/Taktzeit-und-RPC-Latenz.md).
+-> RPC-Latenz messen: durchgelaufen -- 3 ok
+ 
+Protokoll gespeichert: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-05_14-21_Systemcheck.txt
+$ -u tools/check_rpc_latency.py --wiederholungen 30 --dauerlauf 10
+ 
+====================================================================
+0. Verbindung (nichts wird bewegt, nichts bestromt)
+====================================================================
+Steuerung: 192.168.2.13:65432
+Server meldet: v5.0.8
+Aktuelle Gelenkstellung: [0.7089, 0.0856, 1.7375, 0.1154, 1.4031, -0.0192]
+ 
+====================================================================
+1. Anteile eines einzelnen Aufrufs
+====================================================================
+min med p95 max
+TCP-Verbindung allein (ohne Nutzlast) 0.2 0.4 1005.5 1005.6 ms
+roh-RPC get_current_joint_angles 2.8 3.3 4.0 5.3 ms
+neurapy get_current_joint_angles 2.8 3.7 4.7 4.7 ms
+neurapy ..._with_timestamp 2.7 3.6 5.0 6.2 ms
+neurapy compute_forward_kinematics 1.6 2.1 4.2 5.0 ms
+ 
+Aufschluesselung (Median):
+Socket-Aufbau 0.4 ms
+Serverzeit darueber 2.9 ms
+NeuraPy-Client darueber 0.3 ms
+ 
+====================================================================
+2. Hochrechnung auf den 15-Hz-Takt des Recorders
+====================================================================
+Budget je Takt (15 Hz) 66.7 ms
+davon je Aufruf bei 6 Aufrufen je Takt 11.1 ms
+Gemessen je Takt (servo_j mit den Kosten von
+get_current_joint_angles angesetzt) 20.3 ms
+-> Schleife laeuft 0.3-fach zu langsam (49.2 Hz statt 15 Hz)
+[OK] Die Aufrufkosten passen in den Takt.
+ 
+====================================================================
+3. Versatz, den der Recorder als 'Frame ueber Budget' meldet
+====================================================================
+read_state() stempelt die Gelenke in der Mitte des Winkel-Aufrufs;
+die Kamerabilder werden erst NACH der FK abgegriffen. Die Differenz
+ist reine Controller-Latenz -- unabhaengig von der Kamera.
+min med p95 max
+Versatz Roboter <-> frischester Frame 3.5 4.1 5.4 6.1 ms
+Grenze SYNC_MAX_SKEW_S: 30 ms -- darueber: 0 von 30 (0 %)
+[OK] Der Versatz bleibt unter der Grenze.
+ 
+====================================================================
+4. Nimmt die Steuerung mehrere Aufrufe je Verbindung an?
+====================================================================
+Entscheidet, ob eine stehende Verbindung im Adapter ueberhaupt
+moeglich ist. Drei Aufrufe nacheinander auf EINEM Socket:
+Aufruf 1: 2.6 ms
+Server schliesst nach dem Aufruf
+[INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+ 
+====================================================================
+5. Haenger bei getaktetem Verkehr (nicht im Burst)
+====================================================================
+10 s lang mit 60 Hz aufrufen -- so, wie der Recorder es tut.
+min med p95 max
+Dauerlauf, 601 Aufrufe 2.6 3.4 5.3 11.6 ms
+ueber 200 ms: 0 von 601 (0.0 %)
+ueber 500 ms: 0 von 601 (0.0 %)
+ueber 1000 ms: 0 von 601 (0.0 %)
+[OK] Keine Haenger bei getaktetem Verkehr -- die 1000-ms-Werte aus Abschnitt 1 sind ein Artefakt des Messbursts.
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-05_14-26_RPC-Latenz.json
+Geltungsbereich: Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen (Dokumentation/Taktzeit-und-RPC-Latenz.md).
+-> RPC-Latenz messen: durchgelaufen -- 3 ok
+ 
+$ -u tools/export_points.py --sequence sequences/pick_to_station.json
+ 
+============================================================
+0. Verbindung und Herkunft
+============================================================
+socket 192.168.2.13:65432
+server_version v5.0.8
+client_version v5.0.8
+in_simulation False
+tool NoTool
+ 
+[WARN] is_robot_in_simulation() ist nicht True -- diese Sicherung
+stammt moeglicherweise von der REALEN Anlage. Dateinamen
+entsprechend waehlen, damit sie nicht mit VM-Punkten mischt.
+ 
+============================================================
+1. Punkte in der Steuerung
+============================================================
+Punkte insgesamt 37
+APPROACH_01
+CLEAR_FOV
+GP1
+GP10
+GP11
+GP12
+GP13
+GP14
+GP15
+GP16
+GP17
+GP2
+GP3
+GP4
+GP5
+GP6
+GP7
+GP8
+GP9
+Grip
+GripRotate
+GripSafe
+Hauptpos_cartesian
+Hauptpos_cartesian2
+Home
+PICK
+PRE_GRASP
+PRE_PLACE
+Parking
+Rotate
+RotateGripSafe
+RotateGripSafe_1
+SafeRotateIn
+Testpunkt1
+Testpunkt2
+Vorpos_cartesian
+Vorpos_cartesian2
+ 
+============================================================
+2. Auslesen
+============================================================
+CLEAR_FOV J=[0.006245, -0.759337, 1.782538, -2.1e-05, 1.646942, 0.006307]
+APPROACH_01 J=[0.018341, -0.040966, 1.63025, 0.000677, 1.549838, -0.01862]
+PRE_GRASP J=[0.018479, 0.302045, 1.67013, 0.000592, 1.157071, -0.018628]
+PICK J=[0.018507, 0.328111, 1.697916, 0.000582, 1.103222, -0.018664]
+PRE_PLACE J=[0.709631, 0.086328, 1.736832, 0.116211, 1.402291, -0.01859]
+APPROACH_02 NICHT IN DER STEUERUNG
+ 
+============================================================
+3. Ergebnis
+============================================================
+gesichert 5 Punkte
+nicht gefunden 1 (APPROACH_02)
+Datei sequences\points_2026-10-05_14-26.json
+ 
+Zurueckspielen auf eine andere Steuerung:
+python tools/import_points.py sequences\points_2026-10-05_14-26.json
+ 
+[FAIL] 1 angeforderte Punkte fehlen in der Steuerung.
+-> Punkte sichern: fehlgeschlagen (Rueckgabewert 1) -- 1 Fehler, 1 Warnung
+ 
+$ -u tests/run_all.py --robot=neura contract.test_robot_contract --real-robot
+!! robot-Backend: neura (HARDWARE)
+!! --real-robot: Tests laufen gegen die REALE Steuerung (Greifer schaltet).
+Not-Aus in Reichweite, Greifer frei? 'ANLAGE' eintippen: 
+== contract.test_robot_contract ==
+[31;20m[2026-10-05 14:26:59][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:27:00][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:27:01][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:27:02][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:27:03][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:27:04][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_dof
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:27:04][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:27:05][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:27:06][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:27:07][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:27:08][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:27:10][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_emergency_stop_contract
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:27:10][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:27:11][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+OK test_fk_matches_reported_pose
+OK test_fk_supports_collision_frames
+FAIL test_gripper_command_is_nonblocking_and_tracked
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 109, in run_module
+fn(*args)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\contract\test_robot_contract.py", line 154, in test_gripper_command_is_nonblocking_and_tracked
+robot.gripper_command(not before)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 791, in gripper_command
+raise RobotError(
+bc.ports.RobotError: Kein Greifer konfiguriert (Tool 'NoTool') und keine Simulation -- Greiferbefehl nicht ausfuehrbar.
+OK test_ik_roundtrip_and_seed
+[31;20m[2026-10-05 14:27:15][neurapy_logger][ERROR] : compute_inverse_kinematics call with args (), {'target_pose': [10.0, 10.0, 10.0, 1.0, 0.0, 0.0, 0.0], 'reference_joint': [0.7088444327301436, 0.0855786010350947, 1.7374852855105294, 0.11528637105438876, 1.403340752192349, -0.019262394493190935], 'representation': 'quaternion'}, failed with exception Inverse Kinematics solution could not be found. Ensure that the target_pose and reference angle are valid and reachable. :(robot.py:117)[0m
+OK test_ik_unreachable_raises_ikerror
+OK test_link_positions_contract
+OK test_move_to_current_joints_is_noop
+OK test_read_state_contract
+OK test_servo_guard_refuses_jump
+OK test_servo_lifecycle
+ 
+============================================================
+9 Tests bestanden, 3 fehlgeschlagen
+FAIL contract.test_robot_contract::test_dof
+FAIL contract.test_robot_contract::test_emergency_stop_contract
+FAIL contract.test_robot_contract::test_gripper_command_is_nonblocking_and_tracked
+-> Roboter-Contract: fehlgeschlagen -- 9 Tests bestanden, 3 fehlgeschlagen
+ 

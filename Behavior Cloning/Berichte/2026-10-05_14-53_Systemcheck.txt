@@ -1,0 +1,233 @@
+Systemcheck 2026-10-05_14-53
+============================================================
+
+Punkte sichern: durchgelaufen -- 1 Warnung
+    [WARNUNG] is_robot_in_simulation() ist nicht True -- diese Sicherung
+Roboter-Contract: fehlgeschlagen -- 11 Tests bestanden, 1 fehlgeschlagen
+
+============================================================
+Vollstaendige Ausgabe
+============================================================
+
+$ -u tools/export_points.py --sequence sequences/pick_to_station.json
+ 
+============================================================
+0. Verbindung und Herkunft
+============================================================
+socket 192.168.2.13:65432
+server_version v5.0.8
+client_version v5.0.8
+in_simulation False
+tool ZimmerLWR50
+ 
+[WARN] is_robot_in_simulation() ist nicht True -- diese Sicherung
+stammt moeglicherweise von der REALEN Anlage. Dateinamen
+entsprechend waehlen, damit sie nicht mit VM-Punkten mischt.
+ 
+============================================================
+1. Punkte in der Steuerung
+============================================================
+Punkte insgesamt 38
+APPROACH_01
+APPROACH_02
+CLEAR_FOV
+GP1
+GP10
+GP11
+GP12
+GP13
+GP14
+GP15
+GP16
+GP17
+GP2
+GP3
+GP4
+GP5
+GP6
+GP7
+GP8
+GP9
+Grip
+GripRotate
+GripSafe
+Hauptpos_cartesian
+Hauptpos_cartesian2
+Home
+PICK
+PRE_GRASP
+PRE_PLACE
+Parking
+Rotate
+RotateGripSafe
+RotateGripSafe_1
+SafeRotateIn
+Testpunkt1
+Testpunkt2
+Vorpos_cartesian
+Vorpos_cartesian2
+ 
+============================================================
+2. Auslesen
+============================================================
+CLEAR_FOV J=[0.006245, -0.759337, 1.782538, -2.1e-05, 1.646942, 0.006307]
+APPROACH_01 J=[0.018341, -0.040966, 1.63025, 0.000677, 1.549838, -0.01862]
+APPROACH_02 J=[-0.130637, 0.086665, 1.581602, 0.113794, 1.531469, 0.919838]
+PRE_GRASP J=[0.018479, 0.302045, 1.67013, 0.000592, 1.157071, -0.018628]
+PICK J=[0.018507, 0.328111, 1.697916, 0.000582, 1.103222, -0.018664]
+PRE_PLACE J=[0.709631, 0.086328, 1.736832, 0.116211, 1.402291, -0.01859]
+ 
+============================================================
+3. Ergebnis
+============================================================
+gesichert 6 Punkte
+nicht gefunden 0 (-)
+Datei sequences\points_2026-10-05_14-42.json
+ 
+Zurueckspielen auf eine andere Steuerung:
+python tools/import_points.py sequences\points_2026-10-05_14-42.json
+-> Punkte sichern: durchgelaufen -- 1 Warnung
+ 
+$ -u tests/run_all.py --robot=neura contract.test_robot_contract --real-robot
+!! robot-Backend: neura (HARDWARE)
+!! --real-robot: Tests laufen gegen die REALE Steuerung (Greifer schaltet).
+Not-Aus in Reichweite, Greifer frei? 'ANLAGE' eintippen: 
+== contract.test_robot_contract ==
+OK test_dof
+OK test_emergency_stop_contract
+OK test_fk_matches_reported_pose
+OK test_fk_supports_collision_frames
+FAIL test_gripper_command_is_nonblocking_and_tracked
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 109, in run_module
+fn(*args)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\contract\test_robot_contract.py", line 154, in test_gripper_command_is_nonblocking_and_tracked
+robot.gripper_command(not before)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 791, in gripper_command
+raise RobotError(
+bc.ports.RobotError: Kein Greifer konfiguriert (Tool 'ZimmerLWR50') und keine Simulation -- Greiferbefehl nicht ausfuehrbar.
+OK test_ik_roundtrip_and_seed
+[31;20m[2026-10-05 14:42:36][neurapy_logger][ERROR] : compute_inverse_kinematics call with args (), {'target_pose': [10.0, 10.0, 10.0, 1.0, 0.0, 0.0, 0.0], 'reference_joint': [0.006740377495206487, -0.6001231698817205, 1.1566507256139802, -0.0004018460413577375, 2.1136757228950964, 0.0065999373595968394], 'representation': 'quaternion'}, failed with exception Inverse Kinematics solution could not be found. Ensure that the target_pose and reference angle are valid and reachable. :(robot.py:117)[0m
+OK test_ik_unreachable_raises_ikerror
+OK test_link_positions_contract
+OK test_move_to_current_joints_is_noop
+OK test_read_state_contract
+OK test_servo_guard_refuses_jump
+OK test_servo_lifecycle
+ 
+============================================================
+11 Tests bestanden, 1 fehlgeschlagen
+FAIL contract.test_robot_contract::test_gripper_command_is_nonblocking_and_tracked
+-> Roboter-Contract: fehlgeschlagen -- 11 Tests bestanden, 1 fehlgeschlagen
+ 
+$ -u tools/export_points.py --sequence sequences/pick_to_station.json
+ 
+============================================================
+0. Verbindung und Herkunft
+============================================================
+socket 192.168.2.13:65432
+server_version v5.0.8
+client_version v5.0.8
+in_simulation False
+tool ZimmerLWR50
+ 
+[WARN] is_robot_in_simulation() ist nicht True -- diese Sicherung
+stammt moeglicherweise von der REALEN Anlage. Dateinamen
+entsprechend waehlen, damit sie nicht mit VM-Punkten mischt.
+ 
+============================================================
+1. Punkte in der Steuerung
+============================================================
+Punkte insgesamt 38
+APPROACH_01
+APPROACH_02
+CLEAR_FOV
+GP1
+GP10
+GP11
+GP12
+GP13
+GP14
+GP15
+GP16
+GP17
+GP2
+GP3
+GP4
+GP5
+GP6
+GP7
+GP8
+GP9
+Grip
+GripRotate
+GripSafe
+Hauptpos_cartesian
+Hauptpos_cartesian2
+Home
+PICK
+PRE_GRASP
+PRE_PLACE
+Parking
+Rotate
+RotateGripSafe
+RotateGripSafe_1
+SafeRotateIn
+Testpunkt1
+Testpunkt2
+Vorpos_cartesian
+Vorpos_cartesian2
+ 
+============================================================
+2. Auslesen
+============================================================
+CLEAR_FOV J=[0.006245, -0.759337, 1.782538, -2.1e-05, 1.646942, 0.006307]
+APPROACH_01 J=[0.018341, -0.040966, 1.63025, 0.000677, 1.549838, -0.01862]
+APPROACH_02 J=[-0.130637, 0.086665, 1.581602, 0.113794, 1.531469, 0.919838]
+PRE_GRASP J=[0.018479, 0.302045, 1.67013, 0.000592, 1.157071, -0.018628]
+PICK J=[0.018507, 0.328111, 1.697916, 0.000582, 1.103222, -0.018664]
+PRE_PLACE J=[0.709631, 0.086328, 1.736832, 0.116211, 1.402291, -0.01859]
+ 
+============================================================
+3. Ergebnis
+============================================================
+gesichert 6 Punkte
+nicht gefunden 0 (-)
+Datei sequences\points_2026-10-05_14-52.json
+ 
+Zurueckspielen auf eine andere Steuerung:
+python tools/import_points.py sequences\points_2026-10-05_14-52.json
+-> Punkte sichern: durchgelaufen -- 1 Warnung
+ 
+$ -u tests/run_all.py --robot=neura contract.test_robot_contract --real-robot
+!! robot-Backend: neura (HARDWARE)
+!! --real-robot: Tests laufen gegen die REALE Steuerung (Greifer schaltet).
+Not-Aus in Reichweite, Greifer frei? 'ANLAGE' eintippen: 
+== contract.test_robot_contract ==
+OK test_dof
+OK test_emergency_stop_contract
+OK test_fk_matches_reported_pose
+OK test_fk_supports_collision_frames
+FAIL test_gripper_command_is_nonblocking_and_tracked
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 109, in run_module
+fn(*args)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\contract\test_robot_contract.py", line 154, in test_gripper_command_is_nonblocking_and_tracked
+robot.gripper_command(not before)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 791, in gripper_command
+raise RobotError(
+bc.ports.RobotError: Kein Greifer konfiguriert (Tool 'ZimmerLWR50') und keine Simulation -- Greiferbefehl nicht ausfuehrbar.
+OK test_ik_roundtrip_and_seed
+[31;20m[2026-10-05 14:52:51][neurapy_logger][ERROR] : compute_inverse_kinematics call with args (), {'target_pose': [10.0, 10.0, 10.0, 1.0, 0.0, 0.0, 0.0], 'reference_joint': [0.0064797206035149815, -0.6003340173386492, 1.1568825454644933, -0.0005703742040893144, 2.1138951840136757, 0.00655312398106029], 'representation': 'quaternion'}, failed with exception Inverse Kinematics solution could not be found. Ensure that the target_pose and reference angle are valid and reachable. :(robot.py:117)[0m
+OK test_ik_unreachable_raises_ikerror
+OK test_link_positions_contract
+OK test_move_to_current_joints_is_noop
+OK test_read_state_contract
+OK test_servo_guard_refuses_jump
+OK test_servo_lifecycle
+ 
+============================================================
+11 Tests bestanden, 1 fehlgeschlagen
+FAIL contract.test_robot_contract::test_gripper_command_is_nonblocking_and_tracked
+-> Roboter-Contract: fehlgeschlagen -- 11 Tests bestanden, 1 fehlgeschlagen
+ 

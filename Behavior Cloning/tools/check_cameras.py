@@ -36,6 +36,11 @@ from bc import capture, config
 from bc.adapters import apply_camera_specs, list_devices, open_camera
 
 
+#: Messdauer ohne Fenster, wenn nichts angegeben ist (Befund Laptop
+#: 2026-09-24: ``--no-display`` ohne ``--seconds`` lief endlos).
+NO_DISPLAY_SECONDS = 10.0
+
+
 def build_configs(only, backend=None, device=None, specs=None):
     if backend == "sim":
         base = list(config.SIM_CAMERAS)
@@ -119,8 +124,10 @@ def main():
         "--no-display", action="store_true", help="kein Fenster, nur Raten messen"
     )
     parser.add_argument(
-        "--seconds", type=float, default=0.0,
-        help="nach N Sekunden automatisch beenden (0 = unbegrenzt)",
+        "--seconds", type=float, default=None,
+        help="nach N Sekunden automatisch beenden (0 = unbegrenzt). Default: "
+             "mit Fenster unbegrenzt, mit --no-display %g s -- ohne Fenster "
+             "gaebe es sonst nichts zum Beenden" % NO_DISPLAY_SECONDS,
     )
     parser.add_argument(
         "--list", action="store_true",
@@ -141,6 +148,8 @@ def main():
              "mehrfach angebbar",
     )
     args = parser.parse_args()
+    if args.seconds is None:
+        args.seconds = NO_DISPLAY_SECONDS if args.no_display else 0.0
 
     if args.list:
         print_devices()
@@ -179,6 +188,8 @@ def main():
 
     last_report = time.time()
     last_counts = {cam.name: 0 for cam in cams}
+    stats = {"fps": {cam.name: [] for cam in cams},
+             "age_ms": {cam.name: [] for cam in cams}, "skew_ms": []}
     start = time.time()
     snapshot_no = 0
 
@@ -196,9 +207,13 @@ def main():
                     last_counts[cam.name] = count
                     frame = cam.latest()
                     age_ms = (now - frame.timestamp) * 1000.0 if frame else float("nan")
+                    stats["fps"][cam.name].append(fps)
+                    if frame:
+                        stats["age_ms"][cam.name].append(age_ms)
                     parts.append("%s: %.1f fps (Alter %.0f ms)" % (cam.name, fps, age_ms))
                 if len(frames) == 2:
                     skew_ms = abs(frames[0].timestamp - frames[1].timestamp) * 1000.0
+                    stats["skew_ms"].append(skew_ms)
                     budget = config.SYNC_MAX_SKEW_S * 1000.0
                     flag = "OK" if skew_ms <= budget else "UEBER BUDGET"
                     parts.append("Versatz %.0f ms (max %.0f, %s)" % (skew_ms, budget, flag))
@@ -232,6 +247,51 @@ def main():
 
             cv2.destroyAllWindows()
         print("Kameras geschlossen.")
+    assess(stats)
+
+
+def assess(stats):
+    """Urteil nach der Messung -- fuer die Systemcheck-Oberflaeche im
+    gemeinsamen Format ``[OK]/[WARNUNG]/[FEHLER] Text`` (bc/gui/checks.py).
+
+    Massstab ist die Aufzeichnung: Der Recorder holt je 15-Hz-Takt das
+    NEUESTE Bild jeder Kamera. Liefert eine Kamera seltener, sieht er
+    dasselbe Bild mehrfach; ist das Bild aelter als SYNC_MAX_SKEW_S, zaehlt
+    der Takt als ausserhalb des Latenzbudgets (AP 1.3). Die erste Sekunde
+    (Anlauf) zaehlt nicht mit.
+    """
+    budget = config.SYNC_MAX_SKEW_S * 1000.0
+    need = config.CONTROL_RATE_HZ
+    print()
+    for name, series in stats["fps"].items():
+        series = series[1:]
+        if not series:
+            print("  [WARNUNG] %s: zu kurz gemessen fuer ein Urteil (mindestens 3 s)." % name)
+            continue
+        fps = float(np.median(series))
+        if fps >= need:
+            print("  [OK] %s liefert %.1f fps (Takt braucht %g)." % (name, fps, need))
+        else:
+            print("  [FEHLER] %s liefert nur %.1f fps, der Takt braucht %g -- "
+                  "der Recorder saehe Bilder doppelt." % (name, fps, need))
+        ages = stats["age_ms"][name][1:]
+        if ages:
+            p95 = float(np.percentile(ages, 95))
+            if p95 <= budget:
+                print("  [OK] %s: Bildalter p95 %.0f ms (Budget %.0f ms)." % (name, p95, budget))
+            else:
+                print("  [WARNUNG] %s: Bildalter p95 %.0f ms ueber dem Budget von %.0f ms "
+                      "-- Takte wuerden als 'Frame ueber Budget' gezaehlt."
+                      % (name, p95, budget))
+    skews = stats["skew_ms"][1:]
+    if skews:
+        p95 = float(np.percentile(skews, 95))
+        if p95 <= budget:
+            print("  [OK] Versatz zwischen den Kameras p95 %.0f ms (Budget %.0f ms)."
+                  % (p95, budget))
+        else:
+            print("  [FEHLER] Versatz zwischen den Kameras p95 %.0f ms, Budget %.0f ms."
+                  % (p95, budget))
 
 
 if __name__ == "__main__":

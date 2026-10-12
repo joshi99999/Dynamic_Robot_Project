@@ -1,0 +1,88 @@
+{
+  "erzeugt": "2026-10-05T12:59:19",
+  "befunde": [
+    [
+      "ok",
+      "Frame wrist: Controller-FK wie in der VM"
+    ],
+    [
+      "ok",
+      "Frame elbow: Controller-FK wie in der VM"
+    ],
+    [
+      "ok",
+      "Frame tool: Controller-FK wie in der VM"
+    ],
+    [
+      "ok",
+      "IK-Rueckprobe: 0 ohne Loesung, max 0.0000 rad"
+    ],
+    [
+      "ok",
+      "get_tcp_pose_quaternion vs. FK: 0.00 mm"
+    ],
+    [
+      "warn",
+      "Achsgrenzen mit Datenblatt/Pendant abgleichen und dann config.JOINT_LIMITS_VERIFIED = True setzen (der ServoGuard nutzt sie)"
+    ]
+  ],
+  "in_simulation": false,
+  "tool": "NoTool",
+  "fk_vs_vm": {
+    "wrist": {
+      "max_pos_m": 0.0,
+      "max_rot_rad": 4.2146848510894035e-08
+    },
+    "elbow": {
+      "max_pos_m": 0.0,
+      "max_rot_rad": 2.9802322387695312e-08
+    },
+    "tool": {
+      "max_pos_m": 0.0,
+      "max_rot_rad": 2.9802322387695312e-08
+    }
+  },
+  "ik_roundtrip": {
+    "failed": 0,
+    "max_dq_rad": 0.0
+  },
+  "tcp_vs_fk": {
+    "pos_m": 0.0,
+    "rot_rad": 0.0,
+    "joints": [
+      0.7096106741100299,
+      0.08635008551337703,
+      1.7368471255343192,
+      0.11621215242832755,
+      1.4023063637802056,
+      -0.018602138602311444
+    ]
+  },
+  "joint_limits_config": [
+    [
+      -3.14,
+      3.14
+    ],
+    [
+      -2.35,
+      2.35
+    ],
+    [
+      -2.61,
+      2.61
+    ],
+    [
+      -3.14,
+      3.14
+    ],
+    [
+      -2.56,
+      2.56
+    ],
+    [
+      -3.14,
+      3.14
+    ]
+  ],
+  "limit_functions": {}
+}

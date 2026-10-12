@@ -210,6 +210,8 @@ def systemcheck_requirements():
              "OpenCV (cv2) fuer die Kamera- und Rektifizierungspruefungen"),
         _req("neurapy", "neurapy", OPTIONAL, module_probe("neurapy"),
              _NEURAPY_HINT + " -- ohne das laufen nur die hardwarefreien Pruefungen"),
+        _req("gxipy", "Daheng SDK (gxipy)", OPTIONAL, module_probe("gxipy"),
+             "Galaxy SDK mit gxipy -- nur fuer \"Daheng am Geraet pruefen\""),
         # torch gehoert hierher, weil der Punkt "GPU / CUDA" im Katalog es
         # braucht. Jeder Schluessel aus checks.Check.needs muss in diesem
         # Modus stehen, sonst wird der Punkt stumm uebersprungen

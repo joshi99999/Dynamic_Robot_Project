@@ -1,0 +1,79 @@
+Systemcheck 2026-10-05_14-21
+============================================================
+
+RPC-Latenz messen: durchgelaufen -- 3 ok
+    [INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+
+============================================================
+Vollstaendige Ausgabe
+============================================================
+
+$ -u tools/check_rpc_latency.py --wiederholungen 30 --dauerlauf 10
+ 
+====================================================================
+0. Verbindung (nichts wird bewegt, nichts bestromt)
+====================================================================
+Steuerung: 192.168.2.13:65432
+Server meldet: v5.0.8
+Aktuelle Gelenkstellung: [0.7089, 0.0856, 1.7375, 0.1154, 1.4031, -0.0192]
+ 
+====================================================================
+1. Anteile eines einzelnen Aufrufs
+====================================================================
+min med p95 max
+TCP-Verbindung allein (ohne Nutzlast) 0.2 0.4 1003.8 1003.8 ms
+roh-RPC get_current_joint_angles 3.0 3.8 5.8 6.0 ms
+neurapy get_current_joint_angles 2.6 3.1 4.5 6.6 ms
+neurapy ..._with_timestamp 2.7 3.1 4.4 5.2 ms
+neurapy compute_forward_kinematics 1.5 1.8 2.1 2.7 ms
+ 
+Aufschluesselung (Median):
+Socket-Aufbau 0.4 ms
+Serverzeit darueber 3.4 ms
+NeuraPy-Client darueber -0.6 ms
+ 
+====================================================================
+2. Hochrechnung auf den 15-Hz-Takt des Recorders
+====================================================================
+Budget je Takt (15 Hz) 66.7 ms
+davon je Aufruf bei 6 Aufrufen je Takt 11.1 ms
+Gemessen je Takt (servo_j mit den Kosten von
+get_current_joint_angles angesetzt) 17.5 ms
+-> Schleife laeuft 0.3-fach zu langsam (57.1 Hz statt 15 Hz)
+[OK] Die Aufrufkosten passen in den Takt.
+ 
+====================================================================
+3. Versatz, den der Recorder als 'Frame ueber Budget' meldet
+====================================================================
+read_state() stempelt die Gelenke in der Mitte des Winkel-Aufrufs;
+die Kamerabilder werden erst NACH der FK abgegriffen. Die Differenz
+ist reine Controller-Latenz -- unabhaengig von der Kamera.
+min med p95 max
+Versatz Roboter <-> frischester Frame 3.0 3.6 4.6 8.5 ms
+Grenze SYNC_MAX_SKEW_S: 30 ms -- darueber: 0 von 30 (0 %)
+[OK] Der Versatz bleibt unter der Grenze.
+ 
+====================================================================
+4. Nimmt die Steuerung mehrere Aufrufe je Verbindung an?
+====================================================================
+Entscheidet, ob eine stehende Verbindung im Adapter ueberhaupt
+moeglich ist. Drei Aufrufe nacheinander auf EINEM Socket:
+Aufruf 1: 3.2 ms
+Server schliesst nach dem Aufruf
+[INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+ 
+====================================================================
+5. Haenger bei getaktetem Verkehr (nicht im Burst)
+====================================================================
+10 s lang mit 60 Hz aufrufen -- so, wie der Recorder es tut.
+min med p95 max
+Dauerlauf, 601 Aufrufe 2.8 3.7 5.5 16.1 ms
+ueber 200 ms: 0 von 601 (0.0 %)
+ueber 500 ms: 0 von 601 (0.0 %)
+ueber 1000 ms: 0 von 601 (0.0 %)
+[OK] Keine Haenger bei getaktetem Verkehr -- die 1000-ms-Werte aus Abschnitt 1 sind ein Artefakt des Messbursts.
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-05_14-20_RPC-Latenz.json
+Geltungsbereich: Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen (Dokumentation/Taktzeit-und-RPC-Latenz.md).
+-> RPC-Latenz messen: durchgelaufen -- 3 ok
+ 

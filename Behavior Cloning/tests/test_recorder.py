@@ -358,3 +358,44 @@ def test_recorder_measures_duration_and_call_costs():
     assert meta["read_state_ms"]["median"] > 29.9
     assert meta["duration_s"] > 1.1 * meta["planned_duration_s"]
     assert timing_findings(meta), "zu langsame Episode ohne Hinweis"
+
+
+def test_monitor_gets_schema_size_frames_and_cannot_touch_the_data():
+    """Livebild aus den schon verkleinerten Bildern (Sparvorschlag 1).
+
+    Volle Kameraaufloesung rein, der Monitor sieht 240x320 -- und das
+    Beschriften im Livebild (compose) veraendert die Episode nicht.
+    """
+    import dataclasses
+
+    from bc import preview
+
+    clock = SimClock()
+    robot = SimRobot(clock=clock).connect()
+    cams = [
+        SimCamera(dataclasses.replace(cfg, width=1440, height=1080), clock=clock)
+        for cfg in config.SIM_CAMERAS
+    ]
+    captures = [DirectCapture(c).start() for c in cams]
+    plan = _plan(robot, gripper=False)
+
+    seen = []
+    composed = []
+
+    def monitor(i, n, frames, report):
+        seen.append({k: None if f is None else f.image.shape
+                     for k, f in frames.items()})
+        if i < 3:
+            snapshot = {k: f.image.copy() for k, f in frames.items()}
+            composed.append(preview.compose(frames, overlay="Takt %d" % i))
+            for k, f in frames.items():
+                assert np.array_equal(f.image, snapshot[k]), "compose schreibt in die Daten"
+
+    episode = EpisodeRecorder(robot, captures, clock, monitor=monitor).record(plan)
+
+    schema = (config.IMAGE_HEIGHT, config.IMAGE_WIDTH, 3)
+    assert len(seen) == len(plan)
+    assert all(shape == schema for step in seen for shape in step.values())
+    assert composed[0].shape == (config.IMAGE_HEIGHT, 2 * config.IMAGE_WIDTH, 3)
+    for cfg in config.SIM_CAMERAS:
+        assert episode.arrays["observation.images.%s" % cfg.name].shape[1:] == schema

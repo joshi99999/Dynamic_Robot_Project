@@ -1,0 +1,447 @@
+Systemcheck 2026-10-05_14-37
+============================================================
+
+RPC-Latenz messen: durchgelaufen -- 3 ok
+    [INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+Punkte sichern: durchgelaufen -- 1 Warnung
+    [WARNUNG] is_robot_in_simulation() ist nicht True -- diese Sicherung
+Roboter-Contract: fehlgeschlagen -- 0 Tests bestanden, 12 fehlgeschlagen
+
+============================================================
+Vollstaendige Ausgabe
+============================================================
+
+$ -u tools/check_rpc_latency.py --wiederholungen 30 --dauerlauf 10
+ 
+====================================================================
+0. Verbindung (nichts wird bewegt, nichts bestromt)
+====================================================================
+Steuerung: 192.168.2.13:65432
+Server meldet: v5.0.8
+Aktuelle Gelenkstellung: [0.0068, -0.6001, 1.1566, -0.0003, 2.1136, 0.0066]
+ 
+====================================================================
+1. Anteile eines einzelnen Aufrufs
+====================================================================
+min med p95 max
+TCP-Verbindung allein (ohne Nutzlast) 0.2 0.3 1006.5 1008.6 ms
+roh-RPC get_current_joint_angles 2.8 3.6 9.6 1003.0 ms
+neurapy get_current_joint_angles 2.8 3.8 6.9 7.1 ms
+neurapy ..._with_timestamp 2.8 3.6 5.2 11.3 ms
+neurapy compute_forward_kinematics 1.7 2.2 4.2 5.5 ms
+ 
+Aufschluesselung (Median):
+Socket-Aufbau 0.3 ms
+Serverzeit darueber 3.3 ms
+NeuraPy-Client darueber 0.2 ms
+ 
+====================================================================
+2. Hochrechnung auf den 15-Hz-Takt des Recorders
+====================================================================
+Budget je Takt (15 Hz) 66.7 ms
+davon je Aufruf bei 6 Aufrufen je Takt 11.1 ms
+Gemessen je Takt (servo_j mit den Kosten von
+get_current_joint_angles angesetzt) 20.8 ms
+-> Schleife laeuft 0.3-fach zu langsam (48.1 Hz statt 15 Hz)
+[OK] Die Aufrufkosten passen in den Takt.
+ 
+====================================================================
+3. Versatz, den der Recorder als 'Frame ueber Budget' meldet
+====================================================================
+read_state() stempelt die Gelenke in der Mitte des Winkel-Aufrufs;
+die Kamerabilder werden erst NACH der FK abgegriffen. Die Differenz
+ist reine Controller-Latenz -- unabhaengig von der Kamera.
+min med p95 max
+Versatz Roboter <-> frischester Frame 3.3 3.9 4.4 5.2 ms
+Grenze SYNC_MAX_SKEW_S: 30 ms -- darueber: 0 von 30 (0 %)
+[OK] Der Versatz bleibt unter der Grenze.
+ 
+====================================================================
+4. Nimmt die Steuerung mehrere Aufrufe je Verbindung an?
+====================================================================
+Entscheidet, ob eine stehende Verbindung im Adapter ueberhaupt
+moeglich ist. Drei Aufrufe nacheinander auf EINEM Socket:
+Aufruf 1: 3.4 ms
+Server schliesst nach dem Aufruf
+[INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+ 
+====================================================================
+5. Haenger bei getaktetem Verkehr (nicht im Burst)
+====================================================================
+10 s lang mit 60 Hz aufrufen -- so, wie der Recorder es tut.
+min med p95 max
+Dauerlauf, 601 Aufrufe 2.6 3.5 5.2 11.3 ms
+ueber 200 ms: 0 von 601 (0.0 %)
+ueber 500 ms: 0 von 601 (0.0 %)
+ueber 1000 ms: 0 von 601 (0.0 %)
+[OK] Keine Haenger bei getaktetem Verkehr -- die 1000-ms-Werte aus Abschnitt 1 sind ein Artefakt des Messbursts.
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-05_14-34_RPC-Latenz.json
+Geltungsbereich: Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen (Dokumentation/Taktzeit-und-RPC-Latenz.md).
+-> RPC-Latenz messen: durchgelaufen -- 3 ok
+ 
+$ -u tools/export_points.py --sequence sequences/pick_to_station.json
+ 
+============================================================
+0. Verbindung und Herkunft
+============================================================
+socket 192.168.2.13:65432
+server_version v5.0.8
+client_version v5.0.8
+in_simulation False
+tool ZimmerLWR50
+ 
+[WARN] is_robot_in_simulation() ist nicht True -- diese Sicherung
+stammt moeglicherweise von der REALEN Anlage. Dateinamen
+entsprechend waehlen, damit sie nicht mit VM-Punkten mischt.
+ 
+============================================================
+1. Punkte in der Steuerung
+============================================================
+Punkte insgesamt 38
+APPROACH_01
+APPROACH_02
+CLEAR_FOV
+GP1
+GP10
+GP11
+GP12
+GP13
+GP14
+GP15
+GP16
+GP17
+GP2
+GP3
+GP4
+GP5
+GP6
+GP7
+GP8
+GP9
+Grip
+GripRotate
+GripSafe
+Hauptpos_cartesian
+Hauptpos_cartesian2
+Home
+PICK
+PRE_GRASP
+PRE_PLACE
+Parking
+Rotate
+RotateGripSafe
+RotateGripSafe_1
+SafeRotateIn
+Testpunkt1
+Testpunkt2
+Vorpos_cartesian
+Vorpos_cartesian2
+ 
+============================================================
+2. Auslesen
+============================================================
+CLEAR_FOV J=[0.006245, -0.759337, 1.782538, -2.1e-05, 1.646942, 0.006307]
+APPROACH_01 J=[0.018341, -0.040966, 1.63025, 0.000677, 1.549838, -0.01862]
+APPROACH_02 J=[-0.130637, 0.086665, 1.581602, 0.113794, 1.531469, 0.919838]
+PRE_GRASP J=[0.018479, 0.302045, 1.67013, 0.000592, 1.157071, -0.018628]
+PICK J=[0.018507, 0.328111, 1.697916, 0.000582, 1.103222, -0.018664]
+PRE_PLACE J=[0.709631, 0.086328, 1.736832, 0.116211, 1.402291, -0.01859]
+ 
+============================================================
+3. Ergebnis
+============================================================
+gesichert 6 Punkte
+nicht gefunden 0 (-)
+Datei sequences\points_2026-10-05_14-34.json
+ 
+Zurueckspielen auf eine andere Steuerung:
+python tools/import_points.py sequences\points_2026-10-05_14-34.json
+-> Punkte sichern: durchgelaufen -- 1 Warnung
+ 
+$ -u tests/run_all.py --robot=neura contract.test_robot_contract --real-robot
+!! robot-Backend: neura (HARDWARE)
+!! --real-robot: Tests laufen gegen die REALE Steuerung (Greifer schaltet).
+Not-Aus in Reichweite, Greifer frei? 'ANLAGE' eintippen: 
+== contract.test_robot_contract ==
+[31;20m[2026-10-05 14:34:33][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:35][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:36][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:37][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:38][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:39][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_dof
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:34:39][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:40][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:41][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:42][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:43][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:44][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_emergency_stop_contract
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:34:44][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:45][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:46][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:47][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:48][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:49][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_fk_matches_reported_pose
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:34:50][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:51][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:52][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:53][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:54][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:55][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_fk_supports_collision_frames
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:34:55][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:56][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:57][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:58][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:34:59][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:00][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_gripper_command_is_nonblocking_and_tracked
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:35:00][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:01][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:02][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:03][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:04][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:05][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_ik_roundtrip_and_seed
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:35:06][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:07][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:08][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:09][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:10][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:11][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_ik_unreachable_raises_ikerror
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:35:11][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:12][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:13][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:14][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:15][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:16][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_link_positions_contract
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:35:16][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:17][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:18][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:19][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:20][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:22][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_move_to_current_joints_is_noop
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:35:22][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:23][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:24][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:25][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:26][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:27][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_read_state_contract
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:35:27][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:28][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:29][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:30][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:31][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:32][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_servo_guard_refuses_jump
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+[31;20m[2026-10-05 14:35:32][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:33][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:34][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:35][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:37][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-05 14:35:38][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+FAIL test_servo_lifecycle
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 106, in run_module
+value, cleanup = _make_argument(param)
+^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 80, in _make_argument
+bot = _fixtures.make_robot(BACKENDS["robot"])
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\_fixtures.py", line 48, in make_robot
+return NeuraRobot(**kwargs).connect(power_on=True)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 216, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 444, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im TEACH-MODUS. Im Teach-Pendant auf Automatik schalten -- oder mit ensure_automatic=True verbinden (apps/record.py und apps/infer.py tun das).
+ 
+============================================================
+0 Tests bestanden, 12 fehlgeschlagen
+FAIL contract.test_robot_contract::test_dof
+FAIL contract.test_robot_contract::test_emergency_stop_contract
+FAIL contract.test_robot_contract::test_fk_matches_reported_pose
+FAIL contract.test_robot_contract::test_fk_supports_collision_frames
+FAIL contract.test_robot_contract::test_gripper_command_is_nonblocking_and_tracked
+FAIL contract.test_robot_contract::test_ik_roundtrip_and_seed
+FAIL contract.test_robot_contract::test_ik_unreachable_raises_ikerror
+FAIL contract.test_robot_contract::test_link_positions_contract
+FAIL contract.test_robot_contract::test_move_to_current_joints_is_noop
+FAIL contract.test_robot_contract::test_read_state_contract
+FAIL contract.test_robot_contract::test_servo_guard_refuses_jump
+FAIL contract.test_robot_contract::test_servo_lifecycle
+-> Roboter-Contract: fehlgeschlagen -- 0 Tests bestanden, 12 fehlgeschlagen
+ 

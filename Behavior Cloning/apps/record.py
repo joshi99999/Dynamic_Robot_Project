@@ -54,7 +54,7 @@ from bc.noise import PlanRejected, generate_plan
 from bc.ports import MotionRefused
 from bc.recorder import EpisodeRecorder, timing_findings
 from bc.sequence import SequenceError, load_sequence, resolve_sequence
-from bc.trajectory import Waypoint, build_ideal_trajectory
+from bc.trajectory import Waypoint, build_ideal_trajectory, planner_speed_problems
 
 #: Wortlaut, der fuer --real-robot eingetippt werden muss.
 REAL_ROBOT_CONFIRMATION = "ANLAGE"
@@ -242,6 +242,12 @@ def parse_args():
         help="reale Anlage freigeben (sonst nur Simulation), mit Bestaetigung",
     )
     parser.add_argument(
+        "--no-gripper", action="store_true",
+        help="TESTFAHRT ohne konfigurierten Greifer: die Bahn wird vollstaendig "
+             "gefahren, Greiferbefehle werden nur protokolliert. Jede Episode "
+             "wird dabei VERWORFEN und ist nicht exportierbar",
+    )
+    parser.add_argument(
         "--override", type=float, default=config.DEFAULT_OVERRIDE,
         help="Geschwindigkeits-Override am Neura (0-1)",
     )
@@ -258,6 +264,24 @@ def parse_args():
         "--servo-rate", type=float, default=config.SERVO_RATE_HZ,
         help="servo_j-Senderate in Hz, Vielfaches von %.0f (Vergleichsfahrten; "
              "fuer Datensaetze den Default lassen)" % config.CONTROL_RATE_HZ,
+    )
+    # Planer-Tempo (AP 2.6): wird mitgelernt und muss innerhalb eines
+    # Datensatzes einheitlich sein -- apps/export.py erzwingt das ueber
+    # die Metadaten. Je Lauf einstellbar, damit es ohne Codeaenderung
+    # festgelegt werden kann (Labortag) und im Protokoll steht.
+    planner = parser.add_argument_group(
+        "Planer-Tempo (AP 2.6) -- mitgelernt, fuer einen Datensatz einheitlich")
+    planner.add_argument(
+        "--transit-speed", type=float, default=config.TRANSIT_SPEED_MS,
+        help="TCP-Geschwindigkeit im Transit in m/s (Default %(default)g)",
+    )
+    planner.add_argument(
+        "--approach-speed", type=float, default=config.APPROACH_SPEED_MS,
+        help="TCP-Geschwindigkeit im Endanflug (Greifen/Absetzen) in m/s (Default %(default)g)",
+    )
+    planner.add_argument(
+        "--ptp-speed", type=float, default=config.PTP_JOINT_SPEED_RADS,
+        help="hoechste Gelenkgeschwindigkeit in PTP-Segmenten in rad/s (Default %(default)g)",
     )
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--out", default="data_out")
@@ -303,6 +327,10 @@ def parse_args():
         substeps_for(args.servo_rate)
     except ValueError as exc:
         parser.error(str(exc))
+    problems = planner_speed_problems(
+        args.transit_speed, args.approach_speed, args.ptp_speed)
+    if problems:
+        parser.error("; ".join(problems))
     if args.seed is None:
         args.seed = int(np.random.SeedSequence().entropy % (2**31))
     return args
@@ -360,7 +388,8 @@ def main():
         robot = open_robot("sim", clock=clock, seed=args.seed).connect()
         robot_info = {"robot": "sim", "in_simulation": True}
     else:
-        robot = open_robot("neura", allow_real=args.real_robot, override=args.override)
+        robot = open_robot("neura", allow_real=args.real_robot, override=args.override,
+                           allow_dry_gripper=args.no_gripper)
         try:
             robot.connect(power_on=True, ensure_automatic=True)
         except MotionRefused as exc:
@@ -399,9 +428,26 @@ def main():
             )
         if robot.gripper_mode == "logged":
             print("   Kein Greifer konfiguriert -- Greiferbefehle werden nur protokolliert.")
+        elif robot.gripper_mode == "dry_run":
+            # Der Arm faehrt gleich die volle Bahn, nur der Greifer schaltet
+            # nicht. Das ist als Bahntest gewollt -- aber die Episode enthaelt
+            # dann Greiferbefehle im Action-Vektor, die nie stattgefunden
+            # haben. Sie wird deshalb unten hart verworfen.
+            print("")
+            print("   " + "!" * 66)
+            print("   !! TROCKENLAUF: --no-gripper ist gesetzt.")
+            print("   !! Der Arm faehrt die VOLLSTAENDIGE Bahn an der realen Anlage,")
+            print("   !! der Greifer schaltet dabei NICHT. Kein Werkstueck einlegen.")
+            print("   !! Jede Episode wird verworfen und ist nicht exportierbar.")
+            print("   " + "!" * 66)
+            print("")
         elif robot.gripper_mode == "unavailable":
             robot.close()
-            raise SystemExit("Abbruch: reale Anlage ohne konfigurierten Greifer.")
+            raise SystemExit(
+                "Abbruch: reale Anlage ohne konfigurierten Greifer. Fuer eine "
+                "reine Bahnpruefung --no-gripper setzen (Episoden werden dann "
+                "verworfen und sind nicht exportierbar)."
+            )
 
     if sequence is None and args.waypoints is None and not use_sim_robot:
         robot.close()
@@ -437,6 +483,13 @@ def main():
         % (args.servo_rate, "fest" if args.noise_fixed else "je Episode zufaellig bis",
            args.noise_scale, args.seed, args.sequence or args.waypoints or "Demo")
     )
+    print(
+        "Planer-Tempo: Transit %.3f m/s, Endanflug %.3f m/s, PTP %.2f rad/s%s"
+        % (args.transit_speed, args.approach_speed, args.ptp_speed,
+           "" if (args.transit_speed, args.approach_speed, args.ptp_speed) == (
+               config.TRANSIT_SPEED_MS, config.APPROACH_SPEED_MS,
+               config.PTP_JOINT_SPEED_RADS) else "  (abweichend vom Standard)")
+    )
     # Ohne Ablaufdatei: feste Wegpunkte, EINMAL bestimmt (die Demo haengt an
     # der Startpose -- je Episode neu berechnet wuerde sie mitwandern).
     if args.waypoints:
@@ -447,9 +500,9 @@ def main():
         fixed_waypoints = None
 
     planner_meta = {
-        "transit_speed_ms": config.TRANSIT_SPEED_MS,
-        "approach_speed_ms": config.APPROACH_SPEED_MS,
-        "ptp_joint_speed_rads": config.PTP_JOINT_SPEED_RADS,
+        "transit_speed_ms": args.transit_speed,
+        "approach_speed_ms": args.approach_speed,
+        "ptp_joint_speed_rads": args.ptp_speed,
         "segment_ramp_s": config.SEGMENT_RAMP_S,
         "gripper_dwell_s": config.GRIPPER_DWELL_S,
     }
@@ -525,7 +578,12 @@ def main():
                 waypoints = fixed_waypoints
 
             # 2. Ideale Bahn und Kollisionsmodell
-            ideal = build_ideal_trajectory(waypoints, fk=robot.fk)
+            ideal = build_ideal_trajectory(
+                waypoints, fk=robot.fk,
+                transit_speed=args.transit_speed,
+                approach_speed=args.approach_speed,
+                ptp_joint_speed=args.ptp_speed,
+            )
             meta["blend_m"] = {
                 wp.name or str(k): r
                 for k, (wp, r) in enumerate(zip(waypoints, ideal.blend_applied))
@@ -584,6 +642,15 @@ def main():
                     episode.success = None
                 else:
                     episode.success = success
+            if getattr(robot, "gripper_mode", None) == "dry_run":
+                # ZULETZT und ohne Ausnahme: Der Greifer hat nie geschaltet,
+                # im Action-Vektor steht er trotzdem. Eine solche Episode darf
+                # nicht in einen Datensatz -- auch nicht, wenn das Label oben
+                # "erfolgreich" gesagt hat. bc/lerobot_io.scan_sources weist
+                # sie beim Export zusaetzlich ueber die Metadaten ab.
+                episode.discarded = True
+                episode.discard_reason = "Trockenlauf ohne Greifer (--no-gripper)"
+                episode.success = None
             idx = writer.append(episode)
             recorded += 1
             print(

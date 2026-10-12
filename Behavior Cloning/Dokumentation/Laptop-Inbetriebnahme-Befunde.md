@@ -432,7 +432,7 @@ Leere". Das gehört geprüft, bevor dort Not-Halt-Pfade gefahren werden
 | 3 | ~~`clear_stop()` verschluckt das Scheitern von `init_program()`~~ — **erledigt 2026-09-28**, siehe 6.3 | `bc/adapters/neura.py` |
 | 4 | Zeitlimit um `_call()`: NeuraPy hat kein Socket-Timeout, ein Hänger ist von „dauert lange" nicht unterscheidbar | `bc/adapters/neura.py:231` |
 | 5 | Kamera-Backend konfigurierbar (DSHOW → MSMF), danach Bildalter neu messen | `bc/adapters/cam_uvc.py:19`, `bc/config.py` |
-| 6 | `--no-display` ohne `--seconds` läuft endlos (kein Fenster zum Beenden) | `tools/check_cameras.py:143` |
+| 6 | ~~`--no-display` ohne `--seconds` läuft endlos~~ — **erledigt 2026-10-04**: ohne Fenster misst es 10 s und bewertet Rate, Bildalter und Versatz | `tools/check_cameras.py` |
 | 7 | ~~Interpreterpfad und `--uvc-device 1` stimmen auf diesem Rechner nicht~~ — **kein Fehler**: `CLAUDE.md` beschreibt den PC (Laufwerk `E:`), der Laptop-Pfad steht in `Environment-Laptop.md` | `CLAUDE.md` Abschnitt 2 |
 
 **Umgebung (Stand 2026-10-02):** `C:\Enviroments\bc_env` ist eingerichtet
@@ -645,3 +645,12 @@ Am Netzteil betreiben.
 | **Episodenanzahl standardmäßig 2** | **behoben** — Standard ist jetzt 1 (`bc/gui/tab_recording.py`) |
 | **Gerätesuche und Vorschau lassen sich nicht abbrechen** (Freeze?) | **behoben.** Während des Vorgangs heißt der Knopf „Abbrechen"; ein Klick setzt die Oberfläche sofort zurück, ein später eintreffendes Ergebnis wird verworfen und geöffnete Kameras werden wieder freigegeben. Kamerazugriffe laufen in einem eigenen Arbeitsthread, damit ein hängender Treiber nicht die übrige Oberfläche blockiert — das dürfte der „Freeze" gewesen sein. **Grenze:** ein einzelner hängender Treiberaufruf lässt sich aus Python nicht unterbrechen; ein neuer Kamerazugriff wartet dann dahinter, und die Oberfläche sagt das. Eine Aufnahme startet nicht, solange ein solcher Zugriff noch läuft |
 bei aufnahme starten ändert sich die % anzeige nicht bei bahn planen erst beim ausführen des taktes, ich weiß nicht ob das gewollt ist aber es steht nur dran "planung läuft" oder so gefolgt von bahn geplant, dann wartet der roboter und dann bewegt er sich und führt den takt aus dort ändert sich die % anzeige. für mich wäre hier qol änderung wenn man etwas mehr nachvollziehen kann was gerade passiert und wann das programm tatsächlich hängt oder nur etwas lädt/verbindung aufbaut etc.
+
+
+
+ip konfigurieren, greifer konfigurieren wählen und suche dropdown, greifer "simulieren" zum testen.
+
+ist es möglich den planer bei override 0,2 soweit anzupassen das der arm nicht hinterhinkt oder liegt das hinken an einem anderen problem?
+
+greifer ist erstmal zweitrangig da dieser erst noch verdrahtet werden muss (dauert noch)
+

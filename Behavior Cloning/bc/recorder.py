@@ -29,7 +29,7 @@ import logging
 import numpy as np
 
 from . import config, dataset
-from .ports import RobotError
+from .ports import Frame, RobotError
 from .servo import ServoInterpolator
 from .sync import Pacer, evaluate
 
@@ -69,7 +69,8 @@ class EpisodeRecorder(object):
         self.max_follow_error_rad = max_follow_error_rad
         self.follow_error_steps = int(follow_error_steps)
         self.min_follow_ratio = float(min_follow_ratio)
-        #: Optionaler Rueckruf je Takt: ``monitor(i, n, frames, report)``.
+        #: Optionaler Rueckruf je Takt: ``monitor(i, n, frames, report)``,
+        #: ``frames`` bereits auf Schemagroesse (wie gespeichert).
         #: Gedacht fuer Fortschritt und Livebild in der Bedienoberflaeche
         #: (bc/preview.py). STANDARD IST None -- die Aufzeichnungsschleife
         #: hat 1/15 s je Takt, und jede zusaetzliche Arbeit darin gefaehrdet
@@ -252,27 +253,35 @@ class EpisodeRecorder(object):
                 if not report.ok:
                     bad_frames += 1
 
-                if self.monitor is not None:
-                    try:
-                        self.monitor(i, n, frames, report)
-                    except Exception:
-                        log.exception("Monitor-Rueckruf gescheitert -- "
-                                      "Aufnahme laeuft weiter")
-                        self.monitor = None
-
                 # Observation: der ECHTE (verrauschte) Zustand
                 steps["observation.state"].append(
                     dataset.build_state(state.joints, state.tcp_quat, g)
                 )
+                schema_frames = {}
                 for name in camera_names:
                     frame = frames[name]
                     if frame is None:
                         image = np.zeros(
                             (config.IMAGE_HEIGHT, config.IMAGE_WIDTH, 3), dtype=np.uint8
                         )
+                        schema_frames[name] = None
                     else:
                         image = _to_schema_size(frame.image)
+                        schema_frames[name] = Frame(
+                            image, frame.timestamp, frame.index, frame.source)
                     steps["observation.images.%s" % name].append(image)
+
+                # Der Monitor bekommt die schon verkleinerten Bilder: das
+                # Livebild zeigt so genau das, was gespeichert wird, und
+                # verkleinert die vollen Kamerabilder nicht ein zweites Mal
+                # (gemessen ~3 ms je Kamera auf jedem dritten Takt, 2026-10-02).
+                if self.monitor is not None:
+                    try:
+                        self.monitor(i, n, schema_frames, report)
+                    except Exception:
+                        log.exception("Monitor-Rueckruf gescheitert -- "
+                                      "Aufnahme laeuft weiter")
+                        self.monitor = None
 
                 # Action: die IDEALE Soll-Bahn bei t+1 (AP 2.4). Am letzten
                 # Schritt wird auf den Endzustand geklemmt.

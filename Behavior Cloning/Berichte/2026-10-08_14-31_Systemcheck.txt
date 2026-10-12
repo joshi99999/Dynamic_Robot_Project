@@ -1,0 +1,419 @@
+Systemcheck 2026-10-08_14-31
+============================================================
+
+Taktbudget rechnen: durchgelaufen -- 1 ok
+RPC-Latenz messen: durchgelaufen -- 3 ok
+    [INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+Pufferbefehle pruefen (nur lesen): durchgelaufen -- 1 Warnung
+    [WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+Bahnpuffer testen: durchgelaufen -- 2 Warnungen
+    [WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+    [INFO] Referenz servo_j: Arm steht in 26 % der Fahrt kurz still -- das Stop-and-go vom 2026-10-05 ist damit gemessen.
+    [WARNUNG] Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet.
+
+============================================================
+Vollstaendige Ausgabe
+============================================================
+
+$ -u tools/check_rate_budget.py
+Quelle der Messwerte : Berichte\2026-10-05_15-03_Servo-Timing.json (median)
+t_servo_j : 4.72 ms
+t_read_state : 5.77 ms
+lokale FK aktiv : True
+ 
+GELTUNGSBEREICH: Die Messwerte gelten fuer die Steuerung, an der
+gemessen wurde. An der Anlage neu messen, dann neu rechnen.
+ 
+Soll laut Requierments: CONTROL_RATE_HZ = 15 (festgelegt),
+SERVO_RATE_HZ = 60 (Auslegung)
+ 
+CTRL_HZ k SERVO_HZ Takt soll Takt ist erreicht Laufruhe Takte/Ep
+-------------------------------------------------------------------------
+15 1 15 66.7 ms 10.5 ms 15.0 Hz 80 % 218 
+15 2 30 66.7 ms 15.2 ms 15.0 Hz 64 % 218 
+15 3 45 66.7 ms 19.9 ms 15.0 Hz 49 % 218 
+15 4 60 66.7 ms 24.7 ms 15.0 Hz 33 % 218 
+15 5 75 66.7 ms 29.4 ms 15.0 Hz 32 % 218 
+15 6 90 66.7 ms 34.1 ms 15.0 Hz 30 % 218 
+15 7 105 66.7 ms 38.8 ms 15.0 Hz 29 % 218 
+15 8 120 66.7 ms 43.5 ms 15.0 Hz 27 % 218 
+ 
+12.5 1 12.5 80.0 ms 10.5 ms 12.5 Hz 80 % 182 
+12.5 2 25 80.0 ms 15.2 ms 12.5 Hz 70 % 182 
+12.5 3 37.5 80.0 ms 19.9 ms 12.5 Hz 57 % 182 
+12.5 4 50 80.0 ms 24.7 ms 12.5 Hz 43 % 182 
+12.5 5 62.5 80.0 ms 29.4 ms 12.5 Hz 33 % 182 
+12.5 6 75 80.0 ms 34.1 ms 12.5 Hz 32 % 182 
+12.5 7 87.5 80.0 ms 38.8 ms 12.5 Hz 30 % 182 
+12.5 8 100 80.0 ms 43.5 ms 12.5 Hz 29 % 182 
+ 
+10 1 10 100.0 ms 10.5 ms 10.0 Hz 80 % 145 
+10 2 20 100.0 ms 15.2 ms 10.0 Hz 75 % 145 
+10 3 30 100.0 ms 19.9 ms 10.0 Hz 64 % 145 
+10 4 40 100.0 ms 24.7 ms 10.0 Hz 54 % 145 
+10 5 50 100.0 ms 29.4 ms 10.0 Hz 43 % 145 
+10 6 60 100.0 ms 34.1 ms 10.0 Hz 33 % 145 
+10 7 70 100.0 ms 38.8 ms 10.0 Hz 32 % 145 
+10 8 80 100.0 ms 43.5 ms 10.0 Hz 31 % 145 
+ 
+7.5 1 7.5 133.3 ms 10.5 ms 7.5 Hz 80 % 109 
+7.5 2 15 133.3 ms 15.2 ms 7.5 Hz 80 % 109 
+7.5 3 22.5 133.3 ms 19.9 ms 7.5 Hz 72 % 109 
+7.5 4 30 133.3 ms 24.7 ms 7.5 Hz 64 % 109 
+7.5 5 37.5 133.3 ms 29.4 ms 7.5 Hz 57 % 109 
+7.5 6 45 133.3 ms 34.1 ms 7.5 Hz 49 % 109 
+7.5 7 52.5 133.3 ms 38.8 ms 7.5 Hz 41 % 109 
+7.5 8 60 133.3 ms 43.5 ms 7.5 Hz 33 % 109 
+ 
+6 1 6 166.7 ms 10.5 ms 6.0 Hz 80 % 87 
+6 2 12 166.7 ms 15.2 ms 6.0 Hz 80 % 87 
+6 3 18 166.7 ms 19.9 ms 6.0 Hz 77 % 87 
+6 4 24 166.7 ms 24.7 ms 6.0 Hz 71 % 87 
+6 5 30 166.7 ms 29.4 ms 6.0 Hz 64 % 87 
+6 6 36 166.7 ms 34.1 ms 6.0 Hz 58 % 87 
+6 7 42 166.7 ms 38.8 ms 6.0 Hz 52 % 87 
+6 8 48 166.7 ms 43.5 ms 6.0 Hz 46 % 87 
+ 
+5 1 5 200.0 ms 10.5 ms 5.0 Hz 80 % 73 
+5 2 10 200.0 ms 15.2 ms 5.0 Hz 80 % 73 
+5 3 15 200.0 ms 19.9 ms 5.0 Hz 80 % 73 
+5 4 20 200.0 ms 24.7 ms 5.0 Hz 75 % 73 
+5 5 25 200.0 ms 29.4 ms 5.0 Hz 70 % 73 
+5 6 30 200.0 ms 34.1 ms 5.0 Hz 64 % 73 
+5 7 35 200.0 ms 38.8 ms 5.0 Hz 59 % 73 
+5 8 40 200.0 ms 43.5 ms 5.0 Hz 54 % 73 
+ 
+=========================================================================
+[OK] 15 Hz / servo_j 60 Hz passt: 24.7 ms je Takt (median) bei 66.7 ms Budget.
+ 
+Was passt, nach Laufruhe sortiert (beste zuerst):
+ 
+CONTROL 15 Hz, SERVO 120 Hz (k=8) -- 35 % Reserve im Takt
+ohne Abstriche
+ 
+CONTROL 15 Hz, SERVO 105 Hz (k=7) -- 42 % Reserve im Takt
+ohne Abstriche
+ 
+CONTROL 12.5 Hz, SERVO 100 Hz (k=8) -- 46 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+ 
+CONTROL 15 Hz, SERVO 90 Hz (k=6) -- 49 % Reserve im Takt
+ohne Abstriche
+ 
+CONTROL 12.5 Hz, SERVO 87.5 Hz (k=7) -- 51 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+ 
+CONTROL 10 Hz, SERVO 80 Hz (k=8) -- 56 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+ 
+CONTROL 15 Hz, SERVO 75 Hz (k=5) -- 56 % Reserve im Takt
+ohne Abstriche
+ 
+CONTROL 12.5 Hz, SERVO 75 Hz (k=6) -- 57 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+ 
+CONTROL 10 Hz, SERVO 70 Hz (k=7) -- 61 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+ 
+CONTROL 12.5 Hz, SERVO 62.5 Hz (k=5) -- 63 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+ 
+CONTROL 15 Hz, SERVO 60 Hz (k=4) -- 63 % Reserve im Takt
+ohne Abstriche
+ 
+CONTROL 10 Hz, SERVO 60 Hz (k=6) -- 66 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+ 
+CONTROL 7.5 Hz, SERVO 60 Hz (k=8) -- 67 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+ 
+CONTROL 7.5 Hz, SERVO 52.5 Hz (k=7) -- 71 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 12.5 Hz, SERVO 50 Hz (k=4) -- 69 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 10 Hz, SERVO 50 Hz (k=5) -- 71 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 48 Hz (k=8) -- 74 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 15 Hz, SERVO 45 Hz (k=3) -- 70 % Reserve im Takt
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 7.5 Hz, SERVO 45 Hz (k=6) -- 74 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 42 Hz (k=7) -- 77 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 10 Hz, SERVO 40 Hz (k=4) -- 75 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 40 Hz (k=8) -- 78 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 12.5 Hz, SERVO 37.5 Hz (k=3) -- 75 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 7.5 Hz, SERVO 37.5 Hz (k=5) -- 78 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 36 Hz (k=6) -- 80 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 35 Hz (k=7) -- 81 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 15 Hz, SERVO 30 Hz (k=2) -- 77 % Reserve im Takt
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 10 Hz, SERVO 30 Hz (k=3) -- 80 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 7.5 Hz, SERVO 30 Hz (k=4) -- 82 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 30 Hz (k=5) -- 82 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 30 Hz (k=6) -- 83 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 12.5 Hz, SERVO 25 Hz (k=2) -- 81 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 25 Hz (k=5) -- 85 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 24 Hz (k=4) -- 85 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 7.5 Hz, SERVO 22.5 Hz (k=3) -- 85 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 10 Hz, SERVO 20 Hz (k=2) -- 85 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 20 Hz (k=4) -- 88 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 18 Hz (k=3) -- 88 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 15 Hz, SERVO 15 Hz (k=1) -- 84 % Reserve im Takt
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+CONTROL 7.5 Hz, SERVO 15 Hz (k=2) -- 89 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 15 Hz (k=3) -- 90 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 12.5 Hz, SERVO 12.5 Hz (k=1) -- 87 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+CONTROL 6 Hz, SERVO 12 Hz (k=2) -- 91 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 10 Hz, SERVO 10 Hz (k=1) -- 90 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+CONTROL 5 Hz, SERVO 10 Hz (k=2) -- 92 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 7.5 Hz, SERVO 7.5 Hz (k=1) -- 92 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+CONTROL 6 Hz, SERVO 6 Hz (k=1) -- 94 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+CONTROL 5 Hz, SERVO 5 Hz (k=1) -- 95 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+-> Taktbudget rechnen: durchgelaufen -- 1 ok
+ 
+$ -u tools/check_rpc_latency.py --wiederholungen 30 --dauerlauf 10
+ 
+====================================================================
+0. Verbindung (nichts wird bewegt, nichts bestromt)
+====================================================================
+Steuerung: 192.168.2.13:65432
+[33;20m[2026-10-08 14:30:34][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+Server meldet: v5.0.0-alpha.102
+Aktuelle Gelenkstellung: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+ 
+====================================================================
+1. Anteile eines einzelnen Aufrufs
+====================================================================
+min med p95 max
+TCP-Verbindung allein (ohne Nutzlast) 0.2 1.0 1005.8 1006.9 ms
+roh-RPC get_current_joint_angles 4.3 7.7 12.4 1012.2 ms
+neurapy get_current_joint_angles 4.8 7.9 16.7 18.9 ms
+neurapy ..._with_timestamp 4.9 7.3 11.7 18.5 ms
+neurapy compute_forward_kinematics 1.5 3.1 5.8 6.5 ms
+ 
+Aufschluesselung (Median):
+Socket-Aufbau 1.0 ms
+Serverzeit darueber 6.7 ms
+NeuraPy-Client darueber 0.2 ms
+ 
+====================================================================
+2. Hochrechnung auf den 15-Hz-Takt des Recorders
+====================================================================
+Budget je Takt (15 Hz) 66.7 ms
+davon je Aufruf bei 6 Aufrufen je Takt 11.1 ms
+Gemessen je Takt (servo_j mit den Kosten von
+get_current_joint_angles angesetzt) 42.0 ms
+-> Schleife laeuft 0.6-fach zu langsam (23.8 Hz statt 15 Hz)
+[OK] Die Aufrufkosten passen in den Takt.
+ 
+====================================================================
+3. Versatz, den der Recorder als 'Frame ueber Budget' meldet
+====================================================================
+read_state() stempelt die Gelenke in der Mitte des Winkel-Aufrufs;
+die Kamerabilder werden erst NACH der FK abgegriffen. Die Differenz
+ist reine Controller-Latenz -- unabhaengig von der Kamera.
+min med p95 max
+Versatz Roboter <-> frischester Frame 5.9 7.3 10.3 12.3 ms
+Grenze SYNC_MAX_SKEW_S: 30 ms -- darueber: 0 von 30 (0 %)
+[OK] Der Versatz bleibt unter der Grenze.
+ 
+====================================================================
+4. Nimmt die Steuerung mehrere Aufrufe je Verbindung an?
+====================================================================
+Entscheidet, ob eine stehende Verbindung im Adapter ueberhaupt
+moeglich ist. Drei Aufrufe nacheinander auf EINEM Socket:
+Aufruf 1: 6.4 ms
+Server schliesst nach dem Aufruf
+[INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+ 
+====================================================================
+5. Haenger bei getaktetem Verkehr (nicht im Burst)
+====================================================================
+10 s lang mit 60 Hz aufrufen -- so, wie der Recorder es tut.
+min med p95 max
+Dauerlauf, 599 Aufrufe 4.5 9.6 14.2 23.8 ms
+ueber 200 ms: 0 von 599 (0.0 %)
+ueber 500 ms: 0 von 599 (0.0 %)
+ueber 1000 ms: 0 von 599 (0.0 %)
+[OK] Keine Haenger bei getaktetem Verkehr -- die 1000-ms-Werte aus Abschnitt 1 sind ein Artefakt des Messbursts.
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-08_14-30_RPC-Latenz.json
+Geltungsbereich: Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen (Dokumentation/Taktzeit-und-RPC-Latenz.md).
+-> RPC-Latenz messen: durchgelaufen -- 3 ok
+ 
+$ -u tools/check_trajectory_buffer.py
+ 
+======================================================================
+0. Verbindung
+======================================================================
+[33;20m[2026-10-08 14:30:55][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+is_robot_in_simulation() True
+Server-Version v5.0.0-alpha.102
+Tool NoTool
+ 
+======================================================================
+1. Pufferfaehige Befehle in der Steuerung (nur lesen)
+======================================================================
+Funktionen insgesamt 202
+move_trajectory FEHLT
+plan_move_joint vorhanden
+executor vorhanden
+wait_motion_finished vorhanden
+motion_status vorhanden
+movelinear_online vorhanden
+stop_movelinear_online vorhanden
+servo_x vorhanden
+move_joint vorhanden
+weitere mit traj/buffer/path get_servo_trajectory_scaling_factor, list_recorded_path, move_recorded_path, plan_move_recorded_path
+[WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+ 
+(Fahrtests uebersprungen -- --move)
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-08_14-30_Trajektorien-Puffer.json
+Hinweis: VIRTUELLE Steuerung -- Zahlen sind kein Massstab fuer die Anlage.
+-> Pufferbefehle pruefen (nur lesen): durchgelaufen -- 1 Warnung
+ 
+$ -u tools/check_trajectory_buffer.py --move --tests referenz,komplett,knoten15,anschluss,leerlauf,stopp --joint 1 --dauer 4 --knoten-hz 100 --chunk-takte 4 --vorlauf-takte 1 --override 1
+ 
+======================================================================
+0. Verbindung
+======================================================================
+[33;20m[2026-10-08 14:30:56][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+is_robot_in_simulation() True
+Server-Version v5.0.0-alpha.102
+Tool NoTool
+ 
+======================================================================
+1. Pufferfaehige Befehle in der Steuerung (nur lesen)
+======================================================================
+Funktionen insgesamt 202
+move_trajectory FEHLT
+plan_move_joint vorhanden
+executor vorhanden
+wait_motion_finished vorhanden
+motion_status vorhanden
+movelinear_online vorhanden
+stop_movelinear_online vorhanden
+servo_x vorhanden
+move_joint vorhanden
+weitere mit traj/buffer/path get_servo_trajectory_scaling_factor, list_recorded_path, move_recorded_path, plan_move_recorded_path
+[WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+ 
+move_trajectory fehlt -- es laeuft hoechstens die Referenz.
+Startstellung [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+Testbahn J1, 0.150 rad hin und zurueck in 4.0 s, Spitze 0.118 rad/s
+Override 1.0
+ 
+======================================================================
+2a. Referenz: servo_j wie im Recorder (60 Hz, linear je Takt)
+======================================================================
+Taktueberlaeufe 88
+ 
+======================================================================
+Fazit: traegt der rollende Puffer?
+======================================================================
+Test Welligk. Stillst. Spitze Verzug RMS mrad Leserate Luecke
+referenz 53.4 % 25.6 % 7 Hz 600 ms 28.71 53 Hz 63.9 ms
+[INFO] Referenz servo_j: Arm steht in 26 % der Fahrt kurz still -- das Stop-and-go vom 2026-10-05 ist damit gemessen.
+[WARNUNG] Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet.
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-08_14-31_Trajektorien-Puffer.json
+Mitschrieb: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-08_14-31_Trajektorien-Puffer_Mitschrieb.npz
+Hinweis: VIRTUELLE Steuerung -- Zahlen sind kein Massstab fuer die Anlage.
+-> Bahnpuffer testen: durchgelaufen -- 2 Warnungen
+ 

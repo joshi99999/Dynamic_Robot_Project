@@ -158,6 +158,16 @@ def scan_sources(sources, require_success=False):
                 reason = "verworfen (%s)" % (meta["discard_reason"] or "unbekannt")
                 skipped[reason] = skipped.get(reason, 0) + 1
                 continue
+            # Zweite, unabhaengige Sperre fuer Trockenlaeufe: Der Arm ist die
+            # Bahn an der realen Anlage gefahren, der Greifer hat nie
+            # geschaltet -- im Action-Vektor steht er trotzdem. apps/record.py
+            # verwirft solche Episoden bereits beim Aufzeichnen; diese Pruefung
+            # haelt sie auch dann draussen, wenn jemand ``discarded`` in der
+            # meta.json von Hand zurueckgesetzt hat.
+            if _get(meta["metadata"], ("gripper_mode",)) == "dry_run":
+                skipped["Trockenlauf ohne Greifer"] = (
+                    skipped.get("Trockenlauf ohne Greifer", 0) + 1)
+                continue
             if meta["success"] is False:
                 skipped["fehlgeschlagen"] = skipped.get("fehlgeschlagen", 0) + 1
                 continue

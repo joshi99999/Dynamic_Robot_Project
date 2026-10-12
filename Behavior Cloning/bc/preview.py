@@ -138,9 +138,15 @@ def compose(frames, height=DEFAULT_HEIGHT, overlay=None):
                 # Galaxy Viewer nicht zeigte (Labortag 2026-10-01). Die
                 # aufgezeichneten Daten waren nie betroffen.
                 image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-            scale = float(height) / image.shape[0]
-            tile = cv2.resize(image, (max(1, int(image.shape[1] * scale)), height),
-                              interpolation=cv2.INTER_AREA)
+            # Die Aufzeichnung liefert schon Schemagroesse (240 hoch): dann
+            # entfaellt das Verkleinern. ``image`` ist nach cvtColor immer eine
+            # Kopie -- putText unten schreibt also nie in die Episodendaten.
+            if image.shape[0] == height:
+                tile = image
+            else:
+                scale = float(height) / image.shape[0]
+                tile = cv2.resize(image, (max(1, int(image.shape[1] * scale)), height),
+                                  interpolation=cv2.INTER_AREA)
             cv2.putText(tile, name, (8, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (255, 255, 255), 1, cv2.LINE_AA)
         tiles.append(tile)

@@ -50,6 +50,7 @@ MODULES = [
     "test_sync",
     "test_dataset",
     "test_recorder",
+    "test_metrics",
     "test_neura_adapter",
     "test_rectify",
     "test_safety",
@@ -60,6 +61,7 @@ MODULES = [
     "test_gui",
     "test_camera_assignment",
     "test_daheng_api",
+    "test_check_trajectory_buffer",
     "contract.test_robot_contract",
     "contract.test_camera_contract",
 ]

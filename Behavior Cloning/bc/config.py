@@ -225,6 +225,17 @@ APPROACH_SPEED_MS = 0.05
 #: PROVISORISCH wie TRANSIT_SPEED_MS (AP 0.9 Punkt 5 / AP 2.6).
 PTP_JOINT_SPEED_RADS = 0.5
 
+#: Zulaessiger Bereich fuer das je Lauf einstellbare Planer-Tempo
+#: (``record.py --transit-speed/--approach-speed/--ptp-speed``, GUI).
+#: Nach unten: darunter wird eine Episode unpraktisch lang. Nach oben: die
+#: verrauschten Befehle liegen ueber der Idealbahn (VM 2026-09-16: ideal
+#: 0.39, verrauscht 0.60 rad/s bei PTP 0.5) und muessen unter
+#: SERVO_MAX_JOINT_SPEED_RADS bleiben, die Policy spaeter unter
+#: POLICY_MAX_JOINT_SPEED_RADS -- deshalb PTP hoechstens 0.6 rad/s.
+PLANNER_TRANSIT_SPEED_RANGE_MS = (0.02, 0.25)
+PLANNER_APPROACH_SPEED_RANGE_MS = (0.01, 0.10)
+PLANNER_PTP_SPEED_RANGE_RADS = (0.05, 0.6)
+
 #: Dauer der Beschleunigungs- bzw. Bremsrampe jedes Segments (Sinus-Profil,
 #: Beschleunigung an beiden Enden 0). Jedes Segment startet und endet im
 #: Stillstand -- Start, Greifer-Dwell und Wechsel LIN <-> PTP sind damit

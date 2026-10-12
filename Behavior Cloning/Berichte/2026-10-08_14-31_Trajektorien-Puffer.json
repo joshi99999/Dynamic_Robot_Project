@@ -1,0 +1,69 @@
+{
+  "erzeugt": "2026-10-08T14:30:56",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": true,
+  "argumente": {
+    "move": true,
+    "tests": "referenz,komplett,knoten15,anschluss,leerlauf,stopp",
+    "joint": 1,
+    "amplitude": null,
+    "dauer": 4.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "override": 1.0,
+    "doku": false,
+    "real_robot": false
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "referenz": {
+      "kennzahlen": {
+        "proben": 300,
+        "leserate_hz": 52.86027196995476,
+        "groesste_luecke_ms": 63.87948989868164,
+        "verzug_ms": 600.0000000000007,
+        "folgefehler_rms_mrad": 28.71482217180173,
+        "auslenkung_rad": 0.1500069087890625,
+        "welligkeit_prozent": 53.382253374489075,
+        "stillstand_prozent": 25.64102564102564,
+        "v_ist_max": 0.26128222479272073,
+        "v_plan_max": 0.11780972450961724,
+        "spitze_hz": 7.475083056478406,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 44.04549098219788,
+        "ende_s": 5.394911437988286
+      },
+      "lesedauer_ms": 18.027901649475098,
+      "lesefehler": 0,
+      "taktueberlaeufe": 88
+    }
+  },
+  "befunde": [
+    [
+      "info",
+      "Referenz servo_j: Arm steht in 26 % der Fahrt kurz still -- das Stop-and-go vom 2026-10-05 ist damit gemessen."
+    ],
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

@@ -43,6 +43,7 @@ from . import recording as recording_module
 from . import session as session_module
 from . import training as training_module
 from .. import config
+from .. import trajectory as trajectory_module
 from .runner import ProcessRunner
 from .tab_base import ModeTab
 from .widgets import (BAD, GOOD, ImageView, LogView, NEUTRAL, WARN,
@@ -419,6 +420,17 @@ class RecordingTab(ModeTab):
         recording_module.reset_working_copy(self.workdir, self._sequence_source)
         self._on_sequence_changed()
 
+    def _speed_box(self, value_range, default, step, decimals, suffix, tip):
+        box = block_wheel(QDoubleSpinBox())
+        box.setRange(*value_range)
+        box.setSingleStep(step)
+        box.setDecimals(decimals)
+        box.setSuffix(suffix)
+        box.setValue(default)
+        box.setToolTip(tip + "\n\nStandard: %g%s" % (default, suffix))
+        box.valueChanged.connect(self._update_command)
+        return box
+
     def _build_run_box(self):
         box = QGroupBox("3. Aufnahme")
         layout = QVBoxLayout(box)
@@ -495,6 +507,34 @@ class RecordingTab(ModeTab):
         self.servo_rate_hint.setWordWrap(True)
         form.addRow("", self.servo_rate_hint)
 
+        # Planer-Tempo (AP 2.6). Langsamer heisst auch ruhiger, wenn der
+        # Rechner den Takt nicht haelt: ein verspaeteter Sollwert erzeugt
+        # einen Sprung proportional zur Geschwindigkeit (Auswertung
+        # 2026-10-03). Anders als der Override faehrt der Arm die langsamere
+        # Bahn genau ab -- deshalb wird das Tempo HIER gesenkt, nicht dort.
+        tempo_tip = (
+            "Wird mitgelernt (AP 2.6) und muss für alle Episoden eines "
+            "Datensatzes gleich sein — apps/export.py bricht bei gemischten "
+            "Werten ab. Langsamer = ruhiger, auch wenn der Rechner den Takt "
+            "nicht ganz hält; der Arm fährt die Bahn dann trotzdem genau ab. "
+            "Den Override dafür NICHT senken: dann läuft der Arm hinterher "
+            "und die Daten zeigen eine Bahn, die nicht gefahren wurde.")
+        self.transit_speed = self._speed_box(
+            config.PLANNER_TRANSIT_SPEED_RANGE_MS, config.TRANSIT_SPEED_MS,
+            0.01, 3, " m/s", tempo_tip)
+        form.addRow("Tempo Transit", self.transit_speed)
+        self.approach_speed = self._speed_box(
+            config.PLANNER_APPROACH_SPEED_RANGE_MS, config.APPROACH_SPEED_MS,
+            0.005, 3, " m/s", tempo_tip)
+        form.addRow("Tempo Endanflug", self.approach_speed)
+        self.ptp_speed = self._speed_box(
+            config.PLANNER_PTP_SPEED_RANGE_RADS, config.PTP_JOINT_SPEED_RADS,
+            0.05, 2, " rad/s", tempo_tip)
+        form.addRow("Tempo PTP (Gelenke)", self.ptp_speed)
+        self.tempo_hint = QLabel("")
+        self.tempo_hint.setWordWrap(True)
+        form.addRow("", self.tempo_hint)
+
         layout.addLayout(form)
 
         self.ask_label = QCheckBox("Nach jeder Episode bewerten")
@@ -506,6 +546,20 @@ class RecordingTab(ModeTab):
             "dann später aus.")
         self.ask_label.toggled.connect(self._update_command)
         layout.addWidget(self.ask_label)
+
+        # Trockenlauf: nur fuer Bahntests, solange am Greifer noch die
+        # Pinbelegung fehlt. Die Episode wird dabei zwingend verworfen --
+        # der Greifer schaltet nicht, steht im Action-Vektor aber drin.
+        self.no_gripper = QCheckBox("Trockenlauf ohne Greifer (Episoden werden verworfen)")
+        self.no_gripper.setToolTip(
+            "Für Bahntests, wenn in der Steuerung noch kein Greifer "
+            "konfiguriert ist. Der Arm fährt die VOLLSTÄNDIGE Bahn, der "
+            "Greifer schaltet nicht — kein Werkstück einlegen.\n\n"
+            "Jede so aufgezeichnete Episode wird verworfen und vom Export "
+            "abgewiesen: die Greiferbefehle stehen im Action-Vektor, haben "
+            "aber nie stattgefunden.")
+        self.no_gripper.toggled.connect(self._update_command)
+        layout.addWidget(self.no_gripper)
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Ziel"))
@@ -805,6 +859,9 @@ class RecordingTab(ModeTab):
             noise_scale=self.noise_scale.value(),
             noise_fixed=self.noise_fixed.isChecked(),
             servo_rate=self.servo_rate.currentData(),
+            transit_speed=self.transit_speed.value(),
+            approach_speed=self.approach_speed.value(),
+            ptp_speed=self.ptp_speed.value(),
             block=self.block.text().strip() or None,
             light=self.light.text().strip() or None,
             camera_pose=self.camera_pose.text().strip() or None,
@@ -812,7 +869,8 @@ class RecordingTab(ModeTab):
             ask_label=self.ask_label.isChecked(),
             preview=(str(self._live_file())
                      if self.live_during_recording.isChecked() else None),
-            real_robot=status.is_real_plant)
+            real_robot=status.is_real_plant,
+            no_gripper=self.no_gripper.isChecked())
 
     def _update_command(self):
         try:
@@ -833,6 +891,23 @@ class RecordingTab(ModeTab):
         else:
             self.servo_rate_hint.setText("")
             self.servo_rate_hint.setStyleSheet("color:%s" % NEUTRAL)
+
+        speeds = (self.transit_speed.value(), self.approach_speed.value(),
+                  self.ptp_speed.value())
+        problems = trajectory_module.planner_speed_problems(*speeds)
+        if problems:
+            self.tempo_hint.setText("✗ " + "; ".join(problems))
+            self.tempo_hint.setStyleSheet("color:%s" % BAD)
+        elif any(abs(v - d) > 1e-9 for v, d in zip(speeds, (
+                config.TRANSIT_SPEED_MS, config.APPROACH_SPEED_MS,
+                config.PTP_JOINT_SPEED_RADS))):
+            self.tempo_hint.setText(
+                "Abweichend vom Standard. Das Tempo landet in den Metadaten; "
+                "alle Episoden eines Datensatzes brauchen dasselbe.")
+            self.tempo_hint.setStyleSheet("color:%s" % WARN)
+        else:
+            self.tempo_hint.setText("")
+            self.tempo_hint.setStyleSheet("color:%s" % NEUTRAL)
 
         advice = recording_module.episode_advice(
             status.is_real_plant, self.episodes.value())
@@ -1066,6 +1141,9 @@ class RecordingTab(ModeTab):
 
         problems = recording_module.setup_problems(
             self._robot_kind(), self.sequence.currentData())
+        problems += trajectory_module.planner_speed_problems(
+            self.transit_speed.value(), self.approach_speed.value(),
+            self.ptp_speed.value())
         if problems:
             QMessageBox.warning(
                 self, "So kann es nicht laufen",
@@ -1145,11 +1223,18 @@ class RecordingTab(ModeTab):
                      % (self.episodes.value(),
                         self.sequence.currentData() or "Demo-Wegpunkte"))
         lines.append("Ziel: %s" % self.out.text().strip())
+        lines.append("Tempo: Transit %.3f m/s · Endanflug %.3f m/s · PTP %.2f rad/s"
+                     % (self.transit_speed.value(), self.approach_speed.value(),
+                        self.ptp_speed.value()))
         if status.state == session_module.OFFLINE:
             lines += ["", "Es ist nichts verbunden — apps/record.py verbindet "
                           "selbst. Welche Steuerung antwortet, steht erst dann fest."]
         if status.is_real_plant:
             lines += ["", "ACHTUNG: Das ist die REALE ANLAGE, nicht die Simulation."]
+        if self.no_gripper.isChecked():
+            lines += ["", "TROCKENLAUF: Der Greifer schaltet NICHT, die Bahn wird "
+                          "trotzdem vollständig gefahren. Kein Werkstück einlegen.",
+                      "Jede Episode wird verworfen und ist nicht exportierbar."]
         lines += ["", "Arbeitsraum frei? Not-Aus in Reichweite?"]
         return self.confirm("Roboter bewegt sich", "\n".join(lines))
 
@@ -1249,7 +1334,8 @@ class RecordingTab(ModeTab):
 
     def _set_running(self, running):
         for widget in (self.btn_record, self.btn_teach, self.btn_preview,
-                       self.cameras, self.sequence, self.episodes):
+                       self.cameras, self.sequence, self.episodes,
+                       self.transit_speed, self.approach_speed, self.ptp_speed):
             widget.setEnabled(not running)
         self.btn_stop.setEnabled(running)
 

@@ -13,6 +13,7 @@ import numpy as np
 
 from bc import config, geometry
 from bc.adapters.neura import (
+    GRIPPER_DRY_RUN,
     GRIPPER_HARDWARE,
     GRIPPER_LOGGED,
     GRIPPER_UNAVAILABLE,
@@ -223,6 +224,41 @@ def test_gripper_hardware_and_unavailable_modes():
         assert False, "RobotError erwartet (Anlage ohne Greifer)"
     except RobotError:
         pass
+
+
+def test_dry_run_gripper_only_with_explicit_release():
+    """Trockenlauf an der Anlage: nur mit ``allow_dry_gripper``, und dann
+    protokolliert statt geschaltet (Anlage 2026-10-05, Pinbelegung offen)."""
+    client = FakeNeuraClient(in_simulation=False, gripper=False)
+    robot = NeuraRobot(robot=client, allow_dry_gripper=True).connect()
+    assert robot.gripper_mode == GRIPPER_DRY_RUN
+
+    robot.gripper_command(True)
+    robot.gripper_command(False)
+    # Der Greifer darf NICHT geschaltet worden sein -- sonst waere der
+    # Trockenlauf keiner.
+    assert "grasp" not in _names(client) and "release" not in _names(client)
+    assert [closed for _, closed in robot.gripper_log] == [True, False]
+    assert robot.gripper_closed is False
+
+    # Ohne die Freigabe bleibt es beim Fehler -- der Trockenlauf darf sich
+    # nicht aus Versehen einschalten.
+    strict = NeuraRobot(robot=FakeNeuraClient(in_simulation=False)).connect()
+    assert strict.gripper_mode == GRIPPER_UNAVAILABLE
+
+
+def test_dry_run_never_overrides_a_real_gripper():
+    """Ist ein Greifer konfiguriert, zaehlt er -- auch mit der Freigabe.
+
+    ``allow_real=True``, weil der Hardware-Zweig durch ``_require_motion``
+    laeuft: ohne die Freigabe verweigert der Adapter jede Bewegung an der
+    Anlage, und zwar BEVOR der Greifer drankommt.
+    """
+    client = FakeNeuraClient(in_simulation=False, gripper=True)
+    robot = NeuraRobot(robot=client, allow_real=True, allow_dry_gripper=True).connect()
+    assert robot.gripper_mode == GRIPPER_HARDWARE
+    robot.gripper_command(True)
+    assert _names(client)[-1] == "grasp"
 
 
 def test_get_point_uses_joints_and_crosschecks_cartesian():

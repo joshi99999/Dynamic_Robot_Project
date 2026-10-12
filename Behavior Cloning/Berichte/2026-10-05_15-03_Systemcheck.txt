@@ -1,0 +1,386 @@
+Systemcheck 2026-10-05_15-03
+============================================================
+
+Punkte sichern: durchgelaufen -- 1 Warnung
+    [WARNUNG] is_robot_in_simulation() ist nicht True -- diese Sicherung
+Roboter-Contract: fehlgeschlagen -- 11 Tests bestanden, 1 fehlgeschlagen
+servo_j-Timing messen: durchgelaufen -- 3 ok
+Nachlauf und Override: durchgelaufen -- 3 Warnungen, 7 ok
+    [WARNUNG] Zeitbasis weicht um -1791203860830155.500 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+    [WARNUNG] 22 von 240 Zyklen haben die Periode gerissen -- bei 60 Hz ist das Latenzbudget aus AP 1.3 nicht sicher einzuhalten.
+    [WARNUNG] 19 von 240 Zyklen haben die Periode gerissen -- bei 60 Hz ist das Latenzbudget aus AP 1.3 nicht sicher einzuhalten.
+Greifer-Totzeit messen: fehlgeschlagen (Rueckgabewert 1)
+
+============================================================
+Vollstaendige Ausgabe
+============================================================
+
+$ -u tools/export_points.py --sequence sequences/pick_to_station.json
+ 
+============================================================
+0. Verbindung und Herkunft
+============================================================
+socket 192.168.2.13:65432
+server_version v5.0.8
+client_version v5.0.8
+in_simulation False
+tool ZimmerLWR50
+ 
+[WARN] is_robot_in_simulation() ist nicht True -- diese Sicherung
+stammt moeglicherweise von der REALEN Anlage. Dateinamen
+entsprechend waehlen, damit sie nicht mit VM-Punkten mischt.
+ 
+============================================================
+1. Punkte in der Steuerung
+============================================================
+Punkte insgesamt 38
+APPROACH_01
+APPROACH_02
+CLEAR_FOV
+GP1
+GP10
+GP11
+GP12
+GP13
+GP14
+GP15
+GP16
+GP17
+GP2
+GP3
+GP4
+GP5
+GP6
+GP7
+GP8
+GP9
+Grip
+GripRotate
+GripSafe
+Hauptpos_cartesian
+Hauptpos_cartesian2
+Home
+PICK
+PRE_GRASP
+PRE_PLACE
+Parking
+Rotate
+RotateGripSafe
+RotateGripSafe_1
+SafeRotateIn
+Testpunkt1
+Testpunkt2
+Vorpos_cartesian
+Vorpos_cartesian2
+ 
+============================================================
+2. Auslesen
+============================================================
+CLEAR_FOV J=[0.006245, -0.759337, 1.782538, -2.1e-05, 1.646942, 0.006307]
+APPROACH_01 J=[0.018341, -0.040966, 1.63025, 0.000677, 1.549838, -0.01862]
+APPROACH_02 J=[-0.130637, 0.086665, 1.581602, 0.113794, 1.531469, 0.919838]
+PRE_GRASP J=[0.018479, 0.302045, 1.67013, 0.000592, 1.157071, -0.018628]
+PICK J=[0.018507, 0.328111, 1.697916, 0.000582, 1.103222, -0.018664]
+PRE_PLACE J=[0.709631, 0.086328, 1.736832, 0.116211, 1.402291, -0.01859]
+ 
+============================================================
+3. Ergebnis
+============================================================
+gesichert 6 Punkte
+nicht gefunden 0 (-)
+Datei sequences\points_2026-10-05_14-42.json
+ 
+Zurueckspielen auf eine andere Steuerung:
+python tools/import_points.py sequences\points_2026-10-05_14-42.json
+-> Punkte sichern: durchgelaufen -- 1 Warnung
+ 
+$ -u tests/run_all.py --robot=neura contract.test_robot_contract --real-robot
+!! robot-Backend: neura (HARDWARE)
+!! --real-robot: Tests laufen gegen die REALE Steuerung (Greifer schaltet).
+Not-Aus in Reichweite, Greifer frei? 'ANLAGE' eintippen: 
+== contract.test_robot_contract ==
+OK test_dof
+OK test_emergency_stop_contract
+OK test_fk_matches_reported_pose
+OK test_fk_supports_collision_frames
+FAIL test_gripper_command_is_nonblocking_and_tracked
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 109, in run_module
+fn(*args)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\contract\test_robot_contract.py", line 154, in test_gripper_command_is_nonblocking_and_tracked
+robot.gripper_command(not before)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 791, in gripper_command
+raise RobotError(
+bc.ports.RobotError: Kein Greifer konfiguriert (Tool 'ZimmerLWR50') und keine Simulation -- Greiferbefehl nicht ausfuehrbar.
+OK test_ik_roundtrip_and_seed
+[31;20m[2026-10-05 14:42:36][neurapy_logger][ERROR] : compute_inverse_kinematics call with args (), {'target_pose': [10.0, 10.0, 10.0, 1.0, 0.0, 0.0, 0.0], 'reference_joint': [0.006740377495206487, -0.6001231698817205, 1.1566507256139802, -0.0004018460413577375, 2.1136757228950964, 0.0065999373595968394], 'representation': 'quaternion'}, failed with exception Inverse Kinematics solution could not be found. Ensure that the target_pose and reference angle are valid and reachable. :(robot.py:117)[0m
+OK test_ik_unreachable_raises_ikerror
+OK test_link_positions_contract
+OK test_move_to_current_joints_is_noop
+OK test_read_state_contract
+OK test_servo_guard_refuses_jump
+OK test_servo_lifecycle
+ 
+============================================================
+11 Tests bestanden, 1 fehlgeschlagen
+FAIL contract.test_robot_contract::test_gripper_command_is_nonblocking_and_tracked
+-> Roboter-Contract: fehlgeschlagen -- 11 Tests bestanden, 1 fehlgeschlagen
+ 
+$ -u tools/export_points.py --sequence sequences/pick_to_station.json
+ 
+============================================================
+0. Verbindung und Herkunft
+============================================================
+socket 192.168.2.13:65432
+server_version v5.0.8
+client_version v5.0.8
+in_simulation False
+tool ZimmerLWR50
+ 
+[WARN] is_robot_in_simulation() ist nicht True -- diese Sicherung
+stammt moeglicherweise von der REALEN Anlage. Dateinamen
+entsprechend waehlen, damit sie nicht mit VM-Punkten mischt.
+ 
+============================================================
+1. Punkte in der Steuerung
+============================================================
+Punkte insgesamt 38
+APPROACH_01
+APPROACH_02
+CLEAR_FOV
+GP1
+GP10
+GP11
+GP12
+GP13
+GP14
+GP15
+GP16
+GP17
+GP2
+GP3
+GP4
+GP5
+GP6
+GP7
+GP8
+GP9
+Grip
+GripRotate
+GripSafe
+Hauptpos_cartesian
+Hauptpos_cartesian2
+Home
+PICK
+PRE_GRASP
+PRE_PLACE
+Parking
+Rotate
+RotateGripSafe
+RotateGripSafe_1
+SafeRotateIn
+Testpunkt1
+Testpunkt2
+Vorpos_cartesian
+Vorpos_cartesian2
+ 
+============================================================
+2. Auslesen
+============================================================
+CLEAR_FOV J=[0.006245, -0.759337, 1.782538, -2.1e-05, 1.646942, 0.006307]
+APPROACH_01 J=[0.018341, -0.040966, 1.63025, 0.000677, 1.549838, -0.01862]
+APPROACH_02 J=[-0.130637, 0.086665, 1.581602, 0.113794, 1.531469, 0.919838]
+PRE_GRASP J=[0.018479, 0.302045, 1.67013, 0.000592, 1.157071, -0.018628]
+PICK J=[0.018507, 0.328111, 1.697916, 0.000582, 1.103222, -0.018664]
+PRE_PLACE J=[0.709631, 0.086328, 1.736832, 0.116211, 1.402291, -0.01859]
+ 
+============================================================
+3. Ergebnis
+============================================================
+gesichert 6 Punkte
+nicht gefunden 0 (-)
+Datei sequences\points_2026-10-05_14-52.json
+ 
+Zurueckspielen auf eine andere Steuerung:
+python tools/import_points.py sequences\points_2026-10-05_14-52.json
+-> Punkte sichern: durchgelaufen -- 1 Warnung
+ 
+$ -u tests/run_all.py --robot=neura contract.test_robot_contract --real-robot
+!! robot-Backend: neura (HARDWARE)
+!! --real-robot: Tests laufen gegen die REALE Steuerung (Greifer schaltet).
+Not-Aus in Reichweite, Greifer frei? 'ANLAGE' eintippen: 
+== contract.test_robot_contract ==
+OK test_dof
+OK test_emergency_stop_contract
+OK test_fk_matches_reported_pose
+OK test_fk_supports_collision_frames
+FAIL test_gripper_command_is_nonblocking_and_tracked
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 109, in run_module
+fn(*args)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tests\contract\test_robot_contract.py", line 154, in test_gripper_command_is_nonblocking_and_tracked
+robot.gripper_command(not before)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 791, in gripper_command
+raise RobotError(
+bc.ports.RobotError: Kein Greifer konfiguriert (Tool 'ZimmerLWR50') und keine Simulation -- Greiferbefehl nicht ausfuehrbar.
+OK test_ik_roundtrip_and_seed
+[31;20m[2026-10-05 14:52:51][neurapy_logger][ERROR] : compute_inverse_kinematics call with args (), {'target_pose': [10.0, 10.0, 10.0, 1.0, 0.0, 0.0, 0.0], 'reference_joint': [0.0064797206035149815, -0.6003340173386492, 1.1568825454644933, -0.0005703742040893144, 2.1138951840136757, 0.00655312398106029], 'representation': 'quaternion'}, failed with exception Inverse Kinematics solution could not be found. Ensure that the target_pose and reference angle are valid and reachable. :(robot.py:117)[0m
+OK test_ik_unreachable_raises_ikerror
+OK test_link_positions_contract
+OK test_move_to_current_joints_is_noop
+OK test_read_state_contract
+OK test_servo_guard_refuses_jump
+OK test_servo_lifecycle
+ 
+============================================================
+11 Tests bestanden, 1 fehlgeschlagen
+FAIL contract.test_robot_contract::test_gripper_command_is_nonblocking_and_tracked
+-> Roboter-Contract: fehlgeschlagen -- 11 Tests bestanden, 1 fehlgeschlagen
+ 
+Protokoll gespeichert: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-05_14-53_Systemcheck.txt
+$ -u tools/check_servo_timing.py --raten 60,30,15 --takte 30 --real-robot
+ 
+======================================================================
+0. Verbindung
+======================================================================
+is_robot_in_simulation(): False
+Tool: 'ZimmerLWR50' Greifer: unavailable
+Diagnose vorher: {'critical': False, 'issues': {}}
+ 
+Dieses Werkzeug BESTROMT den Roboter und aktiviert das
+Servo-Interface. Gesendet wird ausschliesslich: Ist-Stellung halten (v = a = 0).
+Der Arm soll sich dabei NICHT bewegen.
+Fortfahren? [j/N] 
+======================================================================
+1. Bestromen und Servo-Interface aktivieren
+======================================================================
+Ist-Stellung: [0.0064, -0.6004, 1.1569, -0.0007, 2.114, 0.0062]
+Servo-Interface aktiv.
+ 
+======================================================================
+2. Kosten eines einzelnen Aufrufs
+======================================================================
+min med p95 max
+servo_j (Haltebefehl) 3.9 4.7 6.5 6.7 ms
+read_state() (Winkel + FK) 4.7 5.8 8.2 8.8 ms
+letzter servo_j-Code: None
+ 
+======================================================================
+3. Trockener Takt je Kandidatenrate
+======================================================================
+Budget je Takt bei 15 Hz: 66.7 ms
+ 
+SERVO_HZ Teilschr. Takt med erreichbar Urteil
+60 4 23.3 ms 43.0 Hz passt
+30 2 14.8 ms 67.6 Hz passt
+15 1 8.8 ms 113.4 Hz passt
+ 
+(p95 je Rate steht im JSON-Bericht -- der Median sagt, ob es
+im Mittel passt, der p95, ob es auch im schlechten Fall passt.)
+[OK] Die konfigurierte SERVO_RATE_HZ = 60 haelt den Takt.
+ 
+======================================================================
+4. Hat sich der Arm bewegt? (darf er nicht)
+======================================================================
+groesste Abweichung zur Startstellung: 0.000017 rad
+[OK] Der Arm stand still, wie erwartet.
+ 
+Servo-Interface deaktiviert.
+ 
+======================================================================
+5. Lebt der PC-Steuerkanal noch?
+======================================================================
+Diagnose nachher: {'critical': False, 'issues': {}}
+letzter servo_j-Code: None
+[OK] Keine kritische Meldung nach der Messung.
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-05_15-03_Servo-Timing.json
+Geltungsbereich: Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen.
+-> servo_j-Timing messen: durchgelaufen -- 3 ok
+ 
+$ -u tools/check_sim_robot.py --move --rate 60 --overrides 1.0,0.5 --joint 1 --real-robot
+ 
+============================================================
+0. Verbindung und Identitaet
+============================================================
+Socket 192.168.2.13:65432
+Server-Version v5.0.8
+Client-Version v5.0.8
+is_robot_in_simulation() False
+get_diagnostics() {'critical': False, 'issues': {}}
+ 
+!! --real-robot: Servotest an der REALEN ANLAGE um die aktuelle Stellung,
+Gelenk 1, Auslenkung 0.050 rad. Arbeitsraum frei? Not-Aus in Reichweite?
+Zum Fortfahren 'ANLAGE' eintippen: 
+============================================================
+1. Funktionsumfang gegen den Bedarf der Pipeline (AP 1.5.1)
+============================================================
+Funktionen insgesamt 210
+[OK] Alle Pflichtfunktionen vorhanden.
+Override 1.0
+ 
+============================================================
+2. Zustandsabgriff und Tool-Geometrie
+============================================================
+get_current_joint_angles() [0.0064, -0.6004, 1.157, -0.0007, 2.1141, 0.0062]
+Zeitstempel roh 1791205652015557.0
+Zeitstempel-Abstand zur Hostzeit -1791203860830155.500 s
+[WARN] Zeitbasis weicht um -1791203860830155.500 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+Tool-Offset hinterlegt True
+ 
+============================================================
+3. Kinematik ueber den Adapter (FK/IK-Rueckprobe)
+============================================================
+fk(q) -> Pose [XYZ|QWXYZ] [0.0823, 0.0004, 0.7427, 0.2333, 0.0002, 0.9724, 0.0012]
+ik(fk(q)) -> q [0.0064, -0.6004, 1.157, -0.0007, 2.1141, 0.0062]
+max |q_ik - q| 0.00000 rad
+[OK] IK-Rueckprobe seedtreu (0.00000 rad).
+FK-Rueckprobe Positionsfehler 0.000000 m
+[OK] FK-Rueckprobe innerhalb der Toleranz.
+Laufzeit fk() inkl. TCP-Roundtrip 3.6 ms
+ 
+============================================================
+5. Servo-Interface bei 60 Hz, Ableitungen: plan, Gelenk 1, Override 1.00 (AP 0.6 Punkt 3)
+============================================================
+Zyklen 240 in 4.01 s (Soll 4.00 s)
+Zyklen ueber Budget 22 (9 %)
+groesste erreichte Auslenkung J1 0.0499 rad (Soll 0.0500)
+Nachlauf Soll -> Ist 2 Takte = 33 ms
+[OK] Nachlauf, Override 1.00: 33 ms bei 60 Hz
+Folgefehler J1 (RMS / max) 0.0016 / 0.0039 rad
+letzter servo_j-Code None
+[WARN] 22 von 240 Zyklen haben die Periode gerissen -- bei 60 Hz ist das Latenzbudget aus AP 1.3 nicht sicher einzuhalten.
+[OK] Servo-Interface folgt dem Sollwertstrom bei 60 Hz.
+Trajektorien-Skalierung 1.0
+ 
+============================================================
+5. Servo-Interface bei 60 Hz, Ableitungen: plan, Gelenk 1, Override 0.50 (AP 0.6 Punkt 3)
+============================================================
+Zyklen 240 in 4.01 s (Soll 4.00 s)
+Zyklen ueber Budget 19 (8 %)
+groesste erreichte Auslenkung J1 0.0499 rad (Soll 0.0500)
+Nachlauf Soll -> Ist 3 Takte = 50 ms
+[OK] Nachlauf, Override 0.50: 50 ms bei 60 Hz
+Folgefehler J1 (RMS / max) 0.0032 / 0.0069 rad
+letzter servo_j-Code None
+[WARN] 19 von 240 Zyklen haben die Periode gerissen -- bei 60 Hz ist das Latenzbudget aus AP 1.3 nicht sicher einzuhalten.
+[OK] Servo-Interface folgt dem Sollwertstrom bei 60 Hz.
+Trajektorien-Skalierung 1.0
+ 
+============================================================
+Zusammenfassung
+============================================================
+WARN Zeitbasis weicht um -1791203860830155.500 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+WARN 22 von 240 Zyklen haben die Periode gerissen -- bei 60 Hz ist das Latenzbudget aus AP 1.3 nicht sicher einzuhalten.
+WARN 19 von 240 Zyklen haben die Periode gerissen -- bei 60 Hz ist das Latenzbudget aus AP 1.3 nicht sicher einzuhalten.
+ 
+7 ok, 3 Warnungen, 0 Fehler
+ 
+Hinweis: is_robot_in_simulation() == False -- ANLAGENMESSUNG.
+-> Nachlauf und Override: durchgelaufen -- 3 Warnungen, 7 ok
+ 
+$ -u tools/check_gripper.py --camera wrist --cycles 5 --save-frames Berichte/greifer_frames --real-robot
+Neura: is_robot_in_simulation()=False, Tool='ZimmerLWR50', Greifer=unavailable
+Kein Greifer konfiguriert (Modus unavailable) -- nichts zu messen. Tool/Greifer am Pendant waehlen.
+-> Greifer-Totzeit messen: fehlgeschlagen (Rueckgabewert 1)
+ 

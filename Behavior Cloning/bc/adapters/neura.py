@@ -82,6 +82,14 @@ PROBE_JOINTS = (
 GRIPPER_HARDWARE = "hardware"  # Greifer konfiguriert -> grasp()/release()
 GRIPPER_LOGGED = "logged"  # Simulation ohne Greifer -> nur protokolliert
 GRIPPER_UNAVAILABLE = "unavailable"  # reale Anlage ohne Greifer -> Fehler
+#: Reale Anlage OHNE Greifer, ausdruecklich freigegeben (``allow_dry_gripper``):
+#: Der Arm faehrt die Bahn vollstaendig, Greiferbefehle werden nur
+#: protokolliert. Eigener Wert und NICHT ``GRIPPER_LOGGED``, weil beides in
+#: den Metadaten unterscheidbar bleiben muss -- "logged" heisst Simulation,
+#: "dry_run" heisst ECHTE Bewegung mit erfundenem Greiferkanal. Episoden in
+#: diesem Modus sind fuer den Datensatz gesperrt: apps/record.py verwirft sie
+#: sofort, bc/lerobot_io.scan_sources weist sie zusaetzlich beim Export ab.
+GRIPPER_DRY_RUN = "dry_run"
 
 
 def _unwrap_neurapy_error(exc, function_name):
@@ -115,7 +123,8 @@ class NeuraRobot(RobotPort, PointSourcePort):
 
     def __init__(
         self, robot=None, override=config.DEFAULT_OVERRIDE, allow_real=False,
-        servo_guard=None, local_fk=config.NEURA_LOCAL_FK
+        servo_guard=None, local_fk=config.NEURA_LOCAL_FK,
+        allow_dry_gripper=False
     ):
         self._robot = robot
         #: Sprung-/Geschwindigkeitsfilter fuer jeden servo_j-Sollwert
@@ -123,6 +132,10 @@ class NeuraRobot(RobotPort, PointSourcePort):
         self.servo_guard = servo_guard if servo_guard is not None else ServoGuard()
         self._override = override
         self._allow_real = bool(allow_real)
+        #: Darf an der REALEN Anlage ohne konfigurierten Greifer gefahren
+        #: werden (Trockenlauf)? Nur fuer Testfahrten, und nur ausdruecklich
+        #: gesetzt -- siehe GRIPPER_DRY_RUN.
+        self._allow_dry_gripper = bool(allow_dry_gripper)
         self._in_simulation = None
         self._motion_allowed = False
         self._gripper_mode = None
@@ -375,11 +388,24 @@ class NeuraRobot(RobotPort, PointSourcePort):
         Kriterium ist das Attribut ``gripper_name`` des NeuraPy-Clients --
         genau dessen Fehlen laesst ``grasp()`` scheitern ("'Robot' object has
         no attribute 'gripper_name'", VM 2026-09-09; Tool dort "NoTool").
+
+        WICHTIG: Das Attribut haengt nicht am Toolnamen. Ein Tool kann
+        ausgewaehlt sein (``get_selected_tool_name()`` liefert ihn) und
+        trotzdem keine Greiferansteuerung hinterlegt haben -- dann bleibt
+        ``gripper_name`` leer. Genau dieser Fall trat an der Anlage am
+        2026-10-05 auf (Tool "ZimmerLWR50", Pinbelegung noch offen).
+
+        Ist ``allow_dry_gripper`` gesetzt, laeuft die reale Anlage dann im
+        Trockenlauf statt in den Fehler: Die Bahn wird vollstaendig gefahren,
+        nur der Greifer schaltet nicht. Episoden daraus sind fuer den
+        Datensatz gesperrt (siehe GRIPPER_DRY_RUN).
         """
         if getattr(self.robot, "gripper_name", None):
             return GRIPPER_HARDWARE
         if self._in_simulation is True:
             return GRIPPER_LOGGED
+        if self._allow_dry_gripper:
+            return GRIPPER_DRY_RUN
         return GRIPPER_UNAVAILABLE
 
     # -- Aufruf-Helfer -----------------------------------------------------
@@ -777,7 +803,10 @@ class NeuraRobot(RobotPort, PointSourcePort):
         Ohne konfigurierten Greifer wird der Befehl in der Simulation nur
         in ``gripper_log`` protokolliert -- fuer die Datenpipeline zaehlt
         der KOMMANDIERTE Zustand, der ohnehin im State steht. An der realen
-        Anlage ist ein fehlender Greifer dagegen ein Fehler.
+        Anlage ist ein fehlender Greifer ein Fehler, ausser der Trockenlauf
+        wurde ausdruecklich freigegeben (GRIPPER_DRY_RUN): dann wird wie in
+        der Simulation nur protokolliert, und die Episode ist fuer den
+        Datensatz gesperrt.
         """
         close = bool(close)
         mode = self._gripper_mode
@@ -785,12 +814,15 @@ class NeuraRobot(RobotPort, PointSourcePort):
             self._require_motion("gripper_command")
             self._ensure_program()
             self._call("grasp" if close else "release")
-        elif mode == GRIPPER_LOGGED:
+        elif mode in (GRIPPER_LOGGED, GRIPPER_DRY_RUN):
             self.gripper_log.append((host_time(), close))
         elif mode == GRIPPER_UNAVAILABLE:
             raise RobotError(
                 "Kein Greifer konfiguriert (Tool %r) und keine Simulation -- "
-                "Greiferbefehl nicht ausfuehrbar." % (self.tool_name,)
+                "Greiferbefehl nicht ausfuehrbar. Fuer eine reine Testfahrt "
+                "ohne Greifer: apps/record.py --no-gripper (die Episode wird "
+                "dann verworfen und ist nicht exportierbar)."
+                % (self.tool_name,)
             )
         else:
             raise NotConnectedError("connect() wurde noch nicht aufgerufen")

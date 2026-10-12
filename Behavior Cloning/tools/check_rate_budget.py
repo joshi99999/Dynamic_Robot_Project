@@ -147,6 +147,8 @@ def main():
         print()
 
     print("=" * len(kopf))
+    bewertung(t_servo, t_read, kennzahl)
+    print()
     if not passend:
         print("KEINE Kombination passt. Die Aufrufkosten selbst muessen runter")
         print("(lokale FK, schnellere Steuerung) -- an den Raten ist nichts zu holen.")
@@ -174,6 +176,36 @@ def main():
         for h in hinweise or ["ohne Abstriche"]:
             print("      %s" % h)
         print()
+
+
+def bewertung(t_servo, t_read, kennzahl):
+    """Urteil fuer die Systemcheck-Oberflaeche: haelt die EINGESTELLTE
+    Kombination (CONTROL_RATE_HZ, SERVO_RATE_HZ) den Takt? Zeilen im
+    gemeinsamen Format ``[OK]/[WARNUNG]/[FEHLER] Text`` (bc/gui/checks.py).
+    """
+    budget = 1000.0 / config.CONTROL_RATE_HZ
+    k = int(round(config.SERVO_RATE_HZ / config.CONTROL_RATE_HZ))
+    kosten = k * t_servo + t_read
+    if kosten <= 0.8 * budget:
+        print("  [OK] %g Hz / servo_j %g Hz passt: %.1f ms je Takt (%s) bei %.1f ms "
+              "Budget." % (config.CONTROL_RATE_HZ, config.SERVO_RATE_HZ, kosten,
+                           kennzahl, budget))
+        return
+    beste = max([j for j in range(1, 9) if j * t_servo + t_read <= budget] or [0])
+    if kosten <= budget:
+        print("  [WARNUNG] %g Hz / servo_j %g Hz passt nur knapp: %.1f ms von %.1f ms "
+              "(%s) -- im schlechten Fall laeuft der Takt ueber."
+              % (config.CONTROL_RATE_HZ, config.SERVO_RATE_HZ, kosten, budget, kennzahl))
+    elif beste:
+        print("  [FEHLER] servo_j %g Hz haelt den Takt nicht (%.1f ms von %.1f ms, %s). "
+              "Bei %g Hz passt hoechstens servo_j %g Hz -- in der Aufnahme "
+              "einstellbar, oder den Rechner entlasten."
+              % (config.SERVO_RATE_HZ, kosten, budget, kennzahl,
+                 config.CONTROL_RATE_HZ, beste * config.CONTROL_RATE_HZ))
+    else:
+        print("  [FEHLER] Bei %g Hz passt keine servo_j-Rate (%.1f ms schon ohne "
+              "Interpolation). Die Aufrufkosten muessen runter."
+              % (config.CONTROL_RATE_HZ, t_servo + t_read))
 
 
 if __name__ == "__main__":
