@@ -1,0 +1,79 @@
+{
+  "erzeugt": "2026-10-12T13:19:52",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen.",
+  "control_rate_hz": 15.0,
+  "servo_rate_hz_konfiguriert": 60.0,
+  "reihen": {
+    "servo_j (Haltebefehl)": {
+      "min": 1.4357566833496094,
+      "median": 1.6962289810180664,
+      "p95": 3.3195018768310547,
+      "max": 3.950357437133789,
+      "n": 30
+    },
+    "read_state() (Winkel + FK)": {
+      "min": 1.5006065368652344,
+      "median": 1.9518136978149414,
+      "p95": 2.786397933959961,
+      "max": 2.965211868286133,
+      "n": 30
+    }
+  },
+  "takte": {
+    "60": {
+      "min": 7.298707962036133,
+      "median": 8.443236351013184,
+      "p95": 11.543750762939453,
+      "max": 11.832475662231445,
+      "n": 30,
+      "substeps": 4,
+      "erreichbare_rate_hz": 118.43799680912646,
+      "passt": true
+    },
+    "30": {
+      "min": 4.360198974609375,
+      "median": 5.204916000366211,
+      "p95": 6.901025772094727,
+      "max": 6.962060928344727,
+      "n": 30,
+      "substeps": 2,
+      "erreichbare_rate_hz": 192.12605927351015,
+      "passt": true
+    },
+    "15": {
+      "min": 2.9871463775634766,
+      "median": 3.582000732421875,
+      "p95": 5.630016326904297,
+      "max": 5.782127380371094,
+      "n": 30,
+      "substeps": 1,
+      "erreichbare_rate_hz": 279.1735889243877,
+      "passt": true
+    }
+  },
+  "befunde": [
+    [
+      "ok",
+      "Die konfigurierte SERVO_RATE_HZ = 60 haelt den Takt."
+    ],
+    [
+      "ok",
+      "Der Arm stand still, wie erwartet."
+    ],
+    [
+      "ok",
+      "Keine kritische Meldung nach der Messung."
+    ]
+  ],
+  "in_simulation": true,
+  "diagnose_vorher": {
+    "critical": false,
+    "issues": {}
+  },
+  "drift_rad": 0.0,
+  "diagnose_nachher": {
+    "critical": false,
+    "issues": {}
+  },
+  "letzter_servo_code": null
+}

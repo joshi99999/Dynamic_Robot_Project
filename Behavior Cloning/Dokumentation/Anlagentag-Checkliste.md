@@ -80,6 +80,36 @@ Arm vorher am Pendant in eine freie Pose fahren.
 | [ ] | 2.6 Mit Rauschen | Aufnahme-Reiter: Rauschen bis 1,0, einige Episoden einzeln | wie 2.5, keine verworfenen Episoden | — |
 | [ ] | 2.7 Blockweise aufzeichnen | Aufnahme-Reiter mit Block, Objekt, Licht, Kamerapose | erst nach Szenenkamera und Rektifizierung | — |
 
+### 2a. Zittern gegen Bahnpuffer (vorbereitet 12.10., für den nächsten Labortag)
+
+Anlass: Am 05.10. zitterte der Arm mit `servo_j` 60 Hz. In der VM ist das
+**nicht messbar**: Die VM liefert nur ~50 neue Gelenkwerte je Sekunde, und
+`move_trajectory` sowie `movelinear_online` tun dort nichts (der eine fehlt,
+der andere wird angenommen und nicht ausgeführt). Die Anlage meldete am
+05.10. `v5.0.8` mit 210 statt 202 Funktionen. Alles Weitere entscheidet
+sich also hier. Reihenfolge, je Schritt ein Lauf:
+
+| ✓ | Schritt | GUI | Ergebnis lesen | daraus folgt |
+|---|---|---|---|---|
+| [ ] | P1 Pufferbefehle (nur lesen) | *Pufferbefehle prüfen* | `move_trajectory` vorhanden? | ja → P3 mit allen Tests, nein → P3 ohne die Puffertests |
+| [ ] | P2 Quellrate | in P3 enthalten, Spalte **neue Werte** | ≥ 0,9 × servo-Rate? | sonst ist die Glätte auch an der Anlage nur grob messbar (Kennzahlen `neu:`) |
+| [ ] | P3 Bahnpuffer testen | *Bahnpuffer testen*, Tests `referenz,komplett,knoten15,anschluss,leerlauf,stopp,online`, Vergleichsraten `90,120`, Gelenk 1, Auslenkung 0,05 | Fazit-Zeilen: `referenz_90/120` (Stillstand gegen 60 Hz, Taktüberläufe), `online` (fährt / pulsiert / bewegt sich nicht), Puffer freigegeben ja/nein | siehe unten |
+| [ ] | P4 Gegenprobe Aufnahme | Aufnahme-Reiter, Rauschen 0, 1 Episode, mit der gewählten servo-Rate (`--servo-rate`) | *Aufnahmen bewerten*: Takt gehalten, verspätete `servo_j` < 5 % | Rate bestätigen |
+
+**Entscheidung nach P3**, in dieser Reihenfolge der Kosten:
+
+1. **90 oder 120 Hz glätten genug** (Stillstand deutlich kleiner, 0 Überläufe) → nur
+   `config.SERVO_RATE_HZ` ändern, Recorder und `infer.py` nutzen dieselbe Schicht.
+   Rechnung mit den Aufrufkosten vom 05.10.: 90 Hz p95 ~47 ms, 120 Hz p95 ~60 ms von
+   66,7 ms je Takt — 120 Hz nur, wenn 2.1 deutlich schnellere Aufrufe zeigt.
+2. **`online` fährt ohne Pulsieren** → `movelinear_online` als Ausführungsschicht
+   bauen (kartesisch über die FK, Action bleibt im Gelenkraum).
+3. **Rollender Puffer freigegeben** (`move_trajectory`, nahtloser Anschluss, `stop()`
+   leert) → Puffer im Adapter bauen.
+
+Kein Schritt ändert das Datenschema. Die Ausführungsschicht muss nur in Aufnahme
+und Inferenz dieselbe sein.
+
 ---
 
 ## Vor der ersten echten Aufzeichnung festzulegen (nachträglich nicht korrigierbar)

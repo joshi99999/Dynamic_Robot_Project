@@ -579,3 +579,57 @@ Zu klären wäre dann außerdem, warum `connect()` diesen Zustand nicht
 erkennt: `get_diagnostics()` meldet ihn eindeutig, der Adapter fragt
 aber nicht danach (Punkt 1 der Liste in
 `Laptop-Inbetriebnahme-Befunde.md` Abschnitt 5 berührt das nur am Rand).
+
+## 11. Gegenprobe 2026-10-12 am PC: 90 und 120 Hz in der VM
+
+Beantwortet 10.5, **für die VM**. Rechner: Entwicklungs-PC (nicht der
+Laptop), VM `Lara5_V5`, Override 1.0, Ablauf `pick_to_station`
+(Arbeitskopie), Platzhalterkameras, Rauschen je Episode.
+
+| Block | `servo_j` | Episoden | Überläufe | Dauer Ist/Soll | Schleppfehler Median / max | Beschl. Ist/Soll (p95) |
+|---|---|---|---|---|---|---|
+| `data_vm/2026-10-12/ep_*` (Anwender) | 60 Hz | 3/3 | 0 | 0,99–1,00 | 0,004 / 0,012–0,013 rad | 2,9–3,6 |
+| `…/2_90Hz_rauschen-je-Episode_blend` | 90 Hz | 3/3 | 0 | 0,99 | 0,003 / 0,011–0,012 rad | 2,8–3,2 |
+| `…/3_120Hz_rauschen-je-Episode_blend` | 120 Hz | 3/3 | 0 | 0,99 | 0,003 / 0,010–0,011 rad | 3,0–3,3 |
+
+Dazu `check_sim_robot.py --move --rate 120`: J1-Sinus 480 Zyklen, 8 über
+Budget (2 %), Nachlauf 17 ms, Folgefehler RMS 0,0026 rad (60 Hz: 0,0034).
+`get_diagnostics()` danach: `critical: False`.
+
+**Damit:** 120 Hz bringt die VM **nicht** in den Fehlerzustand. Der
+RCSC_105 vom 01.10. kam vom gedrosselten Laptop bzw. vom stehengebliebenen
+Fehlerzustand, nicht von der Rate. 90 und 120 Hz bleiben als Ausweichweg
+gegen das Zittern an der Anlage im Spiel.
+
+**Was die VM nicht beantwortet:** ob die Bahn glatter wird. Die VM liefert
+nur ~50 neue Gelenkwerte je Sekunde (Mitschrieb 2026-10-12 13:20: 573 Hz
+gelesen, 91 % Wiederholungen); die Beschleunigungs-Kennzahl ist bei allen
+drei Raten gleich. `check_trajectory_buffer.py` meldet das seit heute als
+„nicht deutbar“ statt als Stop-and-go.
+
+**Rechnung für die Anlage** (Aufrufkosten vom 05.10.: `servo_j` 4,7 ms
+Median / 6,5 ms p95, `read_state` 5,8 / 8,2 ms, Budget 66,7 ms je Takt):
+
+| `servo_j` | Aufrufe je Takt | Median | p95 |
+|---|---|---|---|
+| 60 Hz | 4 | 24 ms | 34 ms |
+| 90 Hz | 6 | 34 ms | 47 ms |
+| 120 Hz | 8 | 43 ms | 60 ms — knapp |
+
+120 Hz hat an der Anlage im schlechten Fall kaum Reserve; 90 Hz zuerst
+probieren.
+
+### 11.1 `movelinear_online` in der VM: angenommen, nicht ausgeführt
+
+Laut `get_doc` ist `movelinear_online` das Gegenstück zu `servo_j`/`servo_x`:
+Ziel plus Höchstwerte für v/a, die Steuerung plant selbst. `servo_j` und
+`servo_x` dagegen sind laut Doku-Beispiel für einen **1-kHz-Strom** gedacht
+(ruckig im Client, `time.sleep(0.001)`). Ein 15-Hz-Pulsieren wäre auch mit
+den 50 Hz der VM sichtbar gewesen.
+
+Ergebnis 2026-10-12: Der Aufruf liefert `None`, der Arm bewegt sich nicht,
+weder mit 15-Hz-Zielen (`check_trajectory_buffer.py --tests online`) noch
+mit einem Einzelziel 2 cm tiefer und den Werten aus dem Doku-Beispiel
+(v 0,15, a 2), mit beiden Quaternion-Vorzeichen. `get_diagnostics()`
+danach: `critical: False`. In der VM nicht prüfbar, an der Anlage (`v5.0.8`)
+offen — Ablauf in `Anlagentag-Checkliste.md`, Abschnitt 2a.

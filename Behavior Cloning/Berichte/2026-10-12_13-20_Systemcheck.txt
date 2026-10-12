@@ -1,0 +1,1241 @@
+Systemcheck 2026-10-12_13-20
+============================================================
+
+Unittests (komplett): fehlgeschlagen -- 304 Tests bestanden, 1 fehlgeschlagen
+Schichtentrennung: bestanden -- 2 Tests bestanden, 0 fehlgeschlagen
+Taktbudget rechnen: durchgelaufen -- 1 ok
+GPU / CUDA: durchgelaufen -- 1 ok
+Steuerung pruefen (nur lesen): fehlgeschlagen (Rueckgabewert 1) -- 1 Fehler, 3 Warnungen, 1 ok
+    [WARNUNG] Versionen weichen ab (Client v5.0.8, Server v5.0.0-alpha.102) -- einzelne Funktionen der Doku fehlen oder verhalten sich anders.
+    [WARNUNG] Controller liefert keinen brauchbaren Zeitstempel -- der Adapter stempelt mit der Host-Uhr (Mitte der RPC-Anfrage). Pruefpunkt Abnahmeliste AP 0.6 Punkt 2 bleibt an der Anlage offen.
+    [WARNUNG] Kein Greifer-Tool im Controller -- alle Posen beziehen sich auf den Flansch, nicht auf die Greiferspitze (AP 2.4, Vortest Punkt 0).
+    [FEHLER] TCP liegt 1.185 m vom Ursprung -- ausserhalb der Reichweite (0.9 m). Controller liefert vermutlich Platzhalterwerte.
+Kinematik und Achsgrenzen: durchgelaufen -- 1 Warnung, 5 ok
+    [WARNUNG] Achsgrenzen mit Datenblatt/Pendant abgleichen und dann config.JOINT_LIMITS_VERIFIED = True setzen (der ServoGuard nutzt sie)
+IK-Absicherungen: fehlgeschlagen (Rueckgabewert 1)
+RPC-Latenz messen: durchgelaufen -- 3 ok
+    [INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+Pufferbefehle pruefen (nur lesen): durchgelaufen -- 1 Warnung
+    [WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+Punkte sichern: fehlgeschlagen (Rueckgabewert 1) -- 1 Fehler
+    [FEHLER] 1 angeforderte Punkte fehlen in der Steuerung.
+Kameras: Rate und Versatz: fehlgeschlagen (Rueckgabewert 1)
+servo_j-Timing messen: durchgelaufen -- 3 ok
+Nachlauf und Override: fehlgeschlagen (Rueckgabewert 1) -- 1 Fehler, 5 Warnungen, 7 ok
+    [WARNUNG] Versionen weichen ab (Client v5.0.8, Server v5.0.0-alpha.102) -- einzelne Funktionen der Doku fehlen oder verhalten sich anders.
+    [WARNUNG] Controller liefert keinen brauchbaren Zeitstempel -- der Adapter stempelt mit der Host-Uhr (Mitte der RPC-Anfrage). Pruefpunkt Abnahmeliste AP 0.6 Punkt 2 bleibt an der Anlage offen.
+    [WARNUNG] Kein Greifer-Tool im Controller -- alle Posen beziehen sich auf den Flansch, nicht auf die Greiferspitze (AP 2.4, Vortest Punkt 0).
+    [FEHLER] TCP liegt 1.185 m vom Ursprung -- ausserhalb der Reichweite (0.9 m). Controller liefert vermutlich Platzhalterwerte.
+    [WARNUNG] 1 von 240 Zyklen haben die Periode gerissen -- bei 60 Hz ist das Latenzbudget aus AP 1.3 nicht sicher einzuhalten.
+    [WARNUNG] Kein Greifer konfiguriert -- Befehle wurden nur protokolliert (3 Eintraege). Fuer die Datenpipeline ausreichend.
+Bahnpuffer testen: durchgelaufen -- 2 Warnungen
+    [WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+    [INFO] Referenz servo_j: Arm steht in 91 % der Fahrt kurz still -- das Stop-and-go vom 2026-10-05 ist damit gemessen.
+    [WARNUNG] Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet.
+Greifer-Totzeit messen: fehlgeschlagen (Rueckgabewert 1)
+
+============================================================
+Vollstaendige Ausgabe
+============================================================
+
+$ -u tests/run_all.py
+ 
+== test_clock ==
+OK test_host_time_is_close_to_wall_clock
+OK test_host_time_resolves_below_sync_budget
+OK test_real_clock_uses_host_time
+ 
+== test_geometry ==
+OK test_matrix_roundtrip
+OK test_pi_wraparound_is_same_orientation
+OK test_pose_interpolation
+OK test_quat_canonical_prefers_reference_hemisphere
+OK test_quat_rotate_matches_matrix
+OK test_rpy_quat_roundtrip
+OK test_slerp_stays_put_at_wraparound
+ 
+== test_urdf_kinematics ==
+OK test_chain_structure
+OK test_conditioning_finite_at_home
+OK test_fk_deterministic_and_valid
+OK test_ik_reaches_fk_pose
+OK test_ik_seed_semantics
+OK test_ik_unreachable_raises
+OK test_solve_path_reports_failing_index
+OK test_solve_path_warm_start_and_guards
+ 
+== test_collision ==
+OK test_box_distances
+OK test_check_joints_with_sim_robot
+OK test_check_path_stops_at_first
+OK test_check_positions_named_points
+OK test_geofence_inverted_logic
+ 
+== test_trajectory ==
+OK test_anchor_distance_is_zero_at_start_gripper_change_and_end
+OK test_approach_segment_is_slower
+OK test_blend_collinear_is_constant_speed
+OK test_blend_keeps_speed_through_via_point
+OK test_blend_radius_limited_to_half_segment
+OK test_gripper_dwell_inserted
+OK test_joint_derivatives_match_motion
+OK test_lin_ptp_blend_leaves_joints_to_ik
+OK test_no_blend_at_gripper_change_or_ends
+OK test_planner_speed_problems
+OK test_ptp_blend_in_joint_space
+OK test_ptp_requires_joints_and_fk
+OK test_ptp_segment_interpolates_in_joint_space
+OK test_requires_two_waypoints
+OK test_segments_start_and_stop_smoothly
+OK test_short_segment_keeps_peak_acceleration
+OK test_slower_transit_speed_means_smaller_steps_and_longer_path
+OK test_small_blend_before_lin_approach_keeps_descent_straight
+OK test_step_size_encodes_speed
+ 
+== test_noise ==
+OK test_funnel_scale_shape
+OK test_generate_plan_end_to_end
+OK test_generate_plan_rejected_on_ik_outage
+OK test_generate_plan_rejection_sampling_on_tight_corridor
+OK test_generate_plan_rejects_on_ideal_collision
+OK test_no_noise_jump_after_gripper_change
+OK test_noise_respects_asymmetric_limits
+OK test_noise_zero_at_anchors_and_in_dwell
+OK test_ou_process_statistics
+OK test_smoothed_ou_keeps_amplitude_but_is_smooth
+OK test_smoothed_ou_stays_within_limits_without_clipping_output
+ 
+== test_sequence ==
+OK test_blend_is_passed_to_waypoints_and_planned
+OK test_parse_rejects_invalid_files
+OK test_resolve_reports_all_missing_required_points
+OK test_resolve_skips_optional_and_propagates_gripper
+OK test_sequence_end_to_end_with_ptp_and_handoff
+OK test_touch_up_takes_effect_in_next_resolution
+ 
+== test_servo ==
+OK test_constant_velocity_has_zero_acceleration
+OK test_guard_accepts_interpolated_motion_and_rejects_jumps
+OK test_guard_dt_is_clamped
+OK test_guard_rejects_nan_limits_and_gap
+OK test_hold_and_rate_validation
+OK test_interpolator_rejects_the_same_rates
+OK test_sim_robot_refuses_jump_and_stops
+OK test_substeps_for_accepts_whole_multiples
+OK test_substeps_for_names_the_possible_rates
+OK test_target_limiter_caps_step_keeps_direction_and_stays_below_guard
+OK test_window_reaches_target_linearly
+ 
+== test_sync ==
+OK test_evaluate_missing_source_is_not_ok
+OK test_evaluate_over_budget
+OK test_evaluate_within_budget
+OK test_pacer_holds_rate
+OK test_pacer_skips_after_stall
+ 
+== test_dataset ==
+OK test_action_layout_and_threshold
+OK test_episode_validation_catches_shape_errors
+OK test_state_layout
+OK test_state_quaternion_is_canonical
+OK test_writer_rejects_other_schema_version
+OK test_writer_roundtrip
+ 
+== test_recorder ==
+OK test_discard_on_absolute_follow_error
+OK test_discard_on_emergency_stop
+OK test_discard_on_stale_camera
+OK test_discard_when_arm_does_not_follow
+OK test_following_arm_is_not_discarded_for_follow_error
+OK test_gripper_dwell_respected
+OK test_monitor_gets_schema_size_frames_and_cannot_touch_the_data
+OK test_record_full_episode
+OK test_recorder_measures_duration_and_call_costs
+OK test_refuses_to_start_away_from_start_pose
+OK test_servo_substeps_interpolate_plan_with_velocity
+OK test_timing_findings_blame_the_rate_not_the_host_when_calls_are_cheap
+OK test_timing_findings_name_slowdown_budget_and_suspected_host
+OK test_timing_findings_silent_for_a_healthy_run
+ 
+== test_metrics ==
+OK test_discarded_episode_is_an_error
+OK test_healthy_episode_has_no_warnings
+OK test_lagging_arm_is_reported_with_the_override_hint
+OK test_slow_run_adds_one_warning_and_explanations
+OK test_stop_and_go_is_reported_as_jerk
+ 
+== test_neura_adapter ==
+OK test_automatic_switch_happens_before_init_program
+OK test_dry_run_gripper_only_with_explicit_release
+OK test_dry_run_never_overrides_a_real_gripper
+OK test_first_motion_after_readonly_connect_inits_program_once
+OK test_get_point_uses_joints_and_crosschecks_cartesian
+OK test_gripper_hardware_and_unavailable_modes
+OK test_gripper_logged_in_simulation_without_gripper
+OK test_init_failure_names_the_real_cause
+OK test_local_fk_can_be_switched_off
+OK test_local_fk_refused_when_urdf_deviates
+OK test_local_fk_used_when_urdf_matches_controller
+OK test_move_to_joints_uses_move_joint_and_checks_target
+OK test_readonly_connect_does_not_init_program
+OK test_real_robot_refused_without_explicit_release
+OK test_real_robot_with_explicit_release
+OK test_servo_error_code_raises
+OK test_servo_j_sends_three_lists_and_requires_derivatives
+OK test_simulation_check_runs_first_and_allows_motion
+OK test_stop_requires_a_new_init_program
+OK test_zero_controller_timestamp_falls_back_to_host_time
+ 
+== test_rectify ==
+OK test_fallback_when_markers_hidden
+FAIL test_homography_recovers_marker_positions
+Traceback (most recent call last):
+File "E:\Projekt\Dynamic_Robot_Project\Behavior Cloning\tests\run_all.py", line 110, in run_module
+fn(*args)
+File "E:\Projekt\Dynamic_Robot_Project\Behavior Cloning\tests\test_rectify.py", line 61, in test_homography_recovers_marker_positions
+assert n >= 3 # mindestens 3 der 4 Marker erkannt
+^^^^^^
+AssertionError
+OK test_rectified_image_is_canonical
+OK test_shift_monitoring_detects_camera_move
+ 
+== test_safety ==
+OK test_broken_check_counts_as_violation
+OK test_watchdog_passes_when_free
+OK test_watchdog_trips_on_violation
+ 
+== test_policy ==
+OK test_async_ensembler_keeps_time_alignment_despite_latency
+OK test_check_action_gap
+OK test_chunk_executor_repredicts_after_n
+OK test_chunk_executor_validates_shape
+OK test_ensembler_decay_prefers_newer_and_reports_spread
+OK test_ensembler_rejects_short_chunks_and_nan
+OK test_ensembler_time_alignment_and_average
+OK test_evaluate_rollout_against_reference
+OK test_hold_policy_holds
+ 
+== test_lerobot ==
+OK test_dry_run_episodes_never_reach_the_export
+Map: 0%| | 0/24 [00:00<?, ? examples/s] Map: 100%|██████████| 24/24 [00:00<00:00, 403.71 examples/s]
+Map: 0%| | 0/24 [00:00<?, ? examples/s] Map: 100%|██████████| 24/24 [00:00<00:00, 561.86 examples/s]
+Loading weights from local directory
+OK test_export_train_save_load_predict
+OK test_scan_refuses_other_schema
+OK test_scan_selects_episodes_and_detects_tempo_conflicts
+ 
+== test_layering ==
+OK test_adapters_import_lazily
+OK test_pipeline_layer_has_no_hardware_imports
+ 
+== test_apps ==
+OK test_camera_modes_and_static_placeholders
+OK test_infer_episode_ends_at_end_pose
+OK test_infer_refuses_far_target
+Greifer: zu
+Gespeichert wp00: [0.444, -0.09, 0.4204] (Greifer zu)
+Greifer: auf
+Gespeichert wp01: [0.444, -0.09, 0.4204] (Greifer auf)
+OK test_teach_loop_gripper_toggle
+Gespeichert wp00: [0.454, -0.09, 0.4204] (Greifer auf)
+Gespeichert wp01: [0.474, -0.09, 0.4204] (Greifer auf)
+Gespeichert wp02: [0.474, -0.09, 0.4204] (Greifer auf)
+OK test_teach_loop_saves_waypoints
+ 
+== test_gui ==
+OK test_a_daheng_needs_the_galaxy_sdk
+OK test_a_device_that_vanished_is_named_not_swallowed
+OK test_a_discarded_episode_is_marked
+OK test_a_failed_run_is_read_as_such
+OK test_a_folder_without_bc_policy_is_named_as_such
+OK test_a_missing_camera_slot_is_blocking
+OK test_a_run_and_its_intermediate_steps_are_both_offered
+OK test_a_sequence_against_the_simrobot_is_refused_before_the_start
+OK test_a_simulation_model_at_the_plant_is_a_hint_not_a_block
+OK test_a_step_without_a_point_is_named
+OK test_a_webcam_needs_opencv_but_not_the_galaxy_sdk
+OK test_allowing_the_plant_forces_a_reconnect
+OK test_an_invalid_sequence_is_refused_before_it_is_written
+OK test_an_ordinary_line_is_not_a_question
+OK test_asking_is_a_flag_not_the_default
+OK test_assignment_becomes_camera_configs_in_dataset_order
+OK test_build_argv_uses_params_and_skips_empty_values
+OK test_by_level_covers_the_whole_catalogue
+OK test_camera_assignment_reaches_the_command_line
+OK test_camera_assignment_reaches_the_record_command
+OK test_catalogue_keys_are_unique
+OK test_checkpoint_without_training_state_is_not_resumable
+OK test_checks_without_real_flag_never_get_it
+OK test_compose_turns_rgb_frames_into_bgr_for_display
+OK test_compose_without_cameras_is_none
+OK test_config_defaults_are_marked_as_settled
+OK test_confirmed_simulation_is_not_flagged_as_the_plant
+OK test_controller_denying_simulation_is_the_plant
+OK test_dataset_with_another_lerobot_version_is_flagged
+OK test_dataset_without_export_metadata_says_the_origin_is_unknown
+OK test_default_assignment_is_placeholders_without_a_controller
+OK test_default_assignment_never_silently_picks_index_zero
+OK test_defaults_are_not_written_out
+OK test_device_auto_is_not_written_out
+OK test_different_camera_backend_is_blocking
+OK test_different_override_is_blocking_because_the_tempo_is_learned
+OK test_every_answer_has_a_character_for_stdin
+OK test_every_catalogue_script_exists_and_knows_its_flags
+OK test_every_mode_has_requirements
+OK test_every_needed_key_is_declared_in_the_systemcheck_requirements
+OK test_every_status_has_text_and_colour
+OK test_export_needs_a_source_and_a_target
+OK test_failed_simulation_query_is_not_treated_as_simulation
+OK test_ffmpeg_next_to_the_interpreter_counts_as_present
+OK test_final_counts_are_read
+OK test_found_paths_are_relative_to_the_workdir
+OK test_free_checks_never_touch_the_controller
+OK test_free_checks_open_no_hardware
+OK test_hold_mode_needs_no_checkpoint
+OK test_inference_without_a_model_is_refused
+OK test_live_preview_is_off_unless_asked_for
+OK test_matching_setup_has_nothing_to_complain_about
+OK test_message_is_none_when_nothing_missing
+OK test_message_names_what_is_missing_and_what_still_works
+OK test_metadata_reaches_the_command_line
+OK test_missing_frame_is_drawn_not_dropped
+OK test_missing_requirement_is_a_finding_not_a_crash
+OK test_missing_train_log_is_empty_not_an_error
+OK test_mixing_placeholder_and_real_camera_is_flagged
+OK test_more_than_one_episode_at_the_plant_is_named
+OK test_motion_checks_ask_before_they_move
+OK test_one_episode_at_the_plant_needs_no_hint
+OK test_only_deviations_end_up_in_the_command_line
+OK test_only_the_plant_is_red
+OK test_outcome_reads_the_run_all_summary
+OK test_outcome_state_follows_the_worst_verdict
+OK test_outcome_without_summary_line_uses_the_returncode
+OK test_placeholder_is_offered_for_every_slot
+OK test_placeholders_at_the_real_plant_are_named
+OK test_placeholders_in_simulation_are_not_complained_about
+OK test_placeholders_need_no_sdk_at_all
+OK test_planner_speeds_only_in_argv_when_they_differ
+OK test_power_and_gripper_checks_ask_first
+WARNING:bc.preview:Vorschau nicht geschrieben: PermissionError: [WinError 5] Zugriff verweigert: 'C:\\Users\\jerem\\AppData\\Local\\Temp\\bc_test_q2qp81va\\live.jpg.part' -> 'C:\\Users\\jerem\\AppData\\Local\\Temp\\bc_test_q2qp81va\\live.jpg'
+OK test_preview_never_breaks_the_recording
+OK test_preview_off_means_never_due
+OK test_preview_writes_at_most_at_the_configured_rate
+OK test_probe_that_raises_is_caught
+OK test_progress_reads_the_real_training_output
+OK test_progress_survives_lines_it_does_not_know
+OK test_progress_survives_unknown_lines
+OK test_protocol_lists_findings_and_full_output
+OK test_record_output_is_read_completely
+OK test_recording_label_names_a_foreign_schema
+OK test_recording_needs_a_target
+OK test_recordings_are_found_one_and_two_levels_deep
+OK test_reset_brings_the_original_back
+OK test_rollout_line_is_read_completely
+OK test_sequence_points_and_blends_are_read
+OK test_sequence_summary_says_the_points_come_from_the_controller
+OK test_servo_rate_only_in_argv_when_it_differs
+OK test_servo_timing_answers_its_own_question_also_at_the_plant
+OK test_several_episodes_are_fine_without_a_physical_object
+OK test_skew_above_the_budget_is_named
+OK test_slow_prediction_is_named_against_the_cycle_time
+OK test_specs_always_name_both_slots
+OK test_status_is_offline_before_connecting
+OK test_suggested_targets_never_overwrite_an_existing_run
+OK test_switching_backend_disconnects
+OK test_target_follows_the_agreed_layout
+OK test_the_label_question_is_recognised
+OK test_the_original_is_never_touched
+OK test_the_plant_needs_a_block_and_a_sequence
+OK test_the_same_sequence_against_the_controller_is_fine
+OK test_the_simrobot_without_a_sequence_is_fine
+OK test_the_target_folder_follows_the_robot
+OK test_the_working_copy_survives_and_is_not_overwritten
+OK test_ticks_move_the_bar_inside_an_episode
+OK test_unconfirmed_simulation_blocks_instead_of_guessing
+OK test_unreadable_recording_is_a_finding_not_a_crash
+OK test_unreadable_sequence_is_a_finding
+OK test_validation_series_skips_rows_without_a_value
+OK test_validation_uses_the_same_rules_as_record_py
+OK test_verdicts_are_parsed_in_all_tool_dialects
+OK test_wrong_rate_is_flagged
+ 
+== test_camera_assignment ==
+OK test_a_real_mode_can_be_turned_into_placeholders
+OK test_assignment_replaces_only_the_named_slot
+OK test_assignment_without_specs_changes_nothing
+OK test_device_key_is_the_command_line_spelling
+OK test_every_backend_can_fill_every_slot
+OK test_every_slot_can_be_a_placeholder
+OK test_inventory_always_offers_the_placeholder_first
+OK test_missing_sdk_is_a_note_not_an_empty_list
+OK test_placeholder_is_always_available
+OK test_prepared_configurations_are_used_when_the_backend_differs
+OK test_same_backend_keeps_the_settings_and_only_swaps_the_device
+OK test_unknown_slot_and_backend_are_rejected
+ 
+== test_daheng_api ==
+OK test_adapter_names_are_read_from_the_adapter
+ 
+============================================================
+2. Modul-Attribute und Enum-Werte
+============================================================
+ 
+============================================================
+3. Methoden: DeviceManager, Geraet, Datenstrom, Bild
+============================================================
+ 
+============================================================
+4. Kamera-Features im gxipy-Quelltext (ohne Kamera nur ein Hinweis)
+============================================================
+OK test_static_check_reports_missing_names
+ 
+== test_check_trajectory_buffer ==
+OK test_chunks_reproduce_the_whole_path_without_gaps
+OK test_gap_in_the_log_is_visible
+OK test_path_check_accepts_the_test_path
+OK test_path_check_rejects_a_jump_from_the_current_pose
+OK test_path_check_rejects_leaving_the_window
+OK test_path_check_rejects_unsorted_timestamps
+OK test_smooth_motion_has_low_ripple_and_the_right_lag
+OK test_standstill_at_a_chunk_boundary_is_reported
+OK test_standstill_survives_inaccurate_timestamps
+OK test_stop_and_go_is_detected_as_ripple_and_standstill
+OK test_stretched_run_and_slow_log_are_not_interpreted
+OK test_testbahn_starts_and_ends_at_rest_in_q0
+OK test_too_few_samples_is_a_finding_not_a_crash
+ 
+== contract.test_robot_contract ==
+OK test_dof
+OK test_emergency_stop_contract
+OK test_fk_matches_reported_pose
+OK test_fk_supports_collision_frames
+OK test_gripper_command_is_nonblocking_and_tracked
+OK test_ik_roundtrip_and_seed
+OK test_ik_unreachable_raises_ikerror
+OK test_link_positions_contract
+OK test_move_to_current_joints_is_noop
+OK test_read_state_contract
+OK test_servo_guard_refuses_jump
+OK test_servo_lifecycle
+ 
+== contract.test_camera_contract ==
+OK test_close_is_idempotent
+OK test_frame_contract
+OK test_open_read_close
+OK test_read_after_close_raises
+OK test_timestamps_and_indices_increase
+ 
+============================================================
+304 Tests bestanden, 1 fehlgeschlagen
+FAIL test_rectify::test_homography_recovers_marker_positions
+-> Unittests (komplett): fehlgeschlagen -- 304 Tests bestanden, 1 fehlgeschlagen
+ 
+$ -u tests/run_all.py test_layering
+ 
+== test_layering ==
+OK test_adapters_import_lazily
+OK test_pipeline_layer_has_no_hardware_imports
+ 
+============================================================
+2 Tests bestanden, 0 fehlgeschlagen
+-> Schichtentrennung: bestanden -- 2 Tests bestanden, 0 fehlgeschlagen
+ 
+$ -u tools/check_rate_budget.py
+Quelle der Messwerte : Berichte\2026-10-05_15-03_Servo-Timing.json (median)
+t_servo_j : 4.72 ms
+t_read_state : 5.77 ms
+lokale FK aktiv : True
+ 
+GELTUNGSBEREICH: Die Messwerte gelten fuer die Steuerung, an der
+gemessen wurde. An der Anlage neu messen, dann neu rechnen.
+ 
+Soll laut Requierments: CONTROL_RATE_HZ = 15 (festgelegt),
+SERVO_RATE_HZ = 60 (Auslegung)
+ 
+CTRL_HZ k SERVO_HZ Takt soll Takt ist erreicht Laufruhe Takte/Ep
+-------------------------------------------------------------------------
+15 1 15 66.7 ms 10.5 ms 15.0 Hz 80 % 218 
+15 2 30 66.7 ms 15.2 ms 15.0 Hz 64 % 218 
+15 3 45 66.7 ms 19.9 ms 15.0 Hz 49 % 218 
+15 4 60 66.7 ms 24.7 ms 15.0 Hz 33 % 218 
+15 5 75 66.7 ms 29.4 ms 15.0 Hz 32 % 218 
+15 6 90 66.7 ms 34.1 ms 15.0 Hz 30 % 218 
+15 7 105 66.7 ms 38.8 ms 15.0 Hz 29 % 218 
+15 8 120 66.7 ms 43.5 ms 15.0 Hz 27 % 218 
+ 
+12.5 1 12.5 80.0 ms 10.5 ms 12.5 Hz 80 % 182 
+12.5 2 25 80.0 ms 15.2 ms 12.5 Hz 70 % 182 
+12.5 3 37.5 80.0 ms 19.9 ms 12.5 Hz 57 % 182 
+12.5 4 50 80.0 ms 24.7 ms 12.5 Hz 43 % 182 
+12.5 5 62.5 80.0 ms 29.4 ms 12.5 Hz 33 % 182 
+12.5 6 75 80.0 ms 34.1 ms 12.5 Hz 32 % 182 
+12.5 7 87.5 80.0 ms 38.8 ms 12.5 Hz 30 % 182 
+12.5 8 100 80.0 ms 43.5 ms 12.5 Hz 29 % 182 
+ 
+10 1 10 100.0 ms 10.5 ms 10.0 Hz 80 % 145 
+10 2 20 100.0 ms 15.2 ms 10.0 Hz 75 % 145 
+10 3 30 100.0 ms 19.9 ms 10.0 Hz 64 % 145 
+10 4 40 100.0 ms 24.7 ms 10.0 Hz 54 % 145 
+10 5 50 100.0 ms 29.4 ms 10.0 Hz 43 % 145 
+10 6 60 100.0 ms 34.1 ms 10.0 Hz 33 % 145 
+10 7 70 100.0 ms 38.8 ms 10.0 Hz 32 % 145 
+10 8 80 100.0 ms 43.5 ms 10.0 Hz 31 % 145 
+ 
+7.5 1 7.5 133.3 ms 10.5 ms 7.5 Hz 80 % 109 
+7.5 2 15 133.3 ms 15.2 ms 7.5 Hz 80 % 109 
+7.5 3 22.5 133.3 ms 19.9 ms 7.5 Hz 72 % 109 
+7.5 4 30 133.3 ms 24.7 ms 7.5 Hz 64 % 109 
+7.5 5 37.5 133.3 ms 29.4 ms 7.5 Hz 57 % 109 
+7.5 6 45 133.3 ms 34.1 ms 7.5 Hz 49 % 109 
+7.5 7 52.5 133.3 ms 38.8 ms 7.5 Hz 41 % 109 
+7.5 8 60 133.3 ms 43.5 ms 7.5 Hz 33 % 109 
+ 
+6 1 6 166.7 ms 10.5 ms 6.0 Hz 80 % 87 
+6 2 12 166.7 ms 15.2 ms 6.0 Hz 80 % 87 
+6 3 18 166.7 ms 19.9 ms 6.0 Hz 77 % 87 
+6 4 24 166.7 ms 24.7 ms 6.0 Hz 71 % 87 
+6 5 30 166.7 ms 29.4 ms 6.0 Hz 64 % 87 
+6 6 36 166.7 ms 34.1 ms 6.0 Hz 58 % 87 
+6 7 42 166.7 ms 38.8 ms 6.0 Hz 52 % 87 
+6 8 48 166.7 ms 43.5 ms 6.0 Hz 46 % 87 
+ 
+5 1 5 200.0 ms 10.5 ms 5.0 Hz 80 % 73 
+5 2 10 200.0 ms 15.2 ms 5.0 Hz 80 % 73 
+5 3 15 200.0 ms 19.9 ms 5.0 Hz 80 % 73 
+5 4 20 200.0 ms 24.7 ms 5.0 Hz 75 % 73 
+5 5 25 200.0 ms 29.4 ms 5.0 Hz 70 % 73 
+5 6 30 200.0 ms 34.1 ms 5.0 Hz 64 % 73 
+5 7 35 200.0 ms 38.8 ms 5.0 Hz 59 % 73 
+5 8 40 200.0 ms 43.5 ms 5.0 Hz 54 % 73 
+ 
+=========================================================================
+[OK] 15 Hz / servo_j 60 Hz passt: 24.7 ms je Takt (median) bei 66.7 ms Budget.
+ 
+Was passt, nach Laufruhe sortiert (beste zuerst):
+ 
+CONTROL 15 Hz, SERVO 120 Hz (k=8) -- 35 % Reserve im Takt
+ohne Abstriche
+ 
+CONTROL 15 Hz, SERVO 105 Hz (k=7) -- 42 % Reserve im Takt
+ohne Abstriche
+ 
+CONTROL 12.5 Hz, SERVO 100 Hz (k=8) -- 46 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+ 
+CONTROL 15 Hz, SERVO 90 Hz (k=6) -- 49 % Reserve im Takt
+ohne Abstriche
+ 
+CONTROL 12.5 Hz, SERVO 87.5 Hz (k=7) -- 51 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+ 
+CONTROL 10 Hz, SERVO 80 Hz (k=8) -- 56 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+ 
+CONTROL 15 Hz, SERVO 75 Hz (k=5) -- 56 % Reserve im Takt
+ohne Abstriche
+ 
+CONTROL 12.5 Hz, SERVO 75 Hz (k=6) -- 57 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+ 
+CONTROL 10 Hz, SERVO 70 Hz (k=7) -- 61 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+ 
+CONTROL 12.5 Hz, SERVO 62.5 Hz (k=5) -- 63 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+ 
+CONTROL 15 Hz, SERVO 60 Hz (k=4) -- 63 % Reserve im Takt
+ohne Abstriche
+ 
+CONTROL 10 Hz, SERVO 60 Hz (k=6) -- 66 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+ 
+CONTROL 7.5 Hz, SERVO 60 Hz (k=8) -- 67 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+ 
+CONTROL 7.5 Hz, SERVO 52.5 Hz (k=7) -- 71 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 12.5 Hz, SERVO 50 Hz (k=4) -- 69 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 10 Hz, SERVO 50 Hz (k=5) -- 71 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 48 Hz (k=8) -- 74 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 15 Hz, SERVO 45 Hz (k=3) -- 70 % Reserve im Takt
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 7.5 Hz, SERVO 45 Hz (k=6) -- 74 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 42 Hz (k=7) -- 77 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 10 Hz, SERVO 40 Hz (k=4) -- 75 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 40 Hz (k=8) -- 78 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 12.5 Hz, SERVO 37.5 Hz (k=3) -- 75 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 7.5 Hz, SERVO 37.5 Hz (k=5) -- 78 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 36 Hz (k=6) -- 80 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 35 Hz (k=7) -- 81 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 15 Hz, SERVO 30 Hz (k=2) -- 77 % Reserve im Takt
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 10 Hz, SERVO 30 Hz (k=3) -- 80 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 7.5 Hz, SERVO 30 Hz (k=4) -- 82 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 30 Hz (k=5) -- 82 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 30 Hz (k=6) -- 83 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 12.5 Hz, SERVO 25 Hz (k=2) -- 81 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 25 Hz (k=5) -- 85 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 24 Hz (k=4) -- 85 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 7.5 Hz, SERVO 22.5 Hz (k=3) -- 85 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 10 Hz, SERVO 20 Hz (k=2) -- 85 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 20 Hz (k=4) -- 88 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 6 Hz, SERVO 18 Hz (k=3) -- 88 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 15 Hz, SERVO 15 Hz (k=1) -- 84 % Reserve im Takt
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+CONTROL 7.5 Hz, SERVO 15 Hz (k=2) -- 89 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 5 Hz, SERVO 15 Hz (k=3) -- 90 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 12.5 Hz, SERVO 12.5 Hz (k=1) -- 87 % Reserve im Takt
+Schema-Bruch: -17 % Regelrate, -17 % Takte je Episode, Reaktionszeit 80 statt 67 ms
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+CONTROL 6 Hz, SERVO 12 Hz (k=2) -- 91 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 10 Hz, SERVO 10 Hz (k=1) -- 90 % Reserve im Takt
+Schema-Bruch: -33 % Regelrate, -33 % Takte je Episode, Reaktionszeit 100 statt 67 ms
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+CONTROL 5 Hz, SERVO 10 Hz (k=2) -- 92 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+Laufruhe schlechter als heute (60 Hz)
+ 
+CONTROL 7.5 Hz, SERVO 7.5 Hz (k=1) -- 92 % Reserve im Takt
+Schema-Bruch: -50 % Regelrate, -50 % Takte je Episode, Reaktionszeit 133 statt 67 ms
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+CONTROL 6 Hz, SERVO 6 Hz (k=1) -- 94 % Reserve im Takt
+Schema-Bruch: -60 % Regelrate, -60 % Takte je Episode, Reaktionszeit 167 statt 67 ms
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+CONTROL 5 Hz, SERVO 5 Hz (k=1) -- 95 % Reserve im Takt
+Schema-Bruch: -67 % Regelrate, -67 % Takte je Episode, Reaktionszeit 200 statt 67 ms
+KEINE Interpolation mehr (bc/servo.py wirkungslos)
+ 
+-> Taktbudget rechnen: durchgelaufen -- 1 ok
+ 
+$ -u tools/check_gpu.py
+ 
+============================================================
+1. NVIDIA-Treiber
+============================================================
+Mon Oct 12 13:19:25 2026 
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.88 KMD Version: 610.88 CUDA UMD Version: 13.3 |
++-----------------------------------------+------------------------+----------------------+
+| GPU Name Driver-Model | Bus-Id Disp.A | Volatile Uncorr. ECC |
+| Fan Temp Perf Pwr:Usage/Cap | Memory-Usage | GPU-Util Compute M. |
+| | | MIG M. |
+|=========================================+========================+======================|
+| 0 NVIDIA GeForce RTX 5070 Ti WDDM | 00000000:06:00.0 On | N/A |
+| 0% 34C P8 28W / 300W | 1033MiB / 16303MiB | 23% Default |
+| | | N/A |
++-----------------------------------------+------------------------+----------------------+
+ 
+Hinweis: Die im Kopf angezeigte 'CUDA Version' ist die vom Treiber maximal unterstuetzte Version, nicht die installierte.
+ 
+============================================================
+2. PyTorch-Build
+============================================================
+torch.__version__ : 2.11.0+cu128
+torch.version.cuda : 12.8
+cuda.is_available() : True
+Device : NVIDIA GeForce RTX 5070 Ti
+Compute Capability : sm_120
+Kompilierte Architekturen: sm_75, sm_80, sm_86, sm_90, sm_100, sm_120
+ 
+OK: Build enthaelt Kernel fuer sm_120
+ 
+============================================================
+3. Smoke-Test (echte GPU-Rechnung)
+============================================================
+Matmul auf GPU erfolgreich, Ergebnis-Norm: 92678.625
+ 
+============================================================
+4. Durchsatztest (ResNet18, Forward+Backward)
+============================================================
+Batch-Groesse : 64 @ 224x224
+Zeit pro Schritt : 26.4 ms
+Durchsatz : 2428 Bilder/s
+Peak-VRAM (allokiert) : 0.94 GB
+ 
+Hinweis: Die Diffusion Policy nutzt ein ResNet18 PRO KAMERA (hier: 2 Streams)
+plus den Denoising-Kopf. Rechne grob mit dem 2-3fachen VRAM
+und der 2-3fachen Schrittzeit dieses Werts.
+ 
+============================================================
+Ergebnis
+============================================================
+Toolchain einsatzbereit.
+-> GPU / CUDA: durchgelaufen -- 1 ok
+ 
+$ -u tools/check_sim_robot.py
+ 
+============================================================
+0. Verbindung und Identitaet
+============================================================
+Socket 192.168.2.13:65432
+[33;20m[2026-10-12 13:19:32][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+Server-Version v5.0.0-alpha.102
+Client-Version v5.0.8
+[WARN] Versionen weichen ab (Client v5.0.8, Server v5.0.0-alpha.102) -- einzelne Funktionen der Doku fehlen oder verhalten sich anders.
+is_robot_in_simulation() True
+get_diagnostics() {'critical': False, 'issues': {}}
+ 
+============================================================
+1. Funktionsumfang gegen den Bedarf der Pipeline (AP 1.5.1)
+============================================================
+Funktionen insgesamt 202
+[OK] Alle Pflichtfunktionen vorhanden.
+Override 0.2
+ 
+============================================================
+2. Zustandsabgriff und Tool-Geometrie
+============================================================
+get_current_joint_angles() [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+Zeitstempel roh 0.0
+[WARN] Controller liefert keinen brauchbaren Zeitstempel -- der Adapter stempelt mit der Host-Uhr (Mitte der RPC-Anfrage). Pruefpunkt Abnahmeliste AP 0.6 Punkt 2 bleibt an der Anlage offen.
+Tool-Offset hinterlegt False
+[WARN] Kein Greifer-Tool im Controller -- alle Posen beziehen sich auf den Flansch, nicht auf die Greiferspitze (AP 2.4, Vortest Punkt 0).
+ 
+============================================================
+3. Kinematik ueber den Adapter (FK/IK-Rueckprobe)
+============================================================
+fk(q) -> Pose [XYZ|QWXYZ] [0.0, 0.0, 1.1855, 1.0, 0.0, 0.0, 0.0]
+[FAIL] TCP liegt 1.185 m vom Ursprung -- ausserhalb der Reichweite (0.9 m). Controller liefert vermutlich Platzhalterwerte.
+ 
+(Bewegungs-, Servo- und Greifertests uebersprungen -- --move)
+ 
+============================================================
+Zusammenfassung
+============================================================
+FAIL TCP liegt 1.185 m vom Ursprung -- ausserhalb der Reichweite (0.9 m). Controller liefert vermutlich Platzhalterwerte.
+WARN Versionen weichen ab (Client v5.0.8, Server v5.0.0-alpha.102) -- einzelne Funktionen der Doku fehlen oder verhalten sich anders.
+WARN Controller liefert keinen brauchbaren Zeitstempel -- der Adapter stempelt mit der Host-Uhr (Mitte der RPC-Anfrage). Pruefpunkt Abnahmeliste AP 0.6 Punkt 2 bleibt an der Anlage offen.
+WARN Kein Greifer-Tool im Controller -- alle Posen beziehen sich auf den Flansch, nicht auf die Greiferspitze (AP 2.4, Vortest Punkt 0).
+ 
+1 ok, 3 Warnungen, 1 Fehler
+ 
+Hinweis: Alle Ergebnisse stammen aus der VIRTUELLEN Steuerung (is_robot_in_simulation() == True).
+Sie sind keine Anlagenmessung -- Raten, Jitter, Latenzen, Greifer-Totzeit und
+Kollisionsmodell bleiben Punkte der Abnahmeliste AP 0.6.
+-> Steuerung pruefen (nur lesen): fehlgeschlagen (Rueckgabewert 1) -- 1 Fehler, 3 Warnungen, 1 ok
+ 
+$ -u tools/check_kinematics.py
+ 
+============================================================
+0. Verbindung (ohne Bestromung)
+============================================================
+[33;20m[2026-10-12 13:19:32][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+is_robot_in_simulation() True
+Tool NoTool
+Server-Version v5.0.0-alpha.102
+Tool-Offset hinterlegt False
+ 
+============================================================
+1. Controller-FK gegen die VM-Referenz (50 Stellungen, Frames wrist, elbow, tool)
+============================================================
+wrist: max Positions-/Winkelfehler 0.00 mm / 0.0000 rad
+[OK] Frame wrist: Controller-FK wie in der VM
+elbow: max Positions-/Winkelfehler 0.00 mm / 0.0000 rad
+[OK] Frame elbow: Controller-FK wie in der VM
+tool: max Positions-/Winkelfehler 0.00 mm / 0.0000 rad
+[OK] Frame tool: Controller-FK wie in der VM
+ 
+============================================================
+2. IK-Rueckprobe an den Referenzposen
+============================================================
+ohne Loesung 0 von 50
+max |q_ik - q_ref| 0.00000 rad
+[OK] IK-Rueckprobe: 0 ohne Loesung, max 0.0000 rad
+ 
+============================================================
+3. Gemeldete TCP-Pose gegen FK der aktuellen Stellung
+============================================================
+aktuelle Stellung [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+Abweichung 0.00 mm / 0.0000 rad
+[OK] get_tcp_pose_quaternion vs. FK: 0.00 mm
+ 
+============================================================
+4. Achsgrenzen
+============================================================
+J1 config (URDF, unverifiziert) [-3.140, 3.140] rad
+J2 config (URDF, unverifiziert) [-2.350, 2.350] rad
+J3 config (URDF, unverifiziert) [-2.610, 2.610] rad
+J4 config (URDF, unverifiziert) [-3.140, 3.140] rad
+J5 config (URDF, unverifiziert) [-2.560, 2.560] rad
+J6 config (URDF, unverifiziert) [-3.140, 3.140] rad
+Controller-Funktionen mit 'limit' -
+[WARN] Achsgrenzen mit Datenblatt/Pendant abgleichen und dann config.JOINT_LIMITS_VERIFIED = True setzen (der ServoGuard nutzt sie)
+ 
+============================================================
+Zusammenfassung
+============================================================
+WARN Achsgrenzen mit Datenblatt/Pendant abgleichen und dann config.JOINT_LIMITS_VERIFIED = True setzen (der ServoGuard nutzt sie)
+Protokoll: Berichte\2026-10-12_13-19_Kinematik-VM.json
+-> Kinematik und Achsgrenzen: durchgelaufen -- 1 Warnung, 5 ok
+ 
+$ -u tools/check_ik.py
+Traceback (most recent call last):
+File "E:\Projekt\Dynamic_Robot_Project\Behavior Cloning\tools\check_ik.py", line 23, in <module>
+from neurapy.robot import Robot
+ModuleNotFoundError: No module named 'neurapy'
+-> IK-Absicherungen: fehlgeschlagen (Rueckgabewert 1)
+ 
+$ -u tools/check_rpc_latency.py --wiederholungen 30 --dauerlauf 10
+ 
+====================================================================
+0. Verbindung (nichts wird bewegt, nichts bestromt)
+====================================================================
+Steuerung: 192.168.2.13:65432
+[33;20m[2026-10-12 13:19:33][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+Server meldet: v5.0.0-alpha.102
+Aktuelle Gelenkstellung: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+ 
+====================================================================
+1. Anteile eines einzelnen Aufrufs
+====================================================================
+min med p95 max
+TCP-Verbindung allein (ohne Nutzlast) 0.1 0.2 1001.1 1002.7 ms
+roh-RPC get_current_joint_angles 1.2 1.5 2.3 4.3 ms
+neurapy get_current_joint_angles 1.1 1.4 1.8 2.2 ms
+neurapy ..._with_timestamp 1.2 1.4 1.9 1.9 ms
+neurapy compute_forward_kinematics 0.5 0.6 0.9 1.1 ms
+ 
+Aufschluesselung (Median):
+Socket-Aufbau 0.2 ms
+Serverzeit darueber 1.3 ms
+NeuraPy-Client darueber -0.1 ms
+ 
+====================================================================
+2. Hochrechnung auf den 15-Hz-Takt des Recorders
+====================================================================
+Budget je Takt (15 Hz) 66.7 ms
+davon je Aufruf bei 6 Aufrufen je Takt 11.1 ms
+Gemessen je Takt (servo_j mit den Kosten von
+get_current_joint_angles angesetzt) 7.7 ms
+-> Schleife laeuft 0.1-fach zu langsam (129.4 Hz statt 15 Hz)
+[OK] Die Aufrufkosten passen in den Takt.
+ 
+====================================================================
+3. Versatz, den der Recorder als 'Frame ueber Budget' meldet
+====================================================================
+read_state() stempelt die Gelenke in der Mitte des Winkel-Aufrufs;
+die Kamerabilder werden erst NACH der FK abgegriffen. Die Differenz
+ist reine Controller-Latenz -- unabhaengig von der Kamera.
+min med p95 max
+Versatz Roboter <-> frischester Frame 1.2 1.4 1.9 2.8 ms
+Grenze SYNC_MAX_SKEW_S: 30 ms -- darueber: 0 von 30 (0 %)
+[OK] Der Versatz bleibt unter der Grenze.
+ 
+====================================================================
+4. Nimmt die Steuerung mehrere Aufrufe je Verbindung an?
+====================================================================
+Entscheidet, ob eine stehende Verbindung im Adapter ueberhaupt
+moeglich ist. Drei Aufrufe nacheinander auf EINEM Socket:
+Aufruf 1: 1.5 ms
+Server schliesst nach dem Aufruf
+[INFO] Die Steuerung beantwortet nur EINEN Aufruf je Verbindung. Eine stehende Verbindung ist damit nicht moeglich; der Socket-Aufbau je Aufruf ist nicht vermeidbar.
+ 
+====================================================================
+5. Haenger bei getaktetem Verkehr (nicht im Burst)
+====================================================================
+10 s lang mit 60 Hz aufrufen -- so, wie der Recorder es tut.
+min med p95 max
+Dauerlauf, 601 Aufrufe 1.3 1.8 2.6 4.7 ms
+ueber 200 ms: 0 von 601 (0.0 %)
+ueber 500 ms: 0 von 601 (0.0 %)
+ueber 1000 ms: 0 von 601 (0.0 %)
+[OK] Keine Haenger bei getaktetem Verkehr -- die 1000-ms-Werte aus Abschnitt 1 sind ein Artefakt des Messbursts.
+ 
+Bericht: E:\Projekt\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-12_13-19_RPC-Latenz.json
+Geltungsbereich: Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen (Dokumentation/Taktzeit-und-RPC-Latenz.md).
+-> RPC-Latenz messen: durchgelaufen -- 3 ok
+ 
+$ -u tools/check_trajectory_buffer.py
+ 
+======================================================================
+0. Verbindung
+======================================================================
+[33;20m[2026-10-12 13:19:51][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+is_robot_in_simulation() True
+Server-Version v5.0.0-alpha.102
+Tool NoTool
+ 
+======================================================================
+1. Pufferfaehige Befehle in der Steuerung (nur lesen)
+======================================================================
+Funktionen insgesamt 202
+move_trajectory FEHLT
+plan_move_joint vorhanden
+executor vorhanden
+wait_motion_finished vorhanden
+motion_status vorhanden
+movelinear_online vorhanden
+stop_movelinear_online vorhanden
+servo_x vorhanden
+move_joint vorhanden
+weitere mit traj/buffer/path get_servo_trajectory_scaling_factor, list_recorded_path, move_recorded_path, plan_move_recorded_path
+[WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+ 
+(Fahrtests uebersprungen -- --move)
+ 
+Bericht: E:\Projekt\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-12_13-19_Trajektorien-Puffer.json
+Hinweis: VIRTUELLE Steuerung -- Zahlen sind kein Massstab fuer die Anlage.
+-> Pufferbefehle pruefen (nur lesen): durchgelaufen -- 1 Warnung
+ 
+$ -u tools/export_points.py --sequence sequences/pick_to_station.json
+ 
+============================================================
+0. Verbindung und Herkunft
+============================================================
+[33;20m[2026-10-12 13:19:51][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+socket 192.168.2.13:65432
+server_version v5.0.0-alpha.102
+client_version v5.0.8
+in_simulation True
+tool NoTool
+ 
+============================================================
+1. Punkte in der Steuerung
+============================================================
+Punkte insgesamt 10
+APPROACH_01
+CLEAR_FOV
+Home
+Home_1
+PICK
+PRE_GRASP
+PRE_PLACE
+Parking
+Parking_1
+TEST_STATION
+ 
+============================================================
+2. Auslesen
+============================================================
+CLEAR_FOV J=[-2e-06, -0.924251, 2.028451, 0.0, 1.500712, -0.0]
+APPROACH_01 J=[-0.008142, -0.178373, 1.644478, 0.004583, 1.138826, -0.008915]
+PRE_GRASP J=[-0.006754, 0.109489, 1.751643, 0.00478, 1.231304, -0.009374]
+PICK J=[-0.006754, 0.287347, 1.92596, 0.005853, 0.879134, -0.011515]
+PRE_PLACE J=[0.80206, -0.063774, 1.681773, 0.004612, 1.476861, -0.009911]
+APPROACH_02 NICHT IN DER STEUERUNG
+ 
+============================================================
+3. Ergebnis
+============================================================
+gesichert 5 Punkte
+nicht gefunden 1 (APPROACH_02)
+Datei sequences\points_2026-10-12_13-19.json
+ 
+Zurueckspielen auf eine andere Steuerung:
+python tools/import_points.py sequences\points_2026-10-12_13-19.json
+ 
+[FAIL] 1 angeforderte Punkte fehlen in der Steuerung.
+-> Punkte sichern: fehlgeschlagen (Rueckgabewert 1) -- 1 Fehler
+ 
+$ -u tools/check_cameras.py --no-display --seconds 10
+Oeffne Kameras: wrist, scene
+wrist backend=daheng voller Sensor device=EBK24100633
+scene backend=uvc 640x480 device=0
+ 
+Kamera liess sich nicht oeffnen:
+gxipy laesst sich nicht importieren. Die Daheng-Kamera ist eine USB3-Vision-/GenICam-Kamera und NICHT ueber cv2.VideoCapture erreichbar.
+Versuche:
+sys.path
+-> ModuleNotFoundError: No module named 'gxipy'
+ 
+Haeufige Ursachen:
+* Galaxy SDK nicht installiert -> installieren.
+* SDK an ungewoehnlichem Ort -> Ordner, der 'gxipy' enthaelt, in der Umgebungsvariable GALAXY_SDK_PYTHON setzen.
+* 'GALAXY_GENICAM_ROOT' / 'GxIAPI.dll' fehlt -> Shell nach der SDK-Installation neu starten (Windows vererbt Systemvariablen nur an neue Prozesse).
+ 
+Naechster Schritt: 'python tools/check_cameras.py --list'
+-> Kameras: Rate und Versatz: fehlgeschlagen (Rueckgabewert 1)
+ 
+$ -u tools/check_servo_timing.py --raten 60,30,15 --takte 30
+ 
+======================================================================
+0. Verbindung
+======================================================================
+[33;20m[2026-10-12 13:19:52][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+is_robot_in_simulation(): True
+Tool: 'NoTool' Greifer: logged
+Diagnose vorher: {'critical': False, 'issues': {}}
+ 
+Dieses Werkzeug BESTROMT den Roboter und aktiviert das
+Servo-Interface. Gesendet wird ausschliesslich: Ist-Stellung halten (v = a = 0).
+Der Arm soll sich dabei NICHT bewegen.
+Fortfahren? [j/N] 
+======================================================================
+1. Bestromen und Servo-Interface aktivieren
+======================================================================
+Ist-Stellung: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+Servo-Interface aktiv.
+ 
+======================================================================
+2. Kosten eines einzelnen Aufrufs
+======================================================================
+min med p95 max
+servo_j (Haltebefehl) 1.4 1.7 3.3 4.0 ms
+read_state() (Winkel + FK) 1.5 2.0 2.8 3.0 ms
+letzter servo_j-Code: None
+ 
+======================================================================
+3. Trockener Takt je Kandidatenrate
+======================================================================
+Budget je Takt bei 15 Hz: 66.7 ms
+ 
+SERVO_HZ Teilschr. Takt med erreichbar Urteil
+60 4 8.4 ms 118.4 Hz passt
+30 2 5.2 ms 192.1 Hz passt
+15 1 3.6 ms 279.2 Hz passt
+ 
+(p95 je Rate steht im JSON-Bericht -- der Median sagt, ob es
+im Mittel passt, der p95, ob es auch im schlechten Fall passt.)
+[OK] Die konfigurierte SERVO_RATE_HZ = 60 haelt den Takt.
+ 
+======================================================================
+4. Hat sich der Arm bewegt? (darf er nicht)
+======================================================================
+groesste Abweichung zur Startstellung: 0.000000 rad
+[OK] Der Arm stand still, wie erwartet.
+ 
+Servo-Interface deaktiviert.
+ 
+======================================================================
+5. Lebt der PC-Steuerkanal noch?
+======================================================================
+Diagnose nachher: {'critical': False, 'issues': {}}
+letzter servo_j-Code: None
+[OK] Keine kritische Meldung nach der Messung.
+ 
+Bericht: E:\Projekt\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-12_13-19_Servo-Timing.json
+Geltungsbereich: Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage neu messen.
+-> servo_j-Timing messen: durchgelaufen -- 3 ok
+ 
+$ -u tools/check_sim_robot.py --move --rate 60 --overrides 1.0,0.5 --joint 1
+ 
+============================================================
+0. Verbindung und Identitaet
+============================================================
+Socket 192.168.2.13:65432
+[33;20m[2026-10-12 13:19:53][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+Server-Version v5.0.0-alpha.102
+Client-Version v5.0.8
+[WARN] Versionen weichen ab (Client v5.0.8, Server v5.0.0-alpha.102) -- einzelne Funktionen der Doku fehlen oder verhalten sich anders.
+is_robot_in_simulation() True
+get_diagnostics() {'critical': False, 'issues': {}}
+ 
+============================================================
+1. Funktionsumfang gegen den Bedarf der Pipeline (AP 1.5.1)
+============================================================
+Funktionen insgesamt 202
+[OK] Alle Pflichtfunktionen vorhanden.
+Override 1.0
+ 
+============================================================
+2. Zustandsabgriff und Tool-Geometrie
+============================================================
+get_current_joint_angles() [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+Zeitstempel roh 0.0
+[WARN] Controller liefert keinen brauchbaren Zeitstempel -- der Adapter stempelt mit der Host-Uhr (Mitte der RPC-Anfrage). Pruefpunkt Abnahmeliste AP 0.6 Punkt 2 bleibt an der Anlage offen.
+Tool-Offset hinterlegt False
+[WARN] Kein Greifer-Tool im Controller -- alle Posen beziehen sich auf den Flansch, nicht auf die Greiferspitze (AP 2.4, Vortest Punkt 0).
+ 
+============================================================
+3. Kinematik ueber den Adapter (FK/IK-Rueckprobe)
+============================================================
+fk(q) -> Pose [XYZ|QWXYZ] [0.0, 0.0, 1.1855, 1.0, 0.0, 0.0, 0.0]
+[FAIL] TCP liegt 1.185 m vom Ursprung -- ausserhalb der Reichweite (0.9 m). Controller liefert vermutlich Platzhalterwerte.
+ 
+============================================================
+4. Bewegungsbefehle (move_joint / move_linear)
+============================================================
+move_joint -> Startpose True, Restfehler 0.00007 rad
+[OK] move_joint erreicht die Zielpose.
+move_linear +50 mm in Z True, erreicht 0.0500 m
+[OK] move_linear haelt den Z-Hub ein.
+ 
+============================================================
+5. Servo-Interface bei 60 Hz, Ableitungen: plan, Gelenk 1, Override 1.00 (AP 0.6 Punkt 3)
+============================================================
+Zyklen 240 in 4.00 s (Soll 4.00 s)
+Zyklen ueber Budget 0 (0 %)
+groesste erreichte Auslenkung J1 0.1500 rad (Soll 0.1500)
+Nachlauf Soll -> Ist 1 Takte = 17 ms
+[OK] Nachlauf, Override 1.00: 17 ms bei 60 Hz
+Folgefehler J1 (RMS / max) 0.0034 / 0.0079 rad
+letzter servo_j-Code None
+[OK] Servo-Interface folgt dem Sollwertstrom bei 60 Hz.
+Trajektorien-Skalierung 1.0
+ 
+============================================================
+5. Servo-Interface bei 60 Hz, Ableitungen: plan, Gelenk 1, Override 0.50 (AP 0.6 Punkt 3)
+============================================================
+Zyklen 240 in 4.00 s (Soll 4.00 s)
+Zyklen ueber Budget 1 (0 %)
+groesste erreichte Auslenkung J1 0.1499 rad (Soll 0.1500)
+Nachlauf Soll -> Ist 4 Takte = 67 ms
+[OK] Nachlauf, Override 0.50: 67 ms bei 60 Hz
+Folgefehler J1 (RMS / max) 0.0109 / 0.0182 rad
+letzter servo_j-Code None
+[WARN] 1 von 240 Zyklen haben die Periode gerissen -- bei 60 Hz ist das Latenzbudget aus AP 1.3 nicht sicher einzuhalten.
+[OK] Servo-Interface folgt dem Sollwertstrom bei 60 Hz.
+Trajektorien-Skalierung 1.0
+ 
+============================================================
+6. Greifer (binaer, AP 2.1)
+============================================================
+Greifer-Modus logged
+[WARN] Kein Greifer konfiguriert -- Befehle wurden nur protokolliert (3 Eintraege). Fuer die Datenpipeline ausreichend.
+ 
+============================================================
+Zusammenfassung
+============================================================
+FAIL TCP liegt 1.185 m vom Ursprung -- ausserhalb der Reichweite (0.9 m). Controller liefert vermutlich Platzhalterwerte.
+WARN Versionen weichen ab (Client v5.0.8, Server v5.0.0-alpha.102) -- einzelne Funktionen der Doku fehlen oder verhalten sich anders.
+WARN Controller liefert keinen brauchbaren Zeitstempel -- der Adapter stempelt mit der Host-Uhr (Mitte der RPC-Anfrage). Pruefpunkt Abnahmeliste AP 0.6 Punkt 2 bleibt an der Anlage offen.
+WARN Kein Greifer-Tool im Controller -- alle Posen beziehen sich auf den Flansch, nicht auf die Greiferspitze (AP 2.4, Vortest Punkt 0).
+WARN 1 von 240 Zyklen haben die Periode gerissen -- bei 60 Hz ist das Latenzbudget aus AP 1.3 nicht sicher einzuhalten.
+WARN Kein Greifer konfiguriert -- Befehle wurden nur protokolliert (3 Eintraege). Fuer die Datenpipeline ausreichend.
+ 
+7 ok, 5 Warnungen, 1 Fehler
+ 
+Hinweis: Alle Ergebnisse stammen aus der VIRTUELLEN Steuerung (is_robot_in_simulation() == True).
+Sie sind keine Anlagenmessung -- Raten, Jitter, Latenzen, Greifer-Totzeit und
+Kollisionsmodell bleiben Punkte der Abnahmeliste AP 0.6.
+-> Nachlauf und Override: fehlgeschlagen (Rueckgabewert 1) -- 1 Fehler, 5 Warnungen, 7 ok
+ 
+$ -u tools/check_trajectory_buffer.py --move --tests referenz,komplett,knoten15,anschluss,leerlauf,stopp --joint 1 --dauer 4 --knoten-hz 100 --chunk-takte 4 --vorlauf-takte 1 --override 1
+ 
+======================================================================
+0. Verbindung
+======================================================================
+[33;20m[2026-10-12 13:20:08][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+is_robot_in_simulation() True
+Server-Version v5.0.0-alpha.102
+Tool NoTool
+ 
+======================================================================
+1. Pufferfaehige Befehle in der Steuerung (nur lesen)
+======================================================================
+Funktionen insgesamt 202
+move_trajectory FEHLT
+plan_move_joint vorhanden
+executor vorhanden
+wait_motion_finished vorhanden
+motion_status vorhanden
+movelinear_online vorhanden
+stop_movelinear_online vorhanden
+servo_x vorhanden
+move_joint vorhanden
+weitere mit traj/buffer/path get_servo_trajectory_scaling_factor, list_recorded_path, move_recorded_path, plan_move_recorded_path
+[WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+ 
+move_trajectory fehlt -- es laeuft hoechstens die Referenz.
+Startstellung [0.0006, -0.2186, 1.4126, -0.0, 0.8961, -0.0]
+Testbahn J1, 0.150 rad hin und zurueck in 4.0 s, Spitze 0.118 rad/s
+Override 1.0
+ 
+======================================================================
+2a. Referenz: servo_j wie im Recorder (60 Hz, linear je Takt)
+======================================================================
+Taktueberlaeufe 0
+ 
+======================================================================
+Fazit: traegt der rollende Puffer?
+======================================================================
+Test Welligk. Stillst. Spitze Verzug RMS mrad Leserate Luecke
+referenz 98.9 % 90.6 % 50 Hz 22 ms 0.68 573 Hz 5.3 ms
+[INFO] Referenz servo_j: Arm steht in 91 % der Fahrt kurz still -- das Stop-and-go vom 2026-10-05 ist damit gemessen.
+[WARNUNG] Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet.
+ 
+Bericht: E:\Projekt\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-12_13-20_Trajektorien-Puffer.json
+Mitschrieb: E:\Projekt\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-12_13-20_Trajektorien-Puffer_Mitschrieb.npz
+Hinweis: VIRTUELLE Steuerung -- Zahlen sind kein Massstab fuer die Anlage.
+-> Bahnpuffer testen: durchgelaufen -- 2 Warnungen
+ 
+$ -u tools/check_gripper.py --camera wrist --cycles 5 --save-frames Berichte/greifer_frames
+[33;20m[2026-10-12 13:20:14][neurapy_logger][WARNING] : Current client version is not compatiable with the version of the server running on the robot. Some of the functionlities specified in the documentation might not work in the intended way. Upgrade to the correct version .Client Version : v5.0.8,Server Version : v5.0.0-alpha.102 :(robot.py:150)[0m
+Neura: is_robot_in_simulation()=True, Tool='NoTool', Greifer=logged
+Kein Greifer konfiguriert (Modus logged) -- nichts zu messen. Tool/Greifer am Pendant waehlen.
+-> Greifer-Totzeit messen: fehlgeschlagen (Rueckgabewert 1)
+ 

@@ -186,6 +186,66 @@ def test_stretched_run_and_slow_log_are_not_interpreted():
     assert tool.aussagekraft(k) == []
 
 
+def test_slow_controller_state_is_not_read_as_standstill():
+    # VM 2026-10-12: 573 Hz gelesen, die Steuerung liefert aber nur alle
+    # 20 ms neue Gelenkwerte. Der Arm faehrt glatt -- die "91 % Stillstand"
+    # sind Wiederholungen und duerfen nicht als Stop-and-go gelten.
+    bahn = _bahn()
+    t, q = _mitschrieb(lambda t: bahn.qj(np.floor(t * 50.0) / 50.0), hz=573.0)
+    k = tool.auswerten(t, q, 0.0, bahn)
+    assert k["stillstand_prozent"] > 80.0
+    assert 45.0 <= k["neue_werte_hz"] <= 55.0
+    gruende = tool.aussagekraft(k, servo_hz=60.0)
+    assert any("neue Gelenkwerte" in g for g in gruende)
+
+
+def test_real_stop_and_go_stays_interpretable():
+    # Gegenprobe: echte 60-Hz-Treppe, Steuerung liefert jeden Wert. Dann
+    # gibt es mindestens einen neuen Wert je Stufe -- deutbar.
+    bahn = _bahn()
+
+    def treppe(t):
+        k = np.floor(t * 60.0)
+        anfang, ziel = bahn.qj(k / 60.0), bahn.qj((k + 1) / 60.0)
+        return anfang + np.clip((t - k / 60.0) / 0.004, 0.0, 1.0) * (ziel - anfang)
+
+    k = tool.auswerten(*_mitschrieb(treppe, jitter_s=0.0005), t_start=0.0, bahn=bahn)
+    assert k["stillstand_prozent"] > 30.0
+    assert k["neue_werte_hz"] >= 0.9 * 60.0
+    assert tool.aussagekraft(k, servo_hz=60.0) == []
+
+
+def test_new_value_metrics_see_smooth_motion_behind_a_slow_source():
+    # Dieselbe VM-Lage: glatt, aber nur 50 neue Werte je Sekunde. Auf die
+    # neuen Werte reduziert muss die Fahrt glatt aussehen.
+    bahn = _bahn()
+    t, q = _mitschrieb(lambda t: bahn.qj(np.floor(t * 50.0) / 50.0), hz=573.0)
+    k = tool.auswerten(t, q, 0.0, bahn)
+    assert k["einbruch_neu_prozent"] < 10.0
+    assert k["tempo_p5_anteil"] > 0.7
+
+
+def test_new_value_metrics_see_a_15hz_pulse_behind_a_slow_source():
+    # movelinear_online, das jedes 15-Hz-Ziel zu frueh erreicht und 30 ms
+    # steht -- durch dieselbe 50-Hz-Quelle betrachtet. Muss auffallen.
+    bahn = _bahn()
+    takt = 1.0 / 15.0
+
+    def puls(t):
+        k = np.floor(t / takt)
+        anteil = np.clip((t - k * takt) / (takt - 0.030), 0.0, 1.0)
+        return bahn.qj(k * takt) + anteil * (bahn.qj((k + 1) * takt) - bahn.qj(k * takt))
+
+    t, q = _mitschrieb(lambda t: puls(np.floor(t * 50.0) / 50.0), hz=573.0)
+    k = tool.auswerten(t, q, 0.0, bahn)
+    glatt = tool.auswerten(*_mitschrieb(lambda t: bahn.qj(np.floor(t * 50.0) / 50.0),
+                                        hz=573.0), t_start=0.0, bahn=bahn)
+    assert k["einbruch_neu_prozent"] > 5.0
+    assert k["tempo_p5_anteil"] < 0.5
+    assert k["welligkeit_neu_prozent"] > 3 * glatt["welligkeit_neu_prozent"]
+    assert tool.aussagekraft(k, servo_hz=15.0) == []
+
+
 def test_gap_in_the_log_is_visible():
     bahn = _bahn()
     t, q = _mitschrieb(lambda t: bahn.qj(t))

@@ -1,0 +1,72 @@
+{
+  "erzeugt": "2026-10-12T13:20:08",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": true,
+  "argumente": {
+    "move": true,
+    "tests": "referenz,komplett,knoten15,anschluss,leerlauf,stopp",
+    "joint": 1,
+    "amplitude": null,
+    "dauer": 4.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "override": 1.0,
+    "doku": false,
+    "real_robot": false
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "referenz": {
+      "kennzahlen": {
+        "proben": 2585,
+        "leserate_hz": 573.4624008750342,
+        "groesste_luecke_ms": 5.305290222167969,
+        "verzug_ms": 22.000000000000103,
+        "folgefehler_rms_mrad": 0.6849475249386073,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.1500568236328125,
+        "dauer_faktor": 0.999321775032702,
+        "welligkeit_prozent": 98.90834578568384,
+        "stillstand_prozent": 90.55489964580875,
+        "v_ist_max": 0.4005247070312506,
+        "v_plan_max": 0.11780972450961724,
+        "spitze_hz": 50.3875968992248,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 99.98290762278229,
+        "ende_s": 4.092979461669925
+      },
+      "lesedauer_ms": 1.6787052154541016,
+      "lesefehler": 0,
+      "taktueberlaeufe": 0,
+      "nicht_deutbar": []
+    }
+  },
+  "befunde": [
+    [
+      "info",
+      "Referenz servo_j: Arm steht in 91 % der Fahrt kurz still -- das Stop-and-go vom 2026-10-05 ist damit gemessen."
+    ],
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

@@ -19,6 +19,8 @@ import math
 import time
 import random
 
+import _bootstrap  # noqa: F401  (neurapy liegt in "Robot Controller")
+
 import numpy as np
 from neurapy.robot import Robot
 

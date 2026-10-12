@@ -413,7 +413,7 @@ def catalogue():
               "Ruckeln? Bericht nach Berichte/.",
               needs=("neurapy",), confirm=MOTION_CONFIRM, real_flag=True,
               params=(
-                  Param("tests", "Tests", "referenz,komplett,knoten15,anschluss,leerlauf,stopp",
+                  Param("tests", "Tests", "referenz,komplett,knoten15,anschluss,leerlauf,stopp,online",
                         flag="--tests", help="Komma-Liste; Reihenfolge wie angegeben"),
                   Param("joint", "Gelenk", 1, kind="int", flag="--joint",
                         minimum=1, maximum=6),
@@ -429,6 +429,9 @@ def catalogue():
                   Param("vorlauf_takte", "Vorlauf (Takte)", 1, kind="int",
                         flag="--vorlauf-takte", minimum=0, maximum=29,
                         help="so viele Takte vor Ende des vorigen Abschnitts senden"),
+                  Param("vergleich_raten", "Vergleichsraten servo_j (Hz)", "90,120",
+                        flag="--vergleich-raten",
+                        help="nach der Referenz dieselbe Fahrt mit diesen Raten; leer = keine"),
                   Param("override", "Override", 1.0, kind="float", flag="--override",
                         minimum=0.05, maximum=1.0),
               )),
