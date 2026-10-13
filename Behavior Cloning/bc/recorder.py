@@ -10,6 +10,12 @@ Ablauf pro Zeitschritt i (bei CONTROL_RATE_HZ):
    letzte faellt genau auf Takt i (:class:`bc.sync.Pacer`). Dieselbe
    Interpolation nutzt die Inferenz -- sonst folgt der Arm dort anders als
    in den Daten.
+   Ausfuehrung ``online`` (bc/execution.py): statt dessen EIN Ziel je Takt
+   per ``robot.online_j`` -- der Sollwinkel des Schritts i+Vorlauf, die
+   Steuerung interpoliert selbst (gegen das Zittern an der Anlage,
+   Dokumentation/Zittern-an-der-Anlage.md). ``aux.joints_command`` bleibt
+   der Sollwinkel des Schritts i -- die Stellung, die der Arm in diesem
+   Takt haben soll.
 3. Greiferbefehl absetzen, wenn die Bahn an dieser Stelle wechselt --
    die Totzeit ist als Dwell-Schritte bereits IN der Bahn (AP 2.1).
 4. Zustand und juengste Frames abgreifen, Zeitstempel gegen das
@@ -29,6 +35,7 @@ import logging
 import numpy as np
 
 from . import config, dataset
+from . import execution as execution_module
 from .ports import Frame, RobotError
 from .servo import ServoInterpolator
 from .sync import Pacer, evaluate
@@ -56,8 +63,11 @@ class EpisodeRecorder(object):
         max_follow_error_rad=config.RECORDER_MAX_FOLLOW_ERROR_RAD,
         follow_error_steps=config.RECORDER_FOLLOW_ERROR_STEPS,
         min_follow_ratio=config.RECORDER_MIN_FOLLOW_RATIO,
+        execution=None,
     ):
         self.robot = robot
+        #: Eintrag aus bc.execution.describe(); None = servo_j wie bisher.
+        self.execution = execution or execution_module.describe(execution_module.SERVO_J)
         self.captures = list(captures)
         self.clock = clock
         self.rate_hz = rate_hz
@@ -120,11 +130,14 @@ class EpisodeRecorder(object):
         worst_follow = 0.0
         cmd_hist = []   # Sollwerte der letzten Takte (Kriterium b)
         meas_hist = []  # zugehoerige Messungen
+        online = self.execution["mode"] == execution_module.ONLINE
         self.robot.activate_servo("position")
         # Takt erst NACH dem Aktivieren starten: die Aktivierung dauert an
         # der VM einige 10 ms -- bei 60 Hz zaehlte das bisher als 3
         # Ueberlaeufe je Episode, obwohl kein Sollwert zu spaet kam.
-        pacer = Pacer(self.clock, self.servo_rate_hz).start()
+        # online: ein Aufruf je Regeltakt, keine Zwischenschritte.
+        pacer = Pacer(self.clock, self.rate_hz if online else self.servo_rate_hz).start()
+        completed = False
         # Laufzeitmessung fuer timing_findings(): Kosten je Aufruf und
         # Dauer der Episode. Nur Metadaten, kein Teil des Schemas.
         t_start = self.clock.now()
@@ -136,14 +149,24 @@ class EpisodeRecorder(object):
                 # Takt 0: an der Startstellung halten. Danach das Ziel des
                 # Schritts i ueber den vorangehenden Takt interpoliert
                 # anfahren -- der letzte Zwischenschritt faellt auf Takt i.
-                commands = [interp.hold()] if i == 0 else interp.window(plan.joints_noisy[i])
-                for q_cmd, v_cmd, a_cmd in commands:
-                    if self.robot.stop_requested:
-                        break
-                    t_target = pacer.tick()
-                    t0 = self.clock.now()
-                    self.robot.servo_j(q_cmd, v_cmd, a_cmd)
-                    servo_s.append(self.clock.now() - t0)
+                if online:
+                    if not self.robot.stop_requested:
+                        t_target = pacer.tick()
+                        ziel = plan.joints_noisy[execution_module.lead_index(
+                            i, self.execution["lead_steps"], n)]
+                        t0 = self.clock.now()
+                        self.robot.online_j(ziel, self.execution["vel"],
+                                            self.execution["acc"])
+                        servo_s.append(self.clock.now() - t0)
+                else:
+                    commands = [interp.hold()] if i == 0 else interp.window(plan.joints_noisy[i])
+                    for q_cmd, v_cmd, a_cmd in commands:
+                        if self.robot.stop_requested:
+                            break
+                        t_target = pacer.tick()
+                        t0 = self.clock.now()
+                        self.robot.servo_j(q_cmd, v_cmd, a_cmd)
+                        servo_s.append(self.clock.now() - t0)
                 if self.robot.stop_requested:
                     discard_reason = "schutzstopp"
                     break
@@ -304,7 +327,16 @@ class EpisodeRecorder(object):
                 )
                 steps["aux.sync_ok"].append(np.array([report.ok], dtype=bool))
                 steps["next.done"].append(np.array([False], dtype=bool))
+            else:
+                completed = True
         finally:
+            if online and not self.robot.stop_requested:
+                # Normales Ende: der Arm laeuft dem Vorlauf hinterher -- erst
+                # ausrollen lassen, dann beenden. stop_online() bremst nicht
+                # (Anlage 2026-10-13); Abbrueche laufen ueber emergency_stop().
+                if completed:
+                    self._ausrollen(plan.joints_noisy[n - 1])
+                self.robot.stop_online()
             self.robot.deactivate_servo()
         duration = self.clock.now() - t_start
 
@@ -346,6 +378,7 @@ class EpisodeRecorder(object):
                 "noise_rejects": plan.rejects,
                 "rate_hz": self.rate_hz,
                 "servo_rate_hz": self.servo_rate_hz,
+                "execution": self.execution,
             }
         )
         return dataset.Episode(
@@ -354,6 +387,18 @@ class EpisodeRecorder(object):
             discarded=discarded,
             discard_reason=discard_reason,
         )
+
+
+    def _ausrollen(self, ziel):
+        """Wartet (hoechstens ONLINE_SETTLE_S), bis der Arm am letzten Ziel steht."""
+        ziel = np.asarray(ziel, dtype=float)
+        pacer = Pacer(self.clock, self.rate_hz).start()
+        for _ in range(max(1, int(config.ONLINE_SETTLE_S * self.rate_hz))):
+            pacer.tick()
+            ist = np.asarray(self.robot.read_state().joints, dtype=float)
+            if float(np.max(np.abs(ist - ziel))) < config.START_POSE_TOL_RAD:
+                return True
+        return False
 
 
 def _to_schema_size(image):
@@ -417,14 +462,17 @@ def timing_findings(metadata):
     read = metadata.get("read_state_ms") or {}
     rate = float(metadata.get("rate_hz") or config.CONTROL_RATE_HZ)
     servo_rate = float(metadata.get("servo_rate_hz") or config.SERVO_RATE_HZ)
-    k = int(round(servo_rate / rate))
+    online = execution_module.mode_of(metadata) == execution_module.ONLINE
+    # "servo_j_ms" haelt bei online die Kosten des online_j-Aufrufs.
+    k = 1 if online else int(round(servo_rate / rate))
     if servo.get("median") is not None and read.get("median") is not None:
         takt = k * servo["median"] + read["median"]
         budget = 1e3 / rate
         out.append(
-            "Aufrufkosten je Takt: %d x servo_j (%.1f ms) + read_state "
+            "Aufrufkosten je Takt: %d x %s (%.1f ms) + read_state "
             "(%.1f ms) = %.0f ms bei %.0f ms Budget."
-            % (k, servo["median"], read["median"], takt, budget))
+            % (k, "online_j" if online else "servo_j", servo["median"], read["median"],
+               takt, budget))
         if takt > budget and k > 1:
             out.append(
                 "Mit %g Hz Senderate passt das nicht in den Takt -- eine "

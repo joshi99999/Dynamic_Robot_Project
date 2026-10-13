@@ -51,6 +51,7 @@ MODULES = [
     "test_dataset",
     "test_recorder",
     "test_metrics",
+    "test_execution",
     "test_neura_adapter",
     "test_rectify",
     "test_safety",

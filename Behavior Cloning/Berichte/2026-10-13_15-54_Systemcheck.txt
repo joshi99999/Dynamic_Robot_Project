@@ -1,0 +1,536 @@
+Systemcheck 2026-10-13_15-54
+============================================================
+
+Steuerung pruefen (nur lesen): durchgelaufen -- 1 Warnung, 3 ok
+    [WARNUNG] Zeitbasis weicht um -1791898099143479.750 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+Pufferbefehle pruefen (nur lesen): durchgelaufen -- 1 Warnung
+    [WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+Bahnpuffer testen: durchgelaufen -- 6 Warnungen
+    [WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+    [WARNUNG] referenz nicht deutbar: Mitschrieb nur 145 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen.
+    [WARNUNG] referenz_90 nicht deutbar: Mitschrieb nur 118 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen; Bahn lief 1.25-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht).
+    [WARNUNG] referenz_120 nicht deutbar: Mitschrieb nur 113 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen; Bahn lief 1.51-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht); Verzug am Rand des Suchbereichs (600 ms) -- Zeitachse passt nicht zur Planung.
+    [INFO] servo_j 90 Hz: 88 Taktueberlaeufe; Glaette hier nicht vergleichbar.
+    [INFO] servo_j 120 Hz: 246 Taktueberlaeufe; Glaette hier nicht vergleichbar.
+    [WARNUNG] movelinear_online, 15-Hz-Ziele: Welligkeit 28.4 %, Tempo-Einbruch 4 % der Fahrzeit, Tempo p5 0.60 der Bahn, Verzug 182 ms, Folgefehler 2.96 mrad (servo_j: Welligkeit 43.3 %, Einbruch 23 %) -- pulsiert im Takt; Vorlauf/Hoechstwerte anpassen (--online-vorlauf, --online-tempo).
+    [WARNUNG] Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet.
+
+============================================================
+Vollstaendige Ausgabe
+============================================================
+
+$ -u tools/check_sim_robot.py
+ 
+============================================================
+0. Verbindung und Identitaet
+============================================================
+Socket 192.168.2.13:65432
+Server-Version v5.0.8
+Client-Version v5.0.8
+is_robot_in_simulation() True
+get_diagnostics() {'critical': False, 'issues': {}}
+ 
+============================================================
+1. Funktionsumfang gegen den Bedarf der Pipeline (AP 1.5.1)
+============================================================
+Funktionen insgesamt 210
+[OK] Alle Pflichtfunktionen vorhanden.
+Override 0.2
+ 
+============================================================
+2. Zustandsabgriff und Tool-Geometrie
+============================================================
+get_current_joint_angles() [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+Zeitstempel roh 1.1333759117739204e-153
+Zeitstempel-Abstand zur Hostzeit 1791899374.999 s
+[WARN] Zeitbasis weicht um 1791899374.999 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+Tool-Offset hinterlegt True
+ 
+============================================================
+3. Kinematik ueber den Adapter (FK/IK-Rueckprobe)
+============================================================
+fk(q) -> Pose [XYZ|QWXYZ] [0.0, 0.0, 1.383, 1.0, 0.0, 0.0, 0.0]
+[FAIL] TCP liegt 1.383 m vom Ursprung -- ausserhalb der Reichweite (0.9 m). Controller liefert vermutlich Platzhalterwerte.
+ 
+(Bewegungs-, Servo- und Greifertests uebersprungen -- --move)
+ 
+============================================================
+Zusammenfassung
+============================================================
+FAIL TCP liegt 1.383 m vom Ursprung -- ausserhalb der Reichweite (0.9 m). Controller liefert vermutlich Platzhalterwerte.
+WARN Zeitbasis weicht um 1791899374.999 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+ 
+1 ok, 1 Warnungen, 1 Fehler
+ 
+Hinweis: Alle Ergebnisse stammen aus der VIRTUELLEN Steuerung (is_robot_in_simulation() == True).
+Sie sind keine Anlagenmessung -- Raten, Jitter, Latenzen, Greifer-Totzeit und
+Kollisionsmodell bleiben Punkte der Abnahmeliste AP 0.6.
+-> Steuerung pruefen (nur lesen): fehlgeschlagen (Rueckgabewert 1) -- 1 Fehler, 1 Warnung, 1 ok
+ 
+$ -u tools/check_trajectory_buffer.py
+ 
+======================================================================
+0. Verbindung
+======================================================================
+is_robot_in_simulation() True
+Server-Version v5.0.8
+Tool ZimmerLWR50
+ 
+======================================================================
+1. Pufferfaehige Befehle in der Steuerung (nur lesen)
+======================================================================
+Funktionen insgesamt 210
+move_trajectory FEHLT
+plan_move_joint vorhanden
+executor vorhanden
+wait_motion_finished vorhanden
+motion_status vorhanden
+movelinear_online vorhanden
+stop_movelinear_online vorhanden
+servo_x vorhanden
+move_joint vorhanden
+weitere mit traj/buffer/path get_servo_trajectory_scaling_factor, list_recorded_path, move_recorded_path, plan_move_recorded_path
+[WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+ 
+(Fahrtests uebersprungen -- --move)
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-13_15-49_Trajektorien-Puffer.json
+Hinweis: VIRTUELLE Steuerung -- Zahlen sind kein Massstab fuer die Anlage.
+-> Pufferbefehle pruefen (nur lesen): durchgelaufen -- 1 Warnung
+ 
+$ -u tools/check_trajectory_buffer.py --move --tests referenz,komplett,knoten15,anschluss,leerlauf,stopp,online --joint 1 --dauer 4 --knoten-hz 100 --chunk-takte 4 --vorlauf-takte 1 --vergleich-raten 90,120 --override 1 --real-robot
+ 
+======================================================================
+0. Verbindung
+======================================================================
+is_robot_in_simulation() True
+Server-Version v5.0.8
+Tool ZimmerLWR50
+ 
+======================================================================
+1. Pufferfaehige Befehle in der Steuerung (nur lesen)
+======================================================================
+Funktionen insgesamt 210
+move_trajectory FEHLT
+plan_move_joint vorhanden
+executor vorhanden
+wait_motion_finished vorhanden
+motion_status vorhanden
+movelinear_online vorhanden
+stop_movelinear_online vorhanden
+servo_x vorhanden
+move_joint vorhanden
+weitere mit traj/buffer/path get_servo_trajectory_scaling_factor, list_recorded_path, move_recorded_path, plan_move_recorded_path
+[WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+ 
+move_trajectory fehlt -- uebersprungen: komplett, knoten15, anschluss, leerlauf, stopp.
+Startstellung [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+Testbahn J1, 0.150 rad hin und zurueck in 4.0 s, Spitze 0.118 rad/s
+Override 1.0
+ 
+======================================================================
+2a. referenz: servo_j wie im Recorder (60 Hz, linear je Takt)
+======================================================================
+Taktueberlaeufe 12
+ 
+======================================================================
+2a. referenz_90: servo_j wie im Recorder (90 Hz, linear je Takt)
+======================================================================
+Taktueberlaeufe 200
+ 
+======================================================================
+2a. referenz_120: servo_j wie im Recorder (120 Hz, linear je Takt)
+======================================================================
+Taktueberlaeufe 106
+ 
+======================================================================
+2c. online: movelinear_online, 1 Ziel je Takt, Vorlauf 1 Takt(e)
+======================================================================
+TCP-Spitze geplant 0.0000 m/s, Drehung 0.118 rad/s
+Hoechstwerte v / a x1.30 / x3.0 der Bahn
+Aufrufe / Rueckgabewerte 67 / None
+Taktueberlaeufe 0
+[FEHLER] online: movelinear_online angenommen (Rueckgabe None), aber der Arm bewegt sich nicht (0.0000 rad statt 0.150) -- diese Steuerung fuehrt den Befehl nicht aus.
+ 
+======================================================================
+Fazit: traegt der rollende Puffer?
+======================================================================
+Test Welligk. Stillst. Spitze Verzug RMS mrad Leserate neue Werte Luecke
+referenz 77.7 % 70.5 % 50 Hz 26 ms 5.72 175 Hz 49 Hz 22.1 ms | neu: Welligk. 35.4 % Einbruch 16.0 % Tempo p5 0.01
+referenz_90 75.4 % 82.3 % 50 Hz 192 ms 65.74 178 Hz 44 Hz 30.4 ms | neu: Welligk. 59.8 % Einbruch 54.7 % Tempo p5 -0.03
+referenz_120 62.3 % 59.2 % 50 Hz 422 ms 14.16 139 Hz 49 Hz 24.2 ms | neu: Welligk. 33.3 % Einbruch 20.7 % Tempo p5 0.39
+online 78.3 % 100.0 % 5 Hz 326 ms 91.76 220 Hz 0 Hz 24.1 ms
+[WARNUNG] referenz nicht deutbar: Steuerung liefert nur 49 neue Gelenkwerte je Sekunde, weniger als servo_j-Stufen (60 Hz) -- 69 % der Lesungen sind Wiederholungen, der Stillstand zaehlt sie mit; Stufen und Glaette sind hier nicht messbar; Bahn lief 1.12-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht).
+[WARNUNG] referenz_90 nicht deutbar: Steuerung liefert nur 44 neue Gelenkwerte je Sekunde, weniger als servo_j-Stufen (90 Hz) -- 74 % der Lesungen sind Wiederholungen, der Stillstand zaehlt sie mit; Stufen und Glaette sind hier nicht messbar; Bahn lief 1.61-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht).
+[WARNUNG] referenz_120 nicht deutbar: Mitschrieb nur 139 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen; Bahn lief 1.20-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht).
+[INFO] servo_j 90 Hz: 200 Taktueberlaeufe; Glaette hier nicht vergleichbar.
+[INFO] servo_j 120 Hz: 106 Taktueberlaeufe; Glaette hier nicht vergleichbar.
+[WARNUNG] Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet.
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-13_15-51_Trajektorien-Puffer.json
+Mitschrieb: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-13_15-51_Trajektorien-Puffer_Mitschrieb.npz
+Hinweis: VIRTUELLE Steuerung -- Zahlen sind kein Massstab fuer die Anlage.
+-> Bahnpuffer testen: durchgelaufen -- 1 Fehler, 5 Warnungen
+ 
+$ -u tools/check_trajectory_buffer.py --move --tests referenz,komplett,knoten15,anschluss,leerlauf,stopp,online --joint 1 --dauer 4 --knoten-hz 100 --chunk-takte 4 --vorlauf-takte 1 --vergleich-raten 90,120 --override 1 --real-robot
+ 
+======================================================================
+0. Verbindung
+======================================================================
+is_robot_in_simulation() True
+Server-Version v5.0.8
+Tool ZimmerLWR50
+ 
+======================================================================
+1. Pufferfaehige Befehle in der Steuerung (nur lesen)
+======================================================================
+Funktionen insgesamt 210
+move_trajectory FEHLT
+plan_move_joint vorhanden
+executor vorhanden
+wait_motion_finished vorhanden
+motion_status vorhanden
+movelinear_online vorhanden
+stop_movelinear_online vorhanden
+servo_x vorhanden
+move_joint vorhanden
+weitere mit traj/buffer/path get_servo_trajectory_scaling_factor, list_recorded_path, move_recorded_path, plan_move_recorded_path
+[WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+ 
+move_trajectory fehlt -- uebersprungen: komplett, knoten15, anschluss, leerlauf, stopp.
+Startstellung [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+Testbahn J1, 0.150 rad hin und zurueck in 4.0 s, Spitze 0.118 rad/s
+Override 1.0
+ 
+======================================================================
+2a. referenz: servo_j wie im Recorder (60 Hz, linear je Takt)
+======================================================================
+Taktueberlaeufe 0
+ 
+======================================================================
+2a. referenz_90: servo_j wie im Recorder (90 Hz, linear je Takt)
+======================================================================
+Taktueberlaeufe 16
+ 
+======================================================================
+2a. referenz_120: servo_j wie im Recorder (120 Hz, linear je Takt)
+======================================================================
+Taktueberlaeufe 66
+ 
+======================================================================
+2c. online: movelinear_online, 1 Ziel je Takt, Vorlauf 1 Takt(e)
+======================================================================
+TCP-Spitze geplant 0.0000 m/s, Drehung 0.118 rad/s
+Hoechstwerte v / a x1.30 / x3.0 der Bahn
+Aufrufe / Rueckgabewerte 67 / None
+Taktueberlaeufe 0
+[FEHLER] online: movelinear_online angenommen (Rueckgabe None), aber der Arm bewegt sich nicht (0.0000 rad statt 0.150) -- diese Steuerung fuehrt den Befehl nicht aus.
+ 
+======================================================================
+Fazit: traegt der rollende Puffer?
+======================================================================
+Test Welligk. Stillst. Spitze Verzug RMS mrad Leserate neue Werte Luecke
+referenz 76.4 % 66.4 % 50 Hz 28 ms 0.80 170 Hz 49 Hz 18.8 ms | neu: Welligk. 33.4 % Einbruch 13.3 % Tempo p5 0.40
+referenz_90 71.1 % 62.4 % 50 Hz 126 ms 3.46 146 Hz 44 Hz 111.4 ms | neu: Welligk. 39.5 % Einbruch 17.8 % Tempo p5 0.38
+referenz_120 64.7 % 62.4 % 50 Hz 304 ms 12.42 152 Hz 49 Hz 17.5 ms | neu: Welligk. 32.2 % Einbruch 13.6 % Tempo p5 0.45
+online 78.3 % 100.0 % 5 Hz 594 ms 91.79 209 Hz 0 Hz 9.6 ms
+[WARNUNG] referenz nicht deutbar: Steuerung liefert nur 49 neue Gelenkwerte je Sekunde, weniger als servo_j-Stufen (60 Hz) -- 66 % der Lesungen sind Wiederholungen, der Stillstand zaehlt sie mit; Stufen und Glaette sind hier nicht messbar.
+[WARNUNG] referenz_90 nicht deutbar: Mitschrieb nur 146 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen.
+[WARNUNG] referenz_120 nicht deutbar: Steuerung liefert nur 49 neue Gelenkwerte je Sekunde, weniger als servo_j-Stufen (120 Hz) -- 62 % der Lesungen sind Wiederholungen, der Stillstand zaehlt sie mit; Stufen und Glaette sind hier nicht messbar; Bahn lief 1.15-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht).
+[INFO] servo_j 90 Hz: 16 Taktueberlaeufe; Glaette hier nicht vergleichbar.
+[INFO] servo_j 120 Hz: 66 Taktueberlaeufe; Glaette hier nicht vergleichbar.
+[WARNUNG] Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet.
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-13_15-51_Trajektorien-Puffer.json
+Mitschrieb: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-13_15-51_Trajektorien-Puffer_Mitschrieb.npz
+Hinweis: VIRTUELLE Steuerung -- Zahlen sind kein Massstab fuer die Anlage.
+-> Bahnpuffer testen: durchgelaufen -- 1 Fehler, 5 Warnungen
+ 
+$ -u tools/check_sim_robot.py
+ 
+============================================================
+0. Verbindung und Identitaet
+============================================================
+Socket 192.168.2.13:65432
+Server-Version v5.0.8
+Client-Version v5.0.8
+is_robot_in_simulation() False
+get_diagnostics() {'critical': True, 'issues': {'collision_detected': False, 'other_errors': [], 'powered_off': True}}
+ 
+============================================================
+1. Funktionsumfang gegen den Bedarf der Pipeline (AP 1.5.1)
+============================================================
+Funktionen insgesamt 210
+[OK] Alle Pflichtfunktionen vorhanden.
+Override 0.2
+ 
+============================================================
+2. Zustandsabgriff und Tool-Geometrie
+============================================================
+get_current_joint_angles() [0.0267, -0.2738, 1.7801, -0.4975, 0.9678, 1.6]
+Zeitstempel roh 1791899811443105.0
+Zeitstempel-Abstand zur Hostzeit -1791898019563565.750 s
+[WARN] Zeitbasis weicht um -1791898019563565.750 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+Tool-Offset hinterlegt True
+ 
+============================================================
+3. Kinematik ueber den Adapter (FK/IK-Rueckprobe)
+============================================================
+fk(q) -> Pose [XYZ|QWXYZ] [0.5424, -0.1282, 0.364, 0.3906, 0.6021, 0.6931, 0.0677]
+ik(fk(q)) -> q [0.0267, -0.2738, 1.7801, -0.4975, 0.9678, 1.6]
+max |q_ik - q| 0.00000 rad
+[OK] IK-Rueckprobe seedtreu (0.00000 rad).
+FK-Rueckprobe Positionsfehler 0.000000 m
+[OK] FK-Rueckprobe innerhalb der Toleranz.
+Laufzeit fk() inkl. TCP-Roundtrip 3.3 ms
+ 
+(Bewegungs-, Servo- und Greifertests uebersprungen -- --move)
+ 
+============================================================
+Zusammenfassung
+============================================================
+WARN Zeitbasis weicht um -1791898019563565.750 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+ 
+3 ok, 1 Warnungen, 0 Fehler
+ 
+Hinweis: is_robot_in_simulation() == False -- ANLAGENMESSUNG.
+-> Steuerung pruefen (nur lesen): durchgelaufen -- 1 Warnung, 3 ok
+ 
+$ -u tools/check_trajectory_buffer.py
+ 
+======================================================================
+0. Verbindung
+======================================================================
+is_robot_in_simulation() False
+Server-Version v5.0.8
+Tool ZimmerLWR50
+ 
+======================================================================
+1. Pufferfaehige Befehle in der Steuerung (nur lesen)
+======================================================================
+Funktionen insgesamt 210
+move_trajectory FEHLT
+plan_move_joint vorhanden
+executor vorhanden
+wait_motion_finished vorhanden
+motion_status vorhanden
+movelinear_online vorhanden
+stop_movelinear_online vorhanden
+servo_x vorhanden
+move_joint vorhanden
+weitere mit traj/buffer/path get_servo_trajectory_scaling_factor, list_recorded_path, move_recorded_path, plan_move_recorded_path
+[WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+ 
+(Fahrtests uebersprungen -- --move)
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-13_15-52_Trajektorien-Puffer.json
+Hinweis: is_robot_in_simulation() == False -- ANLAGENMESSUNG.
+-> Pufferbefehle pruefen (nur lesen): durchgelaufen -- 1 Warnung
+ 
+$ -u tools/check_trajectory_buffer.py --move --tests referenz,komplett,knoten15,anschluss,leerlauf,stopp,online --joint 1 --dauer 4 --knoten-hz 100 --chunk-takte 4 --vorlauf-takte 1 --vergleich-raten 90,120 --override 1 --real-robot
+ 
+======================================================================
+0. Verbindung
+======================================================================
+is_robot_in_simulation() False
+Server-Version v5.0.8
+Tool ZimmerLWR50
+ 
+======================================================================
+1. Pufferfaehige Befehle in der Steuerung (nur lesen)
+======================================================================
+Funktionen insgesamt 210
+move_trajectory FEHLT
+plan_move_joint vorhanden
+executor vorhanden
+wait_motion_finished vorhanden
+motion_status vorhanden
+movelinear_online vorhanden
+stop_movelinear_online vorhanden
+servo_x vorhanden
+move_joint vorhanden
+weitere mit traj/buffer/path get_servo_trajectory_scaling_factor, list_recorded_path, move_recorded_path, plan_move_recorded_path
+[WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+ 
+move_trajectory fehlt -- uebersprungen: komplett, knoten15, anschluss, leerlauf, stopp.
+ 
+!! --real-robot: Fahrtests an der REALEN ANLAGE um die aktuelle Stellung,
+Gelenk 1, Auslenkung 0.050 rad, Tests: referenz, online.
+Arbeitsraum frei? Not-Aus in Reichweite?
+Zum Fortfahren 'ANLAGE' eintippen: [31;20m[2026-10-13 15:53:28][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-13 15:53:29][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-13 15:53:31][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-13 15:53:32][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-13 15:53:33][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+[31;20m[2026-10-13 15:53:34][neurapy_logger][ERROR] : init_program call with args (), {}, failed with exception Unable to switch to play mode. Check if robot in automatic mode. :(robot.py:117)[0m
+Traceback (most recent call last):
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tools\check_trajectory_buffer.py", line 1254, in <module>
+main()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\tools\check_trajectory_buffer.py", line 1195, in main
+bot.connect(power_on=True, ensure_automatic=True)
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 229, in connect
+self._init_program()
+File "C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\bc\adapters\neura.py", line 470, in _init_program
+raise RobotError(
+bc.ports.RobotError: init_program() auch nach 6 Versuchen in 6.0 s abgelehnt (Unable to switch to play mode. Check if robot in automatic mode. ). Die Steuerung steht im FEHLERZUSTAND (get_diagnostics: critical, {'collision_detected': False, 'other_errors': [], 'powered_off': True}) -- typisch nach einem gekappten PC-Steuerkanal (RCSC_102/105). Der Zustand loest sich nicht von selbst: im Teach-Pendant PC-Menue -> Reset Control, danach Automatik. In der VM auf schwachem Rechner zuerst die Host-Leistung pruefen (Known-Issues-Neura-Sim.md, Punkt 4).
+-> Bahnpuffer testen: fehlgeschlagen (Rueckgabewert 1) -- 1 Warnung
+ 
+$ -u tools/check_sim_robot.py
+ 
+============================================================
+0. Verbindung und Identitaet
+============================================================
+Socket 192.168.2.13:65432
+Server-Version v5.0.8
+Client-Version v5.0.8
+is_robot_in_simulation() False
+get_diagnostics() {'critical': False, 'issues': {}}
+ 
+============================================================
+1. Funktionsumfang gegen den Bedarf der Pipeline (AP 1.5.1)
+============================================================
+Funktionen insgesamt 210
+[OK] Alle Pflichtfunktionen vorhanden.
+Override 0.2
+ 
+============================================================
+2. Zustandsabgriff und Tool-Geometrie
+============================================================
+get_current_joint_angles() [0.0267, -0.2738, 1.7801, -0.4975, 0.9678, 1.6]
+Zeitstempel roh 1791899891043115.5
+Zeitstempel-Abstand zur Hostzeit -1791898099143479.750 s
+[WARN] Zeitbasis weicht um -1791898099143479.750 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+Tool-Offset hinterlegt True
+ 
+============================================================
+3. Kinematik ueber den Adapter (FK/IK-Rueckprobe)
+============================================================
+fk(q) -> Pose [XYZ|QWXYZ] [0.5424, -0.1282, 0.364, 0.3906, 0.6021, 0.6931, 0.0676]
+ik(fk(q)) -> q [0.0267, -0.2738, 1.7801, -0.4975, 0.9678, 1.6]
+max |q_ik - q| 0.00000 rad
+[OK] IK-Rueckprobe seedtreu (0.00000 rad).
+FK-Rueckprobe Positionsfehler 0.000000 m
+[OK] FK-Rueckprobe innerhalb der Toleranz.
+Laufzeit fk() inkl. TCP-Roundtrip 3.3 ms
+ 
+(Bewegungs-, Servo- und Greifertests uebersprungen -- --move)
+ 
+============================================================
+Zusammenfassung
+============================================================
+WARN Zeitbasis weicht um -1791898099143479.750 s von der Hostzeit ab (Budget 0.030 s) -- vermutlich UTC vs. Hostzeit, vor der Aufzeichnung klaeren.
+ 
+3 ok, 1 Warnungen, 0 Fehler
+ 
+Hinweis: is_robot_in_simulation() == False -- ANLAGENMESSUNG.
+-> Steuerung pruefen (nur lesen): durchgelaufen -- 1 Warnung, 3 ok
+ 
+$ -u tools/check_trajectory_buffer.py
+ 
+======================================================================
+0. Verbindung
+======================================================================
+is_robot_in_simulation() False
+Server-Version v5.0.8
+Tool ZimmerLWR50
+ 
+======================================================================
+1. Pufferfaehige Befehle in der Steuerung (nur lesen)
+======================================================================
+Funktionen insgesamt 210
+move_trajectory FEHLT
+plan_move_joint vorhanden
+executor vorhanden
+wait_motion_finished vorhanden
+motion_status vorhanden
+movelinear_online vorhanden
+stop_movelinear_online vorhanden
+servo_x vorhanden
+move_joint vorhanden
+weitere mit traj/buffer/path get_servo_trajectory_scaling_factor, list_recorded_path, move_recorded_path, plan_move_recorded_path
+[WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+ 
+(Fahrtests uebersprungen -- --move)
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-13_15-53_Trajektorien-Puffer.json
+Hinweis: is_robot_in_simulation() == False -- ANLAGENMESSUNG.
+-> Pufferbefehle pruefen (nur lesen): durchgelaufen -- 1 Warnung
+ 
+$ -u tools/check_trajectory_buffer.py --move --tests referenz,komplett,knoten15,anschluss,leerlauf,stopp,online --joint 1 --dauer 4 --knoten-hz 100 --chunk-takte 4 --vorlauf-takte 1 --vergleich-raten 90,120 --override 1 --real-robot
+ 
+======================================================================
+0. Verbindung
+======================================================================
+is_robot_in_simulation() False
+Server-Version v5.0.8
+Tool ZimmerLWR50
+ 
+======================================================================
+1. Pufferfaehige Befehle in der Steuerung (nur lesen)
+======================================================================
+Funktionen insgesamt 210
+move_trajectory FEHLT
+plan_move_joint vorhanden
+executor vorhanden
+wait_motion_finished vorhanden
+motion_status vorhanden
+movelinear_online vorhanden
+stop_movelinear_online vorhanden
+servo_x vorhanden
+move_joint vorhanden
+weitere mit traj/buffer/path get_servo_trajectory_scaling_factor, list_recorded_path, move_recorded_path, plan_move_recorded_path
+[WARNUNG] move_trajectory fehlt in dieser Steuerung -- der rollende Puffer geht so nicht. Bleiben movelinear_online (Loesung 1) und DDS (B).
+ 
+move_trajectory fehlt -- uebersprungen: komplett, knoten15, anschluss, leerlauf, stopp.
+ 
+!! --real-robot: Fahrtests an der REALEN ANLAGE um die aktuelle Stellung,
+Gelenk 1, Auslenkung 0.050 rad, Tests: referenz, online.
+Arbeitsraum frei? Not-Aus in Reichweite?
+Zum Fortfahren 'ANLAGE' eintippen: Startstellung [0.0267, -0.2738, 1.7801, -0.4975, 0.9678, 1.6]
+Testbahn J1, 0.050 rad hin und zurueck in 4.0 s, Spitze 0.039 rad/s
+Override 1.0
+ 
+======================================================================
+2a. referenz: servo_j wie im Recorder (60 Hz, linear je Takt)
+======================================================================
+Taktueberlaeufe 4
+ 
+======================================================================
+2a. referenz_90: servo_j wie im Recorder (90 Hz, linear je Takt)
+======================================================================
+Taktueberlaeufe 88
+ 
+======================================================================
+2a. referenz_120: servo_j wie im Recorder (120 Hz, linear je Takt)
+======================================================================
+Taktueberlaeufe 246
+ 
+======================================================================
+2c. online: movelinear_online, 1 Ziel je Takt, Vorlauf 1 Takt(e)
+======================================================================
+TCP-Spitze geplant 0.0219 m/s, Drehung 0.039 rad/s
+Hoechstwerte v / a x1.30 / x3.0 der Bahn
+Aufrufe / Rueckgabewerte 67 / None
+Taktueberlaeufe 0
+ 
+======================================================================
+Fazit: traegt der rollende Puffer?
+======================================================================
+Test Welligk. Stillst. Spitze Verzug RMS mrad Leserate neue Werte Luecke
+referenz 79.1 % 60.1 % 50 Hz 76 ms 0.36 145 Hz 49 Hz 27.4 ms | neu: Welligk. 43.3 % Einbruch 23.2 % Tempo p5 0.17
+referenz_90 70.9 % 55.9 % 50 Hz 396 ms 6.12 118 Hz 48 Hz 26.0 ms | neu: Welligk. 48.9 % Einbruch 32.4 % Tempo p5 0.00
+referenz_120 61.3 % 54.8 % 50 Hz 600 ms 14.61 113 Hz 48 Hz 24.1 ms | neu: Welligk. 49.9 % Einbruch 46.4 % Tempo p5 -0.04
+online 66.3 % 71.3 % 50 Hz 182 ms 2.96 189 Hz 47 Hz 107.1 ms | neu: Welligk. 28.4 % Einbruch 3.7 % Tempo p5 0.60
+[WARNUNG] referenz nicht deutbar: Mitschrieb nur 145 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen.
+[WARNUNG] referenz_90 nicht deutbar: Mitschrieb nur 118 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen; Bahn lief 1.25-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht).
+[WARNUNG] referenz_120 nicht deutbar: Mitschrieb nur 113 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen; Bahn lief 1.51-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht); Verzug am Rand des Suchbereichs (600 ms) -- Zeitachse passt nicht zur Planung.
+[INFO] servo_j 90 Hz: 88 Taktueberlaeufe; Glaette hier nicht vergleichbar.
+[INFO] servo_j 120 Hz: 246 Taktueberlaeufe; Glaette hier nicht vergleichbar.
+[WARNUNG] movelinear_online, 15-Hz-Ziele: Welligkeit 28.4 %, Tempo-Einbruch 4 % der Fahrzeit, Tempo p5 0.60 der Bahn, Verzug 182 ms, Folgefehler 2.96 mrad (servo_j: Welligkeit 43.3 %, Einbruch 23 %) -- pulsiert im Takt; Vorlauf/Hoechstwerte anpassen (--online-vorlauf, --online-tempo).
+[WARNUNG] Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet.
+ 
+Bericht: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-13_15-54_Trajektorien-Puffer.json
+Mitschrieb: C:\Users\jerem\OneDrive\Projekt\80_Github\Dynamic_Robot_Project\Behavior Cloning\Berichte\2026-10-13_15-54_Trajektorien-Puffer_Mitschrieb.npz
+Hinweis: is_robot_in_simulation() == False -- ANLAGENMESSUNG.
+-> Bahnpuffer testen: durchgelaufen -- 6 Warnungen
+ 

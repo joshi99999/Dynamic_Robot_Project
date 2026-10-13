@@ -214,6 +214,16 @@ class ChunkExecutor(object):
         self._cursor += 1
         return action
 
+    def lookahead(self, k):
+        """Action ``k`` Takte nach der zuletzt gelieferten (k = 0: dieselbe).
+
+        Fuer die Ausfuehrung ``online`` (bc/execution.py): das Ziel wird mit
+        Vorlauf gesendet. Reicht der Chunk nicht, gilt sein letzter Schritt.
+        """
+        if self._chunk is None:
+            raise RuntimeError("lookahead vor der ersten Action")
+        return self._chunk[min(self._cursor - 1 + int(k), len(self._chunk) - 1)]
+
 
 class ChunkEnsembler(object):
     """Mittelt ueberlappende Chunks (AP 4.1, Befund Rauschstudie 2026-09-16).
@@ -340,6 +350,28 @@ class ChunkEnsembler(object):
         self.last_spread = float(np.max(np.ptp(actions[:, :6], axis=0))) if len(actions) > 1 else 0.0
         self._step += 1
         return action
+
+    def lookahead(self, k):
+        """Gemittelte Action ``k`` Takte nach der zuletzt gelieferten (k = 0:
+        dieselbe) -- aus denselben Chunks und Gewichten wie next_action.
+
+        Fuer die Ausfuehrung ``online`` (bc/execution.py): Die Aufnahme sendet
+        das Ziel mit Vorlauf, also muss die Inferenz es auch -- sonst folgt
+        der Arm hier anders als in den Daten. Deckt kein Chunk den Takt,
+        gilt der weiteste gedeckte (Chunks sind 16 lang, neu alle 8 Takte;
+        bei Vorlauf 2 tritt das nicht auf).
+        """
+        if self._step == 0:
+            raise RuntimeError("lookahead vor der ersten Action")
+        ziel = self._step - 1 + int(k)
+        while ziel > self._step - 1 and not self._covered(ziel):
+            ziel -= 1
+        chunks = [(s, c) for s, c in self._chunks if s <= ziel < s + len(c)]
+        actions = np.array([c[ziel - s] for s, c in chunks])
+        # Gewichte wie in next_action: nach dem Alter relativ zum aktuellen Takt
+        ages = np.array([self._step - 1 - s for s, _ in chunks], dtype=float)
+        weights = np.exp(-self.decay * ages)
+        return (weights[:, None] * actions).sum(axis=0) / weights.sum()
 
 
 def check_action(action, measured_joints, guard):

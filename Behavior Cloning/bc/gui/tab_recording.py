@@ -535,6 +535,28 @@ class RecordingTab(ModeTab):
         self.tempo_hint.setWordWrap(True)
         form.addRow("", self.tempo_hint)
 
+        # Ausfuehrungsart (bc/execution.py, Dokumentation/Zittern-an-der-
+        # Anlage.md): wie die Sollwerte an die Steuerung gehen. "auto" ist
+        # an der Anlage online, in VM und SimRobot servo_j.
+        self.execution = block_wheel(QComboBox())
+        for key, text in (("auto", "auto (Anlage: online, VM: servo_j)"),
+                          ("servo_j", "servo_j 60 Hz (bisher)"),
+                          ("online", "online (movelinear_online)")):
+            self.execution.addItem(text, key)
+        self.execution.setCurrentIndex(max(0, self.execution.findData(config.EXECUTION_MODE)))
+        self.execution.setToolTip(
+            "servo_j: 60 Sollwerte je Sekunde, linear interpoliert -- an der "
+            "Anlage zittert der Arm (Treppe, Eigenschwingung 7-8 Hz).\n"
+            "online: ein Ziel je Takt per movelinear_online, die Steuerung "
+            "interpoliert selbst -- gemessen 76 %% weniger Zittern, dafuer "
+            "etwas weniger bahntreu (Vorlauf %d, Tempo x%.1f, Beschl. x%.1f).\n\n"
+            "Steht in den Metadaten, muss in einem Datensatz einheitlich sein "
+            "und wird von der Inferenz uebernommen. In der VM faehrt online "
+            "nicht (alpha.102)." % (config.ONLINE_LEAD_STEPS, config.ONLINE_SPEED_FACTOR,
+                                     config.ONLINE_ACCEL_FACTOR))
+        self.execution.currentIndexChanged.connect(self._update_command)
+        form.addRow("Ausführung", self.execution)
+
         layout.addLayout(form)
 
         self.ask_label = QCheckBox("Nach jeder Episode bewerten")
@@ -862,6 +884,7 @@ class RecordingTab(ModeTab):
             transit_speed=self.transit_speed.value(),
             approach_speed=self.approach_speed.value(),
             ptp_speed=self.ptp_speed.value(),
+            execution=self.execution.currentData(),
             block=self.block.text().strip() or None,
             light=self.light.text().strip() or None,
             camera_pose=self.camera_pose.text().strip() or None,
@@ -1223,6 +1246,7 @@ class RecordingTab(ModeTab):
                      % (self.episodes.value(),
                         self.sequence.currentData() or "Demo-Wegpunkte"))
         lines.append("Ziel: %s" % self.out.text().strip())
+        lines.append("Ausführung: %s" % self.execution.currentText())
         lines.append("Tempo: Transit %.3f m/s · Endanflug %.3f m/s · PTP %.2f rad/s"
                      % (self.transit_speed.value(), self.approach_speed.value(),
                         self.ptp_speed.value()))
@@ -1335,7 +1359,8 @@ class RecordingTab(ModeTab):
     def _set_running(self, running):
         for widget in (self.btn_record, self.btn_teach, self.btn_preview,
                        self.cameras, self.sequence, self.episodes,
-                       self.transit_speed, self.approach_speed, self.ptp_speed):
+                       self.transit_speed, self.approach_speed, self.ptp_speed,
+                       self.execution):
             widget.setEnabled(not running)
         self.btn_stop.setEnabled(running)
 

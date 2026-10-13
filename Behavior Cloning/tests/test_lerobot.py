@@ -169,3 +169,16 @@ def test_export_train_save_load_predict(tmp_path):
     assert np.all(np.isfinite(chunk))
     # unnormiert: Gelenkwerte im Bereich der Trainingsdaten (Min/Max-Norm, clip +-1)
     assert chunk[:, :6].min() >= -0.1 and chunk[:, :6].max() <= 0.7
+
+
+def test_scan_refuses_to_mix_execution_modes(tmp_path):
+    """servo_j- und online-Episoden zeigen anderes Folgeverhalten -- nie mischen."""
+    servo = _episode()
+    servo.metadata["execution"] = {"mode": "servo_j"}
+    online = _episode()
+    online.metadata["execution"] = {"mode": "online", "lead_steps": 2,
+                                    "speed_factor": 1.3, "accel_factor": 1.5}
+    a = _record(tmp_path / "a", [servo])
+    b = _record(tmp_path / "b", [online])
+    assert "execution/mode" in lerobot_io.scan_sources([a, b])["conflicts"]
+    assert not lerobot_io.scan_sources([b])["conflicts"]

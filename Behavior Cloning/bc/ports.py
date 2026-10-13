@@ -214,6 +214,25 @@ class RobotPort(abc.ABC):
         ohnehin ignorieren (SimRobot); der Neura-Adapter verweigert es.
         """
 
+    def online_j(self, joint_angles, velocity_limits, accel_limits):
+        """Ein Ziel fuer die Online-Ausfuehrung (bc/execution.py, ``online``).
+
+        ``joint_angles``: Gelenkziel (rad); die Implementierung rechnet die
+        Pose selbst (FK). ``velocity_limits``/``accel_limits``: je 6 Werte,
+        [vx, vy, vz (m/s), wrx, wry, wrz (rad/s)] bzw. Beschleunigungen.
+        Kehrt sofort zurueck; die Steuerung faehrt das Ziel innerhalb der
+        Hoechstwerte an und darf es jederzeit durch ein neues ersetzen.
+        Setzt ein aktives Servo-Interface voraus (wie ``servo_j``).
+
+        Nicht abstrakt: Implementierungen ohne Online-Befehl lehnen ab.
+        """
+        raise NotImplementedError("%s kennt keine Online-Ausfuehrung" % type(self).__name__)
+
+    def stop_online(self):
+        """Online-Fahrt NORMAL beenden. Bremst nicht (Anlage 2026-10-13:
+        der Arm faehrt den Restweg zum letzten Ziel zu Ende) -- Abbrueche
+        laufen ueber :meth:`emergency_stop`."""
+
     @abc.abstractmethod
     def move_to_joints(self, joints):
         """Blockierende PTP-Fahrt auf eine Gelenkstellung (rad).

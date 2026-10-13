@@ -760,6 +760,38 @@ class NeuraRobot(RobotPort, PointSourcePort):
             raise RobotError("servo_j meldet Fehlercode %r" % (code,))
         return code
 
+    def online_j(self, joint_angles, velocity_limits, accel_limits):
+        """Ein Ziel per ``movelinear_online`` (Ausfuehrung ``online``).
+
+        Dieselben Sperren wie :meth:`servo_j` (Bewegungsfreigabe, aktives
+        Servo-Interface, Stopp, ServoGuard auf dem GELENKziel); gesendet
+        wird die Pose aus :meth:`fk` -- so an der Anlage 2026-10-13 mit
+        ``tools/check_trajectory_buffer.py`` erprobt (v5.0.8). Die VM
+        (v5.0.0-alpha.102) nimmt den Befehl an, faehrt aber nicht.
+        """
+        self._require_motion("online_j")
+        if not self._servo_active:
+            raise RobotError("Servo-Interface ist nicht aktiv")
+        if self._stop_requested.is_set():
+            raise RobotError("Stopp angefordert -- online_j verweigert")
+        target = [float(v) for v in joint_angles]
+        if len(target) != self.dof:
+            raise ValueError("online_j: %d Winkel, erwartet %d" % (len(target), self.dof))
+        vel = [float(v) for v in velocity_limits]
+        acc = [float(v) for v in accel_limits]
+        if len(vel) != 6 or len(acc) != 6:
+            raise ValueError("online_j: Hoechstwerte brauchen je 6 Werte")
+        try:
+            self.servo_guard.check(target, host_time())
+        except ServoLimitError:
+            self.emergency_stop()
+            raise
+        pose = [float(v) for v in self.fk(target)]
+        return self._call("movelinear_online", pose, vel, acc)
+
+    def stop_online(self):
+        self._call_safe("stop_movelinear_online")
+
     def move_to_joints(self, joints):
         """Blockierende PTP-Fahrt (``move_joint``) mit Zielkontrolle."""
         self._require_motion("move_to_joints")

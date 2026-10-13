@@ -1,0 +1,40 @@
+{
+  "erzeugt": "2026-10-13T15:52:36",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": false,
+  "argumente": {
+    "move": false,
+    "tests": "referenz,komplett,knoten15,anschluss,leerlauf,stopp,online",
+    "joint": 1,
+    "amplitude": null,
+    "dauer": 4.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "vergleich_raten": "90,120",
+    "online_vorlauf": 1,
+    "online_tempo": 1.3,
+    "online_beschl": 3.0,
+    "override": 1.0,
+    "doku": false,
+    "real_robot": false
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  }
+}

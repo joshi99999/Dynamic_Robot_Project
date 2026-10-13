@@ -38,6 +38,37 @@ CONTROL_PERIOD_S = 1.0 / CONTROL_RATE_HZ
 #: Kameras im Beobachtungstakt. Neuras eigenes Beispiel sendet mit 1 kHz.
 SERVO_RATE_HZ = 60.0
 
+#: Ausfuehrungsart der Sollwerte (bc/execution.py), in Aufzeichnung UND
+#: Inferenz identisch. Begruendung und Messungen:
+#: Dokumentation/Zittern-an-der-Anlage.md.
+#:   servo_j  -- 60 Hz linear interpoliert (bisher). An der Anlage zittert
+#:               der Arm: die Steuerung erwartet einen 1-kHz-Strom und faehrt
+#:               die 60-Hz-Stufen als Treppe (2026-10-13: 1,80 m/s^2 am
+#:               Gelenk 5, Eigenschwingung 7-8 Hz).
+#:   online   -- ``movelinear_online``: ein kartesisches Ziel je 15-Hz-Takt,
+#:               die Steuerung interpoliert selbst (0,43 m/s^2, -76 %).
+#:   auto     -- online an der realen Anlage, sonst servo_j: die VM
+#:               (v5.0.0-alpha.102) nimmt movelinear_online an, faehrt aber
+#:               nicht (2026-10-12).
+EXECUTION_MODE = "auto"
+
+#: Startwerte fuer ``online`` (Anlage 2026-10-13, Serie mit Handy-Messung,
+#: Freigabe Anwender 13.10.): die ruhigste gemessene Einstellung. Vorlauf in
+#: 15-Hz-Takten; Tempo/Beschleunigung als Vielfaches der Planer-Spitzen
+#: (bc.execution.online_limits). Groessere Faktoren fahren bahntreuer, aber
+#: hoerbar im 15-Hz-Takt. PROVISORISCH bis zur Bestaetigung an echten
+#: Aufnahmebahnen.
+ONLINE_LEAD_STEPS = 2
+ONLINE_SPEED_FACTOR = 1.3
+ONLINE_ACCEL_FACTOR = 1.5
+ONLINE_VERIFIED = False
+
+#: Wie lange die Aufzeichnung am Bahnende hoechstens wartet, bis der Arm
+#: das letzte Ziel erreicht hat, bevor die Online-Fahrt beendet und das
+#: Servo-Interface abgebaut wird (Abbau bei Restbewegung steht im Verdacht,
+#: den Not-Halt am Bahnende ausgeloest zu haben, Taktzeit-Doku 6.5).
+ONLINE_SETTLE_S = 1.0
+
 #: Maximal zulaessige Zeitdifferenz zwischen den Quellen eines Frames.
 #: Deutlich kleiner als ein halber Frame-Abstand (AP 1.3).
 SYNC_MAX_SKEW_S = 0.030

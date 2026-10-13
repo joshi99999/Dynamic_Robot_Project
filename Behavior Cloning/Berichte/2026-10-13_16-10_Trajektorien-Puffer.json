@@ -1,0 +1,84 @@
+{
+  "erzeugt": "2026-10-13T16:09:50",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": false,
+  "argumente": {
+    "move": true,
+    "tests": "referenz",
+    "joint": 1,
+    "amplitude": 0.1,
+    "dauer": 2.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "vergleich_raten": "",
+    "online_vorlauf": 1,
+    "online_tempo": 1.3,
+    "online_beschl": 3.0,
+    "override": 1.0,
+    "doku": false,
+    "real_robot": true
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "referenz": {
+      "kennzahlen": {
+        "proben": 384,
+        "leserate_hz": 147.92635959652958,
+        "groesste_luecke_ms": 26.859760284423828,
+        "verzug_ms": 58.000000000000135,
+        "folgefehler_rms_mrad": 1.467689093254466,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.10027163527609015,
+        "dauer_faktor": 0.9867556479162014,
+        "welligkeit_prozent": 73.77492997032425,
+        "stillstand_prozent": 60.679611650485434,
+        "neue_werte_hz": 50.204196280376216,
+        "wiederholt_prozent": 60.679611650485434,
+        "welligkeit_neu_prozent": 34.55363849831394,
+        "einbruch_neu_prozent": 14.6297612390528,
+        "tempo_p5_anteil": 0.34493199254911844,
+        "v_ist_max": 0.5853101318606408,
+        "v_plan_max": 0.15707963267948966,
+        "spitze_hz": 49.33481152993348,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 98.32506247830543,
+        "ende_s": 2.1373441066741963
+      },
+      "lesedauer_ms": 6.294965744018555,
+      "lesefehler": 0,
+      "taktueberlaeufe": 1,
+      "servo_hz": 60.0,
+      "nicht_deutbar": [
+        "Mitschrieb nur 148 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen"
+      ]
+    }
+  },
+  "befunde": [
+    [
+      "warnung",
+      "referenz nicht deutbar: Mitschrieb nur 148 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen."
+    ],
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

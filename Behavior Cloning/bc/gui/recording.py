@@ -122,7 +122,8 @@ def record_argv(out, robot_kind="sim", episodes=1, sequence=None,
                 light=None, camera_pose=None, object_note=None,
                 ask_label=False, preview=None, preview_hz=None,
                 real_robot=False, servo_rate=None, transit_speed=None,
-                approach_speed=None, ptp_speed=None, no_gripper=False):
+                approach_speed=None, ptp_speed=None, no_gripper=False,
+                execution=None):
     """Kommandozeile fuer apps/record.py (ohne das Python-Programm)."""
     if not out:
         raise ValueError("Kein Zielordner angegeben.")
@@ -147,6 +148,9 @@ def record_argv(out, robot_kind="sim", episodes=1, sequence=None,
             ("--ptp-speed", ptp_speed, config.PTP_JOINT_SPEED_RADS)):
         if value is not None and abs(float(value) - default) > 1e-9:
             argv += [flag, "%g" % float(value)]
+    # Ausfuehrungsart (bc/execution.py): nur wenn abweichend vom Standard.
+    if execution and execution != config.EXECUTION_MODE:
+        argv += ["--ausfuehrung", str(execution)]
     argv += ["--episodes", str(int(episodes)), "--out", str(out)]
     if seed is not None:
         argv += ["--seed", str(int(seed))]

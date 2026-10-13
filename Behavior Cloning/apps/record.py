@@ -37,6 +37,7 @@ import _bootstrap  # noqa: F401
 import numpy as np
 
 from bc import config, metrics, preview
+from bc import execution as execution_module
 from bc.servo import substeps_for
 from bc.adapters import (
     CAMERA_MODES,
@@ -283,6 +284,25 @@ def parse_args():
         "--ptp-speed", type=float, default=config.PTP_JOINT_SPEED_RADS,
         help="hoechste Gelenkgeschwindigkeit in PTP-Segmenten in rad/s (Default %(default)g)",
     )
+    # Ausfuehrungsart (bc/execution.py, Dokumentation/Zittern-an-der-Anlage.md):
+    # wie die Sollwerte an die Steuerung gehen. Steht in den Metadaten und
+    # wird von der Inferenz uebernommen.
+    run = parser.add_argument_group(
+        "Ausfuehrung -- servo_j (60 Hz) oder online (movelinear_online), "
+        "fuer einen Datensatz einheitlich")
+    run.add_argument(
+        "--ausfuehrung", choices=(execution_module.AUTO,) + execution_module.MODES,
+        default=config.EXECUTION_MODE,
+        help="auto = online an der realen Anlage, servo_j in VM und SimRobot "
+             "(Default %(default)s)")
+    run.add_argument("--online-vorlauf", type=int, default=config.ONLINE_LEAD_STEPS,
+                     help="online: Ziel so viele 15-Hz-Takte voraus (Default %(default)s)")
+    run.add_argument("--online-tempo", type=float, default=config.ONLINE_SPEED_FACTOR,
+                     help="online: Tempogrenze als Vielfaches der Planer-Spitze "
+                          "(Default %(default)s)")
+    run.add_argument("--online-beschl", type=float, default=config.ONLINE_ACCEL_FACTOR,
+                     help="online: Beschleunigungsgrenze als Vielfaches der Planer-Spitze "
+                          "(Default %(default)s)")
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--out", default="data_out")
     parser.add_argument(
@@ -331,6 +351,9 @@ def parse_args():
         args.transit_speed, args.approach_speed, args.ptp_speed)
     if problems:
         parser.error("; ".join(problems))
+    if (not 0 <= args.online_vorlauf <= 5 or not 0.5 <= args.online_tempo <= 3.0
+            or not 0.5 <= args.online_beschl <= 10.0):
+        parser.error("--online-vorlauf 0..5, --online-tempo 0.5..3, --online-beschl 0.5..10")
     if args.seed is None:
         args.seed = int(np.random.SeedSequence().entropy % (2**31))
     return args
@@ -473,10 +496,29 @@ def main():
         print("Livebild nach %s (%g Hz)"
               % (args.preview, args.preview_hz or preview.DEFAULT_RATE_HZ))
 
+    mode = execution_module.resolve_mode(args.ausfuehrung, robot_kind,
+                                         robot_info.get("in_simulation"))
+    execution = execution_module.describe(
+        mode, transit_speed=args.transit_speed, ptp_speed=args.ptp_speed,
+        lead_steps=args.online_vorlauf, speed_factor=args.online_tempo,
+        accel_factor=args.online_beschl)
+    if mode == execution_module.ONLINE:
+        print("Ausfuehrung: online (movelinear_online), Vorlauf %d Takte, Tempo x%.2f, "
+              "Beschl. x%.2f -- Grenzen %.3f m/s / %.2f rad/s"
+              % (execution["lead_steps"], execution["speed_factor"],
+                 execution["accel_factor"], execution["vel"][0], execution["vel"][3]))
+        if robot_kind == "neura" and robot_info.get("in_simulation"):
+            print("   WARNUNG: Die VM (v5.0.0-alpha.102) nimmt movelinear_online an, "
+                  "faehrt aber nicht -- der Recorder bricht dann mit 'arm folgt "
+                  "nicht' ab. In der VM --ausfuehrung servo_j.")
+    else:
+        print("Ausfuehrung: servo_j %.0f Hz" % args.servo_rate)
+
     progress = EpisodeProgress(preview_writer)
     recorder = EpisodeRecorder(robot, captures, clock,
                                servo_rate_hz=args.servo_rate,
-                               monitor=progress)
+                               monitor=progress,
+                               execution=execution)
     rng = np.random.default_rng(args.seed)
     print(
         "Lauf-Einstellungen: servo_j %.0f Hz, Rauschen %s x%.2f, Seed %d, Ablauf %s"

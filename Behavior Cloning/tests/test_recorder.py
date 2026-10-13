@@ -399,3 +399,64 @@ def test_monitor_gets_schema_size_frames_and_cannot_touch_the_data():
     assert composed[0].shape == (config.IMAGE_HEIGHT, 2 * config.IMAGE_WIDTH, 3)
     for cfg in config.SIM_CAMERAS:
         assert episode.arrays["observation.images.%s" % cfg.name].shape[1:] == schema
+
+
+def test_online_execution_sends_one_target_per_tick_with_lead():
+    """Ausfuehrung online (bc/execution.py): ein Ziel je Takt, Vorlauf."""
+    from bc import execution
+
+    clock, robot, captures = _setup()
+    plan = _plan(robot, gripper=False)
+    ex = execution.describe("online", lead_steps=2)
+    gesendet = []
+    original = robot.online_j
+
+    def mitschreiben(q, vel, acc):
+        gesendet.append(np.asarray(q, dtype=float).copy())
+        return original(q, vel, acc)
+
+    robot.online_j = mitschreiben
+    servo_aufrufe = []
+    robot.servo_j = lambda *a, **k: servo_aufrufe.append(a)
+    episode = EpisodeRecorder(robot, captures, clock, execution=ex).record(plan)
+
+    n = len(plan)
+    assert not episode.discarded, episode.discard_reason
+    assert not servo_aufrufe, "online darf kein servo_j senden"
+    assert len(gesendet) == n
+    # Takt i sendet das Ziel i+2, am Ende festgehalten
+    assert np.allclose(gesendet[0], plan.joints_noisy[2])
+    assert np.allclose(gesendet[-1], plan.joints_noisy[n - 1])
+    assert episode.metadata["execution"]["mode"] == "online"
+    # Ein Aufruf je Regeltakt -> timing_findings rechnet mit k = 1
+    assert episode.metadata["servo_j_ms"]["n"] == n
+
+
+def test_online_stop_discards_the_episode():
+    from bc import execution
+
+    clock, robot, captures = _setup()
+    plan = _plan(robot, gripper=False)
+    zaehler = {"n": 0}
+    original = robot.online_j
+
+    def stoppt(q, vel, acc):
+        zaehler["n"] += 1
+        if zaehler["n"] == 5:
+            robot.emergency_stop()
+            return None
+        return original(q, vel, acc)
+
+    robot.online_j = stoppt
+    episode = EpisodeRecorder(robot, captures, clock,
+                              execution=execution.describe("online")).record(plan)
+    assert episode.discarded and episode.discard_reason == "schutzstopp"
+
+
+def test_timing_findings_count_one_call_per_tick_for_online():
+    from bc.recorder import timing_findings
+
+    meta = _meta(20.0, 14.5, 9.0, 8.0)
+    meta["execution"] = {"mode": "online"}
+    text = "\n".join(timing_findings(meta))
+    assert "1 x online_j" in text

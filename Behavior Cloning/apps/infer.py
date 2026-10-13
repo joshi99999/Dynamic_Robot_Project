@@ -57,6 +57,7 @@ from bc.policy import ChunkEnsembler, ChunkExecutor, HoldPolicy, PredictionTooSl
 from bc.ports import MotionRefused, RobotError
 from bc.recorder import _to_schema_size
 from bc.safety import Watchdog, geofence_check
+from bc import execution as execution_module
 from bc.servo import ServoGuard, ServoInterpolator, TargetLimiter, substeps_for
 from bc.sync import Pacer
 
@@ -91,7 +92,7 @@ def build_observation(robot, captures):
 
 def run_episode(robot, captures, executor, clock, max_steps, workspace,
                 end_joints=None, end_gripper=None, min_steps=0, threaded_watchdog=True,
-                progress=print, servo_rate_hz=config.SERVO_RATE_HZ):
+                progress=print, servo_rate_hz=config.SERVO_RATE_HZ, execution=None):
     """Eine Policy-Fahrt. Rueckgabe: Log-dict (Arrays je Takt + Zusammenfassung).
 
     Ende = Endstellung +-END_TOL_RAD UND (falls bekannt) Greiferzustand wie am
@@ -112,15 +113,19 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
     # laufenden Servostrom an. Der Arm steht, die Beobachtung bleibt gueltig.
     obs, state = build_observation(robot, captures)
     first = (obs, state, executor.next_action(obs))
+    execution = execution or execution_module.describe(execution_module.SERVO_J)
+    online = execution["mode"] == execution_module.ONLINE
     interp = ServoInterpolator(servo_rate_hz=servo_rate_hz).reset(state.joints)
     limiter = TargetLimiter().reset(state.joints)
     robot.activate_servo("position")
-    pacer = Pacer(clock, servo_rate_hz).start()  # nach der Aktivierung
+    # nach der Aktivierung; online: ein Aufruf je Regeltakt
+    pacer = Pacer(clock, config.CONTROL_RATE_HZ if online else servo_rate_hz).start()
     stop_reason, at_end, prev_gripper = None, 0, None
     try:
-        q, v, a = interp.hold()
-        pacer.tick()
-        robot.servo_j(q, v, a)
+        if not online:
+            q, v, a = interp.hold()
+            pacer.tick()
+            robot.servo_j(q, v, a)
         for step in range(max_steps):
             if not threaded_watchdog and watchdog.run_once() is not None:
                 stop_reason = "geofence: %s" % watchdog.tripped
@@ -140,11 +145,21 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
 
             # Weiche Stufe: Zielaenderung je Takt begrenzen (servo.TargetLimiter);
             # der ServoGuard im Adapter bleibt die harte Stufe.
-            for q, v, a in interp.window(limiter.limit(action[:6])):
-                if robot.stop_requested:
-                    break
-                pacer.tick()
-                robot.servo_j(q, v, a)
+            if online:
+                # Wie in der Aufnahme: Ziel mit Vorlauf (bc/execution.py). Die
+                # Action dieses Takts ist das Ziel fuer t+1, also liegt das
+                # Ziel fuer t+Vorlauf (lead_steps - 1) Actions weiter.
+                vorlauf = max(0, int(execution["lead_steps"]) - 1)
+                ziel = executor.lookahead(vorlauf) if vorlauf else action
+                if not robot.stop_requested:
+                    pacer.tick()
+                    robot.online_j(limiter.limit(ziel[:6]), execution["vel"], execution["acc"])
+            else:
+                for q, v, a in interp.window(limiter.limit(action[:6])):
+                    if robot.stop_requested:
+                        break
+                    pacer.tick()
+                    robot.servo_j(q, v, a)
             if robot.stop_requested:
                 stop_reason = "stopp: %s" % (watchdog.tripped or "angefordert")
                 break
@@ -187,6 +202,8 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
         robot.emergency_stop()
     finally:
         watchdog.stop()
+        if online and not robot.stop_requested:
+            robot.stop_online()   # bremst nicht -- Abbrueche liefen ueber emergency_stop
         robot.deactivate_servo()
 
     # Letzten Zustand nachtragen (Ziel des letzten Takts ist dort erreicht)
@@ -230,7 +247,12 @@ def check_against_recording(info, args, robot_kind, cam_cfgs):
     if missing:
         problems.append("Kameras %s fehlen (vorhanden %s)" % (missing, camera_names))
     rec = info.get("recording", {})
-    if rec.get("servo_rate_hz") is not None and float(rec["servo_rate_hz"]) != args.servo_rate:
+    rec_mode = (rec.get("execution") or {}).get("mode") or execution_module.SERVO_J
+    if args.execution_mode != rec_mode:
+        problems.append("Ausfuehrung Aufzeichnung %s, jetzt %s (--ausfuehrung %s)"
+                        % (rec_mode, args.execution_mode, rec_mode))
+    if rec_mode == execution_module.SERVO_J and rec.get("servo_rate_hz") is not None \
+            and float(rec["servo_rate_hz"]) != args.servo_rate:
         problems.append("servo_j-Rate Aufzeichnung %.0f Hz, jetzt %.0f Hz "
                         "(--servo-rate %.0f)"
                         % (rec["servo_rate_hz"], args.servo_rate, rec["servo_rate_hz"]))
@@ -289,6 +311,10 @@ def parse_args():
                              "der Aufzeichnung sein (AP 1.5.1) -- der Abgleich gegen "
                              "die Metadaten des Checkpoints bricht sonst ab."
                              % config.CONTROL_RATE_HZ)
+    parser.add_argument("--ausfuehrung", choices=(execution_module.AUTO,) + execution_module.MODES,
+                        default=None,
+                        help="servo_j oder online (bc/execution.py). Default und Pflichtwert: "
+                             "die der Aufzeichnung (bc_policy.json); --hold: auto")
     parser.add_argument("--realtime", action="store_true",
                         help="SimRobot mit echter Uhr (Latenz der Vorhersage wirkt wie an der Anlage)")
     parser.add_argument("--episodes", type=int, default=1)
@@ -349,6 +375,14 @@ def main():
         rec_override = info.get("recording", {}).get("override")
         if args.override is None:
             args.override = float(rec_override) if rec_override is not None else config.DEFAULT_OVERRIDE
+        # Ausfuehrungsart: Default und Pflichtwert ist die der Aufzeichnung
+        # (aeltere Policies ohne Eintrag: servo_j). Ausdruecklich angegeben
+        # wird sie gegen die Aufzeichnung geprueft.
+        rec_exec = info.get("recording", {}).get("execution") or {}
+        if args.ausfuehrung in execution_module.MODES:
+            args.execution_mode = args.ausfuehrung
+        else:
+            args.execution_mode = rec_exec.get("mode") or execution_module.SERVO_J
         problems = check_against_recording(info, args, robot_kind, cam_cfgs)
         if problems:
             raise SystemExit("Policy passt nicht zu dieser Ausfuehrung:\n  - " + "\n  - ".join(problems))
@@ -408,6 +442,28 @@ def main():
                       "override": args.override, "gripper_mode": robot.gripper_mode}
         print("Neura: is_robot_in_simulation()=%r, Override=%.2f, Greifer=%s"
               % (robot.in_simulation, args.override, robot.gripper_mode))
+
+    # --hold ohne Aufzeichnung: auto wie in apps/record.py.
+    if getattr(args, "execution_mode", None) is None:
+        args.execution_mode = execution_module.resolve_mode(
+            args.ausfuehrung or execution_module.AUTO, robot_info["robot"],
+            robot_info.get("in_simulation", True))
+    rec = info.get("recording") or {}
+    rec_exec = rec.get("execution") or {}
+    rec_planner = rec.get("planner") or {}
+    execution = execution_module.describe(
+        args.execution_mode,
+        transit_speed=rec_planner.get("transit_speed_ms") or config.TRANSIT_SPEED_MS,
+        ptp_speed=rec_planner.get("ptp_joint_speed_rads") or config.PTP_JOINT_SPEED_RADS,
+        lead_steps=rec_exec.get("lead_steps", config.ONLINE_LEAD_STEPS),
+        speed_factor=rec_exec.get("speed_factor") or config.ONLINE_SPEED_FACTOR,
+        accel_factor=rec_exec.get("accel_factor") or config.ONLINE_ACCEL_FACTOR)
+    robot_info["execution"] = execution
+    if execution["mode"] == execution_module.ONLINE:
+        print("Ausfuehrung: online, Vorlauf %d Takte, Tempo x%.2f, Beschl. x%.2f"
+              % (execution["lead_steps"], execution["speed_factor"], execution["accel_factor"]))
+    else:
+        print("Ausfuehrung: servo_j %.0f Hz" % args.servo_rate)
 
     try:
         captures, cam_cfgs = start_cameras(camera_mode, clock, seed=args.seed,
@@ -472,7 +528,7 @@ def main():
             log = run_episode(robot, captures, executor, clock, max_steps, workspace,
                               end_joints=end, end_gripper=end_gripper, min_steps=min_steps,
                               threaded_watchdog=not isinstance(clock, SimClock),
-                              servo_rate_hz=args.servo_rate)
+                              servo_rate_hz=args.servo_rate, execution=execution)
             wall = time.perf_counter() - t0
             rollout = {"tcp": np.vstack([log["tcp"], log["final_tcp"][None]]) if len(log["tcp"]) else log["final_tcp"][None],
                        "gripper_cmd": np.append(log["gripper_cmd"], log["gripper_cmd"][-1] if len(log["gripper_cmd"]) else 0.0),

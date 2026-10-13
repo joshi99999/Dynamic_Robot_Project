@@ -101,7 +101,54 @@ KANDIDATEN = (
     "move_joint",
 )
 
-TESTS = ("referenz", "komplett", "knoten15", "anschluss", "leerlauf", "stopp", "online")
+TESTS = ("referenz", "komplett", "knoten15", "anschluss", "leerlauf", "stopp", "online",
+         "online_leerlauf", "online_stopp", "online_mehrachs", "online_notstopp", "serie")
+
+#: Ohne --tests: die bisherigen. Die Abbruch- und Mehrachstests laufen nur
+#: auf ausdruecklichen Wunsch (online_notstopp loest stop() aus).
+TESTS_STANDARD = TESTS[:7]
+
+#: Tests mit movelinear_online. ``online_notstopp`` loest den Software-Stopp
+#: des Adapters aus (stop() der Steuerung) -- deshalb als letzter Test.
+TESTS_ONLINE = ("online", "online_leerlauf", "online_stopp", "online_mehrachs",
+                "online_notstopp", "serie")
+
+#: ``serie``: dieselbe Mehrachsbahn mehrmals am Stueck, von (vermutlich)
+#: leise nach laut -- fuer ein Video, in dem sich die Laeufe vergleichen
+#: lassen (Anlage 2026-10-13: Laufruhe haengt an der Beschleunigungsgrenze,
+#: per Gehoer nur Lauf gegen Lauf beurteilbar). Der letzte Lauf ist das
+#: heutige Verfahren (servo_j 60 Hz) als Vergleich.
+SERIE_STUFEN = (
+    {"art": "online", "tempo": 1.3, "beschl": 1.5, "vorlauf": 2},
+    {"art": "online", "tempo": 2.0, "beschl": 1.5, "vorlauf": 2},
+    {"art": "online", "tempo": 2.0, "beschl": 2.0, "vorlauf": 2},
+    {"art": "online", "tempo": 2.0, "beschl": 3.0, "vorlauf": 2},
+    {"art": "online", "tempo": 2.0, "beschl": 3.0, "vorlauf": 1},
+    {"art": "servo_j"},
+)
+
+#: Countdown vor jedem Lauf der Serie (s) -- Luecke im Video zum Zuordnen.
+SERIE_COUNTDOWN_S = 3
+
+#: Standardrichtung fuer ``online_mehrachs`` (Faktor je Gelenk, J1 = 1):
+#: alle Gelenke bewegen sich, mit Drehung des Werkzeugs. Offline an der
+#: Stellung vom Anlagentag 2026-10-13 gerechnet (URDF, Flansch): der Flansch
+#: steigt um bis zu 5 cm, sinkt nicht, ~0,12 m/s bei 0,1 rad in 2 s -- nahe
+#: am Aufnahmetempo (0,15 m/s). Vor dem Senden wird mit der FK der
+#: STEUERUNG (mit Werkzeug) erneut geprueft.
+MEHRACHS_RICHTUNG = (1.0, -0.5, -0.5, 0.8, -0.8, 1.0)
+
+#: Hoechstes zulaessiges Absinken des TCP in ``online_mehrachs`` -- darunter
+#: wird die Bahn vor dem Senden abgelehnt (Tisch).
+MAX_ABSENKUNG_M = 0.01
+
+#: Groesste Abweichung eines Gelenks von der Gelenkbahn (nach Verzug), ab
+#: der ``online_mehrachs`` warnt. J1 allein: Folgefehler RMS ~6 mrad
+#: (2026-10-13); ein anderer IK-Zweig waere ein Vielfaches davon.
+MEHRACHS_OK_MRAD = 20.0
+
+#: Bis wann ein Stopp als brauchbar gilt (Arm steht).
+STOPP_OK_MS = 500.0
 
 #: Tests, die move_trajectory brauchen (fehlt in der VM v5.0.0-alpha.102).
 TESTS_PUFFER = ("komplett", "knoten15", "anschluss", "leerlauf", "stopp")
@@ -152,18 +199,37 @@ def show(label, value):
 
 
 class Testbahn(object):
-    """q(t) = q0 + A (1 - cos(2 pi t / T)) / 2 auf EINEM Gelenk.
+    """q(t) = q0 + A d (1 - cos(2 pi t / T)) / 2.
+
+    ``d`` ist die Richtung im Gelenkraum: Standard nur das Testgelenk
+    (d = Einheitsvektor), fuer ``online_mehrachs`` mehrere Gelenke mit
+    |d_i| <= 1 und d[joint] = 1 -- das Testgelenk bleibt das, an dem
+    Verzug und Welligkeit gemessen werden, und keine Achse verlaesst das
+    Fenster A.
 
     Beginnt und endet in q0 mit Geschwindigkeit 0; die Spitzengeschwindigkeit
     A pi / T liegt bei T/4 (hin) und 3T/4 (zurueck). Ausserhalb [0, T]
     steht sie in q0.
     """
 
-    def __init__(self, q0, joint, amplitude, dauer):
+    def __init__(self, q0, joint, amplitude, dauer, richtung=None):
         self.q0 = np.asarray(q0, dtype=float)
         self.joint = int(joint)
         self.amplitude = float(amplitude)
         self.dauer = float(dauer)
+        if richtung is None:
+            richtung = np.zeros(self.q0.size)
+            richtung[self.joint] = 1.0
+        self.richtung = np.asarray(richtung, dtype=float)
+        if self.richtung.shape != self.q0.shape:
+            raise ValueError("Richtung braucht %d Werte" % self.q0.size)
+        if float(np.max(np.abs(self.richtung))) > 1.0 + 1e-9:
+            raise ValueError("Richtung: jeder Faktor muss in [-1, 1] liegen")
+        if abs(self.richtung[self.joint] - 1.0) > 1e-9:
+            raise ValueError("Richtung: Faktor des Testgelenks muss 1 sein")
+
+    def mit_richtung(self, richtung):
+        return Testbahn(self.q0, self.joint, self.amplitude, self.dauer, richtung)
 
     @property
     def v_max(self):
@@ -182,9 +248,9 @@ class Testbahn(object):
 
     def q(self, t):
         """Alle Gelenke zur Zeit ``t`` (Skalar)."""
-        out = self.q0.copy()
-        out[self.joint] = float(self.qj(t))
-        return out
+        t = min(max(float(t), 0.0), self.dauer)
+        profil = (1.0 - math.cos(2.0 * math.pi * t / self.dauer)) / 2.0
+        return self.q0 + self.amplitude * self.richtung * profil
 
     def knoten(self, t_von, t_bis, hz):
         """Stuetzpunkte fuer (t_von, t_bis] mit ``hz``.
@@ -515,6 +581,68 @@ def zeile(name, k):
 # -- Laufzeit gegen die Steuerung -------------------------------------------
 
 
+def _stufe_text(st, args):
+    if st["art"] == "servo_j":
+        return "servo_j %g Hz (heutiges Verfahren)" % args.servo_rate
+    return "online Tempo x%.1f Beschl. x%.1f Vorlauf %d" % (st["tempo"], st["beschl"],
+                                                           st["vorlauf"])
+
+
+def frage_ja(text):
+    try:
+        return input(text).strip().lower() in ("j", "ja", "y", "yes")
+    except EOFError:
+        return False
+
+
+def mehrachs_abweichung(rel, q, bahn, tau):
+    """Groesste Abweichung ALLER Gelenke von der Gelenkbahn (um ``tau`` versetzt).
+
+    ``movelinear_online`` bekommt kartesische Ziele; die Gelenkstellung waehlt
+    die Steuerung selbst. Folgt sie dabei einem anderen IK-Zweig, weichen
+    einzelne Gelenke weit ab, obwohl der TCP stimmt -- das zeigt diese Zahl.
+    """
+    rel = np.asarray(rel, dtype=float)
+    q = np.asarray(q, dtype=float)
+    plan = np.asarray([bahn.q(r - tau) for r in rel])
+    abw = np.abs(q - plan)
+    i, j = np.unravel_index(int(np.argmax(abw)), abw.shape)
+    return {"max_mrad": 1e3 * float(abw[i, j]), "gelenk": int(j),
+            "je_gelenk_mrad": (1e3 * abw.max(axis=0)).tolist(),
+            "ende_mrad": 1e3 * float(np.max(np.abs(q[-1] - bahn.q0)))}
+
+
+def abbruch_kennzahlen(t, q, t_stopp, bahn, letztes_ziel):
+    """Was der Arm nach einem Abbruch bei voller Fahrt noch tut (Testgelenk).
+
+    ``letztes_ziel``: zuletzt gesendetes Gelenkziel -- bis dorthin darf er
+    fahren, darueber hinaus nicht.
+    """
+    t = np.asarray(t, dtype=float)
+    q = np.asarray(q, dtype=float)
+    if t_stopp is None or len(t) < 20 or not (t >= t_stopp).any():
+        return {}
+    j = bahn.joint
+    rel_t = t - t_stopp
+    raster = np.arange(max(rel_t[0], -0.3), rel_t[-1], 1.0 / AUSWERT_HZ)
+    qg = np.interp(raster, rel_t, q[:, j])
+    v = _gleitmittel(np.gradient(qg, 1.0 / AUSWERT_HZ), 9)
+    q_bei_stopp = float(np.interp(0.0, rel_t, q[:, j]))
+    nach = q[t >= t_stopp, j]
+    richtung = math.copysign(1.0, bahn.amplitude)
+    bewegt = np.flatnonzero((raster > 0) & (np.abs(v) > 0.05 * bahn.v_max))
+    spaet = t >= t_stopp + 0.5
+    ziel_j = float(letztes_ziel[j]) if letztes_ziel is not None else q_bei_stopp
+    return {
+        "tempo_beim_stopp_rads": float(np.abs(np.interp(0.0, raster, v))),
+        "weg_nach_stopp_mrad": 1e3 * float(np.max(np.abs(nach - q_bei_stopp))),
+        "stillstand_nach_ms": 1e3 * float(raster[bewegt[-1]]) if len(bewegt) else 0.0,
+        "ueber_letztes_ziel_mrad": 1e3 * max(0.0, float(np.max(richtung * (nach - ziel_j)))),
+        "rest_bis_letztes_ziel_mrad": 1e3 * abs(ziel_j - q_bei_stopp),
+        "bewegung_nach_500ms_mrad": 1e3 * float(np.ptp(q[spaet, j])) if spaet.any() else float("nan"),
+    }
+
+
 class Lauf(object):
     """Haelt Verbindung, Bericht und Mitschriebe eines Werkzeuglaufs."""
 
@@ -526,6 +654,8 @@ class Lauf(object):
         self.roh = {}
         self.nonblocking = None   # unbekannt, bis 'anschluss' es zeigt
         self._log = None
+        #: Reale Anlage? Dann fragt online_mehrachs vor dem Senden nach.
+        self.real = False
 
     def befund(self, stufe, text):
         self.bericht["befunde"].append([stufe, text])
@@ -574,7 +704,8 @@ class Lauf(object):
         except Exception as exc:
             return None, host_time() - t0, "%s: %s" % (type(exc).__name__, exc)
 
-    def online(self):
+    def online(self, name="online", bahn=None, abbruch=None, mehrachs=None,
+               nachfragen=True):
         """movelinear_online: ein kartesisches Ziel je 15-Hz-Takt.
 
         Ziel = FK(q_plan(t + Vorlauf)). Die Steuerung plant selbst mit den
@@ -582,82 +713,212 @@ class Lauf(object):
         zu grosszuegig, und er erreicht jedes Ziel vor dem naechsten und
         bremst (Pulsieren im Takt). Beides zeigt die Auswertung.
 
+        ``bahn``: andere Testbahn (``online_mehrachs``: mehrere Gelenke).
+        ``abbruch``: bei T/4 -- volle Fahrt -- abbrechen ("leerlauf",
+        "stop_online", "notstopp"; Tests ``online_leerlauf``,
+        ``online_stopp``, ``online_notstopp``).
+
         Sicherheit: Die Gelenkbahn wird wie alle anderen vorher mit
         pruefe_bahn geprueft. Zwischen zwei Zielen faehrt die Steuerung
         eine Gerade im Raum; bei 66 ms Abstand weicht sie von der Gelenkbahn
         um Bruchteile eines Millimeters ab.
         """
         args = self.args
-        section("2c. online: movelinear_online, 1 Ziel je Takt, Vorlauf %d Takt(e)"
-                % args.online_vorlauf)
+        bahn = bahn or self.bahn
+        if mehrachs is None:
+            mehrachs = name == "online_mehrachs"
+        titel = {None: "%g Ziele/s" % args.online_hz,
+                 "leerlauf": "Abbruch bei T/4: Python sendet nicht mehr",
+                 "stop_online": "Abbruch bei T/4: stop_movelinear_online()",
+                 "notstopp": "Abbruch bei T/4: Software-Stopp des Adapters"}[abbruch]
+        section("2c. %s: movelinear_online, %s, Vorlauf %d Takt(e)"
+                % (name, titel, args.online_vorlauf))
         self.an_den_start()
-        bahn = self.bahn
-        dt = 1.0 / config.CONTROL_RATE_HZ
-        vorlauf = args.online_vorlauf * dt
-        n = int(round(bahn.dauer * config.CONTROL_RATE_HZ))
-        zeiten = np.arange(1, n + 1 + int(config.CONTROL_RATE_HZ // 2)) * dt
+        # Zielrate: Standard ein Ziel je 15-Hz-Takt. Mit --online-hz 30
+        # werden die Stuecke kuerzer, die Steuerung muss je Ziel weniger
+        # beschleunigen und bremsen (Anlage 2026-10-13: bei 15 Hz stehen
+        # Bahntreue und Laufruhe gegeneinander). Der Vorlauf bleibt in
+        # 15-Hz-Takten angegeben, damit Laeufe vergleichbar sind.
+        hz = float(args.online_hz)
+        dt = 1.0 / hz
+        vorlauf = args.online_vorlauf / config.CONTROL_RATE_HZ
+        n = int(round(bahn.dauer * hz))
+        zeiten = np.arange(1, n + 1 + int(hz // 2)) * dt
         ziele_q = [bahn.q(min(t + vorlauf, bahn.dauer)) for t in zeiten]
         pruefe_bahn(bahn.q0, zeiten, ziele_q, bahn.q0, bahn.amplitude)
         ziele = [np.asarray(self.bot.fk(qz), dtype=float) for qz in ziele_q]
         # Hoechstwerte aus der Bahn selbst: Tempo des TCP und der Drehung.
         fein = np.linspace(0.0, bahn.dauer, 201)
         posen = np.asarray([self.bot.fk(bahn.q(t)) for t in fein])
-        v_tcp = float(np.max(np.linalg.norm(np.diff(posen[:, :3], axis=0), axis=1))
-                      / (fein[1] - fein[0]))
-        v_rot = bahn.v_max   # J1 dreht das Werkzeug mit derselben Rate
+        schritt = fein[1] - fein[0]
+        v_tcp = float(np.max(np.linalg.norm(np.diff(posen[:, :3], axis=0), axis=1)) / schritt)
+        quat = posen[:, 3:7] / np.linalg.norm(posen[:, 3:7], axis=1, keepdims=True)
+        dots = np.clip(np.abs(np.sum(quat[1:] * quat[:-1], axis=1)), 0.0, 1.0)
+        v_rot = max(float(np.max(2.0 * np.arccos(dots)) / schritt), 1e-3)
         a_tcp = v_tcp * 2.0 * math.pi / bahn.dauer
         a_rot = v_rot * 2.0 * math.pi / bahn.dauer
         vel = [args.online_tempo * v_tcp] * 3 + [args.online_tempo * v_rot] * 3
         acc = [args.online_beschl * a_tcp] * 3 + [args.online_beschl * a_rot] * 3
         show("TCP-Spitze geplant", "%.4f m/s, Drehung %.3f rad/s" % (v_tcp, v_rot))
         show("Hoechstwerte v / a", "x%.2f / x%.1f der Bahn" % (args.online_tempo, args.online_beschl))
+        hoehe = posen[:, 2] - posen[0, 2]
+        weg = float(np.max(np.linalg.norm(posen[:, :3] - posen[0, :3], axis=1)))
+        if mehrachs:
+            show("Richtung im Gelenkraum", np.round(bahn.richtung, 2).tolist())
+            show("TCP-Weg / Hoehe", "bis %.1f cm vom Start, Hoehe %+.1f .. %+.1f cm"
+                 % (100 * weg, 100 * hoehe.min(), 100 * hoehe.max()))
+            # Ein Absenken kann den Tisch treffen -- vor dem Senden ablehnen.
+            if float(hoehe.min()) < -MAX_ABSENKUNG_M:
+                raise ValueError("TCP sinkt um %.1f cm (Grenze %.1f cm) -- Richtung "
+                                 "umkehren oder anders waehlen (--richtung)"
+                                 % (-100 * hoehe.min(), 100 * MAX_ABSENKUNG_M))
+            if nachfragen and self.real and not frage_ja(
+                    "   Diese Bahn an der Anlage fahren? [j/N] "):
+                print("  uebersprungen -- nichts gesendet.")
+                return {}
+        stopp_bei = bahn.dauer / 4.0 if abbruch else None
         codes, fehler = [], None
         log = self.mitschreiben()
         self.bot.activate_servo("position")
-        pacer = Pacer(RealClock(), config.CONTROL_RATE_HZ).start()
-        t_start = None
+        pacer = Pacer(RealClock(), hz).start()
+        t_start = t_stopp = None
+        letztes_ziel = None
         try:
-            for ziel in ziele:
+            for i, ziel in enumerate(ziele):
                 t_soll = pacer.tick()
                 if t_start is None:
                     t_start = t_soll
+                if stopp_bei is not None and t_soll - t_start >= stopp_bei:
+                    t_stopp = host_time()
+                    if abbruch == "stop_online":
+                        self.bot._call("stop_movelinear_online")
+                    elif abbruch == "notstopp":
+                        self.bot.emergency_stop()
+                    break
                 try:
                     codes.append(self.bot._call("movelinear_online",
                                                 [float(v) for v in ziel], vel, acc))
+                    letztes_ziel = ziele_q[i]
                 except Exception as exc:
                     fehler = "%s: %s" % (type(exc).__name__, exc)
                     break
             if fehler is None:
-                self.warten_bis_ruhe(0.5, 3.0)
+                self.warten_bis_ruhe(0.5 if abbruch is None else 1.5, 3.0)
         finally:
-            self.bot._call_safe("stop_movelinear_online")
-            self.bot.deactivate_servo()
+            if not self.bot.stop_requested:
+                self.bot._call_safe("stop_movelinear_online")
+                self.bot.deactivate_servo()
         time.sleep(0.3)
         t, q = log.stop()
         k = auswerten(t, q, t_start, bahn)
         # VM v5.0.0-alpha.102 (2026-10-12): Aufruf angenommen, Rueckgabe
         # None, der Arm bewegt sich nicht -- auch nicht mit einem Einzelziel
         # und den Werten aus dem Doku-Beispiel. Das ist kein "nicht deutbar",
-        # sondern ein klares Nein fuer diese Steuerung.
-        bewegt = k.get("auslenkung_rad", 0.0) >= 0.1 * abs(bahn.amplitude)
+        # sondern ein klares Nein fuer diese Steuerung. Beim Abbruch bei T/4
+        # kommt der Arm nur bis ~15 % der Auslenkung.
+        schwelle = 0.1 * abs(bahn.amplitude) * (0.5 if abbruch else 1.0)
+        bewegt = k.get("auslenkung_rad", 0.0) >= schwelle
         werte = sorted(set(repr(c) for c in codes))
-        self.sichern("online", t, q, t_start, k, {
-            "taktueberlaeufe": pacer.overruns, "servo_hz": config.CONTROL_RATE_HZ,
+        extra = {
+            "taktueberlaeufe": pacer.overruns, "servo_hz": hz, "online_hz": hz,
             "codes": werte[:10], "aufrufe": len(codes), "fehler": fehler,
             "vorlauf_takte": args.online_vorlauf, "tempo_faktor": args.online_tempo,
-            "beschl_faktor": args.online_beschl, "v_tcp_ms": v_tcp, "bewegt": bewegt,
-        })
+            "beschl_faktor": args.online_beschl, "v_tcp_ms": v_tcp, "v_rot_rads": v_rot,
+            "bewegt": bewegt, "richtung": bahn.richtung.tolist(),
+        }
+        if mehrachs and t_start is not None and len(t) > 20:
+            extra["mehrachs"] = mehrachs_abweichung(
+                t - t_start, q, bahn, k.get("verzug_ms", 0.0) / 1e3)
+        if abbruch:
+            extra["abbruch"] = abbruch
+            extra["stopp"] = abbruch_kennzahlen(t, q, t_stopp, bahn, letztes_ziel)
+        self.sichern(name, t, q, t_start, k, extra)
         show("Aufrufe / Rueckgabewerte", "%d / %s" % (len(codes), ", ".join(werte[:5])))
         show("Taktueberlaeufe", pacer.overruns)
         if fehler:
-            self.befund("fehler", "online: movelinear_online abgelehnt: %s" % fehler)
+            self.befund("fehler", "%s: movelinear_online abgelehnt: %s" % (name, fehler))
         elif not bewegt:
-            self.befund("fehler", "online: movelinear_online angenommen (Rueckgabe %s), aber "
+            self.befund("fehler", "%s: movelinear_online angenommen (Rueckgabe %s), aber "
                         "der Arm bewegt sich nicht (%.4f rad statt %.3f) -- diese Steuerung "
-                        "fuehrt den Befehl nicht aus." % (", ".join(werte[:3]) or "-",
+                        "fuehrt den Befehl nicht aus." % (name, ", ".join(werte[:3]) or "-",
                                                          k.get("auslenkung_rad", 0.0),
                                                          abs(bahn.amplitude)))
+        if "mehrachs" in extra and nachfragen:
+            self._mehrachs_bewerten(extra["mehrachs"])
+        if abbruch:
+            self._abbruch_bewerten(name, abbruch, extra["stopp"], bahn)
+            if abbruch == "notstopp":
+                try:
+                    self.bot.clear_stop()
+                except Exception as exc:
+                    self.befund("fehler", "Nach dem Software-Stopp laesst sich nicht neu "
+                                "initialisieren: %s" % exc)
         return k
+
+    def _mehrachs_bewerten(self, m):
+        show("groesste Gelenkabweichung", "%.2f mrad (Gelenk %d), Ende %.2f mrad"
+             % (m["max_mrad"], m["gelenk"] + 1, m["ende_mrad"]))
+        if m["max_mrad"] <= MEHRACHS_OK_MRAD and m["ende_mrad"] <= 2.0:
+            self.befund("ok", "online_mehrachs: alle Gelenke folgen der Gelenkbahn (max %.1f "
+                        "mrad an Gelenk %d, Ende %.2f mrad) -- kein Konfigurationssprung."
+                        % (m["max_mrad"], m["gelenk"] + 1, m["ende_mrad"]))
+        elif m["ende_mrad"] <= 2.0 and m["max_mrad"] <= 200.0:
+            # Anlage 2026-10-13: J5 +44 mrad unterwegs, Ende 0,5 mrad -- Hub je
+            # Gelenk anders verteilt, zurueck in derselben Stellung. Ein
+            # anderer IK-Zweig waere ein Sprung um Zehntel-Radiant, der bleibt.
+            self.befund("warnung", "online_mehrachs: Gelenk %d weicht unterwegs bis %.1f mrad "
+                        "von der Gelenkbahn ab, kehrt aber in die Startstellung zurueck "
+                        "(Ende %.2f mrad) -- kein anderer IK-Zweig, sondern Verzug/Glaettung "
+                        "der Steuerung. Mit groesseren Hoechstwerten wiederholen "
+                        "(--online-beschl 3)."
+                        % (m["gelenk"] + 1, m["max_mrad"], m["ende_mrad"]))
+        else:
+            self.befund("fehler", "online_mehrachs: Gelenk %d weicht bis %.1f mrad von der "
+                        "Gelenkbahn ab, Ende %.2f mrad daneben -- die Steuerung loest die "
+                        "kartesischen Ziele anders auf als geplant (IK-Zweig)."
+                        % (m["gelenk"] + 1, m["max_mrad"], m["ende_mrad"]))
+
+    def _abbruch_bewerten(self, name, abbruch, s, bahn):
+        if not s:
+            self.befund("warnung", "%s: zu wenige Messwerte um den Abbruch." % name)
+            return
+        show("Tempo beim Abbruch", "%.3f rad/s (Plan %.3f)"
+             % (s["tempo_beim_stopp_rads"], bahn.v_max))
+        show("Weg nach dem Abbruch", "%.1f mrad (Restweg bis letztes Ziel %.1f)"
+             % (s["weg_nach_stopp_mrad"], s["rest_bis_letztes_ziel_mrad"]))
+        show("Arm steht nach", "%.0f ms" % s["stillstand_nach_ms"])
+        show("ueber das letzte Ziel hinaus", "%.2f mrad" % s["ueber_letztes_ziel_mrad"])
+        show("Bewegung ab 500 ms", "%.2f mrad" % s["bewegung_nach_500ms_mrad"])
+        steht = s["bewegung_nach_500ms_mrad"] < 1.0
+        if abbruch == "leerlauf":
+            if steht and s["ueber_letztes_ziel_mrad"] < 2.0:
+                self.befund("ok", "online_leerlauf: Sendet Python nicht mehr, faehrt der Arm "
+                            "nur bis zum letzten Ziel (%.2f mrad darueber) und steht nach "
+                            "%.0f ms -- ein ausgefallenes Programm faehrt hoechstens den "
+                            "Vorlauf weiter." % (s["ueber_letztes_ziel_mrad"],
+                                                 s["stillstand_nach_ms"]))
+            else:
+                self.befund("fehler", "online_leerlauf: Arm faehrt %.2f mrad ueber das letzte "
+                            "Ziel hinaus bzw. bewegt sich ab 500 ms noch %.2f mrad."
+                            % (s["ueber_letztes_ziel_mrad"], s["bewegung_nach_500ms_mrad"]))
+            return
+        rest = s["rest_bis_letztes_ziel_mrad"]
+        sofort = rest < 1.0 or s["weg_nach_stopp_mrad"] < 0.8 * rest
+        if steht and s["stillstand_nach_ms"] <= STOPP_OK_MS and sofort:
+            self.befund("ok", "%s: Arm steht nach %.0f ms, %.1f mrad nach dem Befehl -- haelt "
+                        "VOR dem letzten Ziel an (Restweg %.1f mrad)."
+                        % (name, s["stillstand_nach_ms"], s["weg_nach_stopp_mrad"], rest))
+        elif steht and s["stillstand_nach_ms"] <= STOPP_OK_MS:
+            # Faehrt den Restweg zu Ende: begrenzt (Vorlauf), aber wie der
+            # Leerlauf -- der Befehl selbst bremst nicht.
+            self.befund("warnung", "%s: kein Sofortstopp -- der Arm faehrt nach dem Befehl "
+                        "noch %.1f mrad bis zum letzten Ziel und steht nach %.0f ms. Wirkt "
+                        "wie der Leerlauf; begrenzt nur durch den Vorlauf."
+                        % (name, s["weg_nach_stopp_mrad"], s["stillstand_nach_ms"]))
+        else:
+            self.befund("fehler", "%s: Arm steht erst nach %.0f ms bzw. bewegt sich ab 500 ms "
+                        "noch %.2f mrad -- als Stopp so nicht brauchbar."
+                        % (name, s["stillstand_nach_ms"], s["bewegung_nach_500ms_mrad"]))
 
     def warten_bis_ruhe(self, mindestens_s, max_s=None):
         """Schlaeft mindestens ``mindestens_s``; danach bis der Arm steht."""
@@ -673,7 +934,7 @@ class Lauf(object):
 
     # -- die Tests -------------------------------------------------------
 
-    def referenz(self, rate=None, name="referenz"):
+    def referenz(self, rate=None, name="referenz", bahn=None):
         """Heute: 15-Hz-Ziele, linear mit ``rate`` (Standard --servo-rate) ueber servo_j.
 
         Mit einer hoeheren ``rate`` ist es der billigste Ausweichweg, falls
@@ -683,7 +944,11 @@ class Lauf(object):
         rate = float(rate if rate is not None else self.args.servo_rate)
         section("2a. %s: servo_j wie im Recorder (%g Hz, linear je Takt)" % (name, rate))
         self.an_den_start()
-        bahn = self.bahn
+        mehrachs = bahn is not None
+        bahn = bahn or self.bahn
+        if mehrachs:
+            pruefe_bahn(bahn.q0, [bahn.dauer], [bahn.q(0.5 * bahn.dauer)], bahn.q0,
+                        bahn.amplitude)
         interp = ServoInterpolator(config.CONTROL_RATE_HZ, rate).reset(bahn.q0)
         n = int(round(bahn.dauer * config.CONTROL_RATE_HZ))
         log = self.mitschreiben()
@@ -703,10 +968,87 @@ class Lauf(object):
         time.sleep(0.3)
         t, q = log.stop()
         k = auswerten(t, q, t_start, bahn)
-        self.sichern(name, t, q, t_start, k, {"taktueberlaeufe": pacer.overruns,
-                                              "servo_hz": rate})
+        extra = {"taktueberlaeufe": pacer.overruns, "servo_hz": rate}
+        if mehrachs and len(t) > 20:
+            extra["mehrachs"] = mehrachs_abweichung(
+                t - t_start, q, bahn, k.get("verzug_ms", 0.0) / 1e3)
+        self.sichern(name, t, q, t_start, k, extra)
         show("Taktueberlaeufe", pacer.overruns)
         return k
+
+    def serie(self, bahn):
+        """Mehrachsbahn mehrmals am Stueck mit SERIE_STUFEN -- fuer ein Video.
+
+        EINE Rueckfrage vor dem ersten Lauf (nach dem Freigabewort), danach
+        laufen alle Stufen ohne Unterbrechung. Vor jedem Lauf stehen Nummer,
+        Einstellung und Uhrzeit gross im Terminal, mit Countdown -- so laesst
+        sich jeder Abschnitt im Video zuordnen.
+        """
+        args = self.args
+        section("Serie: %d Laeufe am Stueck, Mehrachsbahn" % len(SERIE_STUFEN))
+        fein = np.linspace(0.0, bahn.dauer, 101)
+        posen = np.asarray([self.bot.fk(bahn.q(t)) for t in fein])
+        hoehe = posen[:, 2] - posen[0, 2]
+        weg = float(np.max(np.linalg.norm(posen[:, :3] - posen[0, :3], axis=1)))
+        show("Richtung im Gelenkraum", np.round(bahn.richtung, 2).tolist())
+        show("TCP-Weg / Hoehe", "bis %.1f cm vom Start, Hoehe %+.1f .. %+.1f cm"
+             % (100 * weg, 100 * hoehe.min(), 100 * hoehe.max()))
+        if float(hoehe.min()) < -MAX_ABSENKUNG_M:
+            raise ValueError("TCP sinkt um %.1f cm (Grenze %.1f cm) -- --richtung aendern"
+                             % (-100 * hoehe.min(), 100 * MAX_ABSENKUNG_M))
+        print()
+        for i, st in enumerate(SERIE_STUFEN, 1):
+            print("   Lauf %d: %s" % (i, _stufe_text(st, args)))
+        print()
+        if self.real and not frage_ja("   Alle %d Laeufe ohne weitere Rueckfrage fahren? [j/N] "
+                                      % len(SERIE_STUFEN)):
+            print("  Serie abgebrochen -- nichts gesendet.")
+            return
+        alt = (args.online_tempo, args.online_beschl, args.online_vorlauf)
+        zeilen = []
+        try:
+            for i, st in enumerate(SERIE_STUFEN, 1):
+                name = "serie_%d" % i
+                self.an_den_start()
+                print("\n" + "#" * 70)
+                print("#  LAUF %d von %d:  %s" % (i, len(SERIE_STUFEN), _stufe_text(st, args)))
+                print("#" * 70)
+                for n in range(SERIE_COUNTDOWN_S, 0, -1):
+                    print("   ... %d" % n)
+                    time.sleep(1.0)
+                start = datetime.now().strftime("%H:%M:%S")
+                print("   LOS  %s" % start)
+                if st["art"] == "servo_j":
+                    self.referenz(name=name, bahn=bahn)
+                else:
+                    args.online_tempo = st["tempo"]
+                    args.online_beschl = st["beschl"]
+                    args.online_vorlauf = st["vorlauf"]
+                    self.online(name, bahn=bahn, mehrachs=True, nachfragen=False)
+                eintrag = self.bericht["tests"].get(name, {})
+                eintrag["serie"] = dict(st, lauf=i, start=start)
+                zeilen.append((i, st, start, eintrag))
+                if self.bot.stop_requested:
+                    print("  Stopp angefordert -- Serie beendet.")
+                    break
+        finally:
+            args.online_tempo, args.online_beschl, args.online_vorlauf = alt
+        section("Serie: Ergebnis (Video: Uhrzeit = LOS)")
+        print("  %-4s %-8s %-34s %9s %8s %8s %9s %9s %5s" % (
+            "Lauf", "Start", "Einstellung", "max Abw.", "RMS", "Verzug", "Welligk.",
+            "Einbruch", "Ueb."))
+        for i, st, start, e in zeilen:
+            k = e.get("kennzahlen", {})
+            m = e.get("mehrachs", {})
+            print("  %-4d %-8s %-34s %6.1f J%d %6.1f %6.0f ms %7.1f %% %7.1f %% %5s" % (
+                i, start, _stufe_text(st, args),
+                m.get("max_mrad", float("nan")), m.get("gelenk", -1) + 1,
+                k.get("folgefehler_rms_mrad", float("nan")), k.get("verzug_ms", float("nan")),
+                k.get("welligkeit_neu_prozent", float("nan")),
+                k.get("einbruch_neu_prozent", float("nan")), e.get("taktueberlaeufe", "-")))
+        print("  (max Abw. = groesste Gelenkabweichung von der Gelenkbahn in mrad; RMS = "
+              "Folgefehler Testgelenk; Welligkeit/Einbruch aus den neuen Werten, ~25 Hz "
+              "aufloesbar -- das Zittern selbst zeigt nur das Video.)")
 
     def komplett(self, name, knoten_hz):
         """Die ganze Bahn in EINEM move_trajectory-Aufruf."""
@@ -968,8 +1310,9 @@ def fazit(lauf, stand):
         print(zeile(name, tests[name]["kennzahlen"]))
     nicht_deutbar = set()
     for name in gefahren:
-        if tests[name].get("bewegt") is False:
-            continue   # Arm stand -- da gibt es nichts zu deuten
+        if (tests[name].get("bewegt") is False or tests[name].get("abbruch")
+                or name.startswith("serie_")):
+            continue   # Arm stand bzw. Abbruch -- Glaette hier ohne Aussage
         gruende = aussagekraft(tests[name]["kennzahlen"],
                                servo_hz=tests[name].get("servo_hz", lauf.args.servo_rate))
         tests[name]["nicht_deutbar"] = gruende
@@ -1090,8 +1433,9 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--move", action="store_true",
                     help="Fahrtests ausfuehren (ohne dies wird nur gelesen)")
-    ap.add_argument("--tests", default=",".join(TESTS),
-                    help="Komma-Liste aus %s (Standard: alle)" % ", ".join(TESTS))
+    ap.add_argument("--tests", default=",".join(TESTS_STANDARD),
+                    help="Komma-Liste aus %s (Standard: %s)"
+                         % (", ".join(TESTS), ", ".join(TESTS_STANDARD)))
     ap.add_argument("--joint", type=int, default=1, help="Testgelenk 1-6 (Standard 1)")
     ap.add_argument("--amplitude", type=float, default=None,
                     help="Auslenkung in rad (Standard VM 0.15, Anlage 0.05)")
@@ -1113,8 +1457,14 @@ def main():
                     help="online: Ziel so viele 15-Hz-Takte voraus (Standard 1)")
     ap.add_argument("--online-tempo", type=float, default=1.3,
                     help="online: Hoechstgeschwindigkeit als Vielfaches der Bahnspitze (Standard 1.3)")
+    ap.add_argument("--online-hz", type=float, default=config.CONTROL_RATE_HZ,
+                    help="online: Ziele je Sekunde (Standard %(default)g = 1 je Takt; "
+                         "30 halbiert die Stuecke)")
     ap.add_argument("--online-beschl", type=float, default=3.0,
                     help="online: Hoechstbeschleunigung als Vielfaches der Bahnspitze (Standard 3)")
+    ap.add_argument("--richtung", default=",".join("%g" % v for v in MEHRACHS_RICHTUNG),
+                    help="online_mehrachs: Faktor je Gelenk in [-1, 1], Testgelenk = 1 "
+                         "(Standard %(default)s)")
     ap.add_argument("--override", type=float, default=1.0,
                     help="Override fuer die Fahrten (Standard 1.0 -- 0.2 skaliert den Strom)")
     ap.add_argument("--doku", action="store_true",
@@ -1128,12 +1478,20 @@ def main():
     if unbekannt:
         raise SystemExit("Unbekannte Tests: %s (moeglich: %s)" % (", ".join(unbekannt), ", ".join(TESTS)))
     if (not 0 <= args.online_vorlauf <= 5 or not 0.5 <= args.online_tempo <= 3.0
-            or not 0.5 <= args.online_beschl <= 20.0):
-        raise SystemExit("--online-vorlauf 0..5, --online-tempo 0.5..3, --online-beschl 0.5..20")
+            or not 0.5 <= args.online_beschl <= 20.0
+            or not 5.0 <= args.online_hz <= 60.0):
+        raise SystemExit("--online-vorlauf 0..5, --online-tempo 0.5..3, --online-beschl 0.5..20, "
+                         "--online-hz 5..60")
     if args.chunk_takte < 1 or not 0 <= args.vorlauf_takte < args.chunk_takte:
         raise SystemExit("--vorlauf-takte muss kleiner als --chunk-takte sein")
     if not 1 <= args.joint <= 6:
         raise SystemExit("--joint muss zwischen 1 und 6 liegen")
+    try:
+        richtung = [float(v) for v in args.richtung.split(",")]
+    except ValueError:
+        raise SystemExit("--richtung: sechs Zahlen, durch Komma getrennt")
+    if len(richtung) != 6:
+        raise SystemExit("--richtung: sechs Zahlen, durch Komma getrennt")
     try:
         vergleich = [float(r) for r in args.vergleich_raten.split(",") if r.strip()]
         for r in [args.servo_rate] + vergleich:
@@ -1176,9 +1534,14 @@ def main():
             print("\n  move_trajectory fehlt -- uebersprungen: %s."
                   % ", ".join(n for n in gewaehlt if n in TESTS_PUFFER))
         gewaehlt = ohne
-    if move and "online" in gewaehlt and not stand.get("movelinear_online"):
-        print("\n  movelinear_online fehlt -- 'online' uebersprungen.")
-        gewaehlt = [n for n in gewaehlt if n != "online"]
+    if move and not stand.get("movelinear_online") and set(gewaehlt) & set(TESTS_ONLINE):
+        print("\n  movelinear_online fehlt -- uebersprungen: %s."
+              % ", ".join(n for n in gewaehlt if n in TESTS_ONLINE))
+        gewaehlt = [n for n in gewaehlt if n not in TESTS_ONLINE]
+    # Der Software-Stopp zuletzt: danach muss die Steuerung neu initialisiert
+    # werden, und an der Anlage kann das eine Quittierung am Pendant brauchen.
+    if "online_notstopp" in gewaehlt:
+        gewaehlt = [n for n in gewaehlt if n != "online_notstopp"] + ["online_notstopp"]
     if move and real:
         print("\n!! --real-robot: Fahrtests an der REALEN ANLAGE um die aktuelle Stellung,")
         print("   Gelenk %d, Auslenkung %.3f rad, Tests: %s." % (args.joint, amplitude, ", ".join(gewaehlt)))
@@ -1200,6 +1563,10 @@ def main():
              % (args.joint, amplitude, args.dauer, bahn.v_max))
         show("Override", args.override)
         lauf = Lauf(bot, bahn, args)
+        lauf.real = real
+        rv = [0.0] * 6
+        rv[:len(richtung)] = richtung
+        rv[args.joint - 1] = 1.0
         try:
             for name in gewaehlt:
                 try:
@@ -1219,6 +1586,16 @@ def main():
                         lauf.stopp()
                     elif name == "online":
                         lauf.online()
+                    elif name == "online_leerlauf":
+                        lauf.online(name, abbruch="leerlauf")
+                    elif name == "online_stopp":
+                        lauf.online(name, abbruch="stop_online")
+                    elif name == "online_notstopp":
+                        lauf.online(name, abbruch="notstopp")
+                    elif name == "online_mehrachs":
+                        lauf.online(name, bahn=bahn.mit_richtung(rv))
+                    elif name == "serie":
+                        lauf.serie(bahn.mit_richtung(rv))
                 except ValueError as exc:
                     # Bahnpruefung hat abgelehnt -- nichts wurde gesendet.
                     lauf.befund("fehler", "%s: Bahn vor dem Senden abgelehnt: %s" % (name, exc))
@@ -1236,6 +1613,10 @@ def main():
 
     BERICHTE.mkdir(exist_ok=True)
     stempel = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    # Zwei Laeufe in derselben Minute ueberschrieben sich (Anlage 2026-10-13
+    # 16:29: Stopp-Tests verloren) -- dann mit Sekunden.
+    if (BERICHTE / ("%s_Trajektorien-Puffer.json" % stempel)).exists():
+        stempel = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     ziel = BERICHTE / ("%s_Trajektorien-Puffer.json" % stempel)
     ziel.write_text(json.dumps(bericht, indent=2, ensure_ascii=False, default=str),
                     encoding="utf-8")

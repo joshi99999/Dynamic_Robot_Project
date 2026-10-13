@@ -199,3 +199,26 @@ def test_chunk_executor_validates_shape():
         assert False, "ValueError erwartet"
     except ValueError:
         pass
+
+
+def test_ensembler_lookahead_matches_the_following_actions():
+    """Vorlauf fuer die Ausfuehrung online: lookahead(k) ist die Action, die
+    k Takte spaeter kaeme -- aus denselben Chunks gemittelt."""
+    policy = RampPolicy(length=16)
+    ens = ChunkEnsembler(policy, replan_steps=8, decay=0.0)
+    ens.reset()
+    a0 = ens.next_action(_obs())
+    assert np.allclose(ens.lookahead(0), a0)
+    voraus = ens.lookahead(2)
+    a1 = ens.next_action(_obs())
+    a2 = ens.next_action(_obs())
+    assert np.allclose(voraus, a2) and not np.allclose(voraus, a1)
+
+
+def test_chunk_executor_lookahead_stays_inside_the_chunk():
+    policy = RampPolicy(length=4)
+    ex = ChunkExecutor(policy, n_execute=4)
+    ex.reset()
+    a0 = ex.next_action(_obs())
+    assert np.allclose(ex.lookahead(1)[:6], a0[:6] + 1)
+    assert np.allclose(ex.lookahead(10), ex._chunk[-1])

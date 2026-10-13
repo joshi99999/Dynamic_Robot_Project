@@ -529,6 +529,12 @@ def build_policy_info(export_info, dataset_root, meta, policy_cfg, cameras, args
             "in_simulation": single_value(consistency, "in_simulation"),
             "override": single_value(consistency, "override"),
             "servo_rate_hz": single_value(consistency, "servo_rate_hz"),
+            # Ausfuehrungsart der Aufnahme (bc/execution.py) -- infer.py
+            # faehrt dieselbe. Fehlt sie (aeltere Aufnahmen), war es servo_j.
+            "execution": {
+                key.split("/", 1)[1]: single_value(consistency, key)
+                for key in consistency if key.startswith("execution/")
+            },
             "planner": {
                 key.split("/", 1)[1]: single_value(consistency, key)
                 for key in consistency if key.startswith("planner/")

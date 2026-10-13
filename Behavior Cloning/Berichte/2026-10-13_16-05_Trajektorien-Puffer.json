@@ -1,0 +1,92 @@
+{
+  "erzeugt": "2026-10-13T16:05:41",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": false,
+  "argumente": {
+    "move": true,
+    "tests": "online",
+    "joint": 1,
+    "amplitude": 0.1,
+    "dauer": 2.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "vergleich_raten": "90,120",
+    "online_vorlauf": 2,
+    "online_tempo": 1.3,
+    "online_beschl": 3.0,
+    "override": 1.0,
+    "doku": false,
+    "real_robot": true
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "online": {
+      "kennzahlen": {
+        "proben": 598,
+        "leserate_hz": 188.796543032049,
+        "groesste_luecke_ms": 17.107009887695312,
+        "verzug_ms": -7.999999999999924,
+        "folgefehler_rms_mrad": 6.32472078521911,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.09743362101569039,
+        "dauer_faktor": 1.0199540260403022,
+        "welligkeit_prozent": 67.97435594658111,
+        "stillstand_prozent": 69.77611940298507,
+        "neue_werte_hz": 50.357251864948225,
+        "wiederholt_prozent": 69.77611940298507,
+        "welligkeit_neu_prozent": 27.83201599924354,
+        "einbruch_neu_prozent": 2.015166673485099,
+        "tempo_p5_anteil": 0.6020777126441094,
+        "v_ist_max": 0.4192606181733331,
+        "v_plan_max": 0.15707963267948966,
+        "spitze_hz": 49.33481152993348,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 86.19104418385422,
+        "ende_s": 2.0126486587524433
+      },
+      "lesedauer_ms": 5.155205726623535,
+      "lesefehler": 0,
+      "taktueberlaeufe": 0,
+      "servo_hz": 15.0,
+      "codes": [
+        "None"
+      ],
+      "aufrufe": 37,
+      "fehler": null,
+      "vorlauf_takte": 2,
+      "tempo_faktor": 1.3,
+      "beschl_faktor": 3.0,
+      "v_tcp_ms": 0.08752628569902066,
+      "bewegt": true,
+      "nicht_deutbar": []
+    }
+  },
+  "befunde": [
+    [
+      "warnung",
+      "movelinear_online, 15-Hz-Ziele: Welligkeit 27.8 %, Tempo-Einbruch 2 % der Fahrzeit, Tempo p5 0.60 der Bahn, Verzug -8 ms, Folgefehler 6.32 mrad -- pulsiert im Takt; Vorlauf/Hoechstwerte anpassen (--online-vorlauf, --online-tempo)."
+    ],
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

@@ -105,6 +105,8 @@ class SimRobot(RobotPort, PointSourcePort):
         self._stop_requested = threading.Event()
         #: (Position, Geschwindigkeit, Beschleunigung) des letzten servo_j.
         self.last_servo_command = None
+        #: (Gelenkziel, Tempo-, Beschleunigungsgrenzen) des letzten online_j.
+        self.last_online_command = None
         self._points = {
             str(k): np.asarray(v, dtype=float) for k, v in (points or {}).items()
         }
@@ -318,6 +320,36 @@ class SimRobot(RobotPort, PointSourcePort):
                 -self._faults.servo_noise_rad, self._faults.servo_noise_rad, self.dof
             )
         self._joints = target
+
+    #: Nachbildung von movelinear_online: je Aufruf legt der Arm diesen
+    #: Anteil des Wegs zum Ziel zurueck. NICHT gemessen -- nur so, dass er
+    #: mit Vorlauf ungefaehr im Takt bleibt (Anlage 2026-10-13: Verzug ~0
+    #: bei Vorlauf 2). Fuer Logiktests, nicht fuer Zahlen.
+    ONLINE_GAIN = 0.5
+
+    def online_j(self, joint_angles, velocity_limits, accel_limits):
+        """Nachbildung von ``movelinear_online`` (siehe ONLINE_GAIN)."""
+        self._require_connected()
+        if not self._servo_active:
+            raise RobotError("Servo-Interface ist nicht aktiv")
+        if self._stop_requested.is_set():
+            raise RobotError("Stopp angefordert -- online_j verweigert")
+        self._fault_gate()
+        target = np.asarray(joint_angles, dtype=float)
+        if len(target) != self.dof:
+            raise ValueError("online_j erwartet %d Winkel" % self.dof)
+        if len(velocity_limits) != 6 or len(accel_limits) != 6:
+            raise ValueError("online_j: Hoechstwerte brauchen je 6 Werte")
+        try:
+            self.servo_guard.check(target, self._clock.now())
+        except ServoLimitError:
+            self.emergency_stop()
+            raise
+        self.last_online_command = (target.copy(), list(velocity_limits), list(accel_limits))
+        self._joints = self._joints + self.ONLINE_GAIN * (target - self._joints)
+
+    def stop_online(self):
+        pass
 
     def move_to_joints(self, joints):
         """PTP-Fahrt: in der Simulation ein Sprung ans Ziel."""

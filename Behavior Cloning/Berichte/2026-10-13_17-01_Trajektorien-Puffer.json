@@ -1,0 +1,447 @@
+{
+  "erzeugt": "2026-10-13T17:00:07",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": false,
+  "argumente": {
+    "move": true,
+    "tests": "serie",
+    "joint": 1,
+    "amplitude": 0.1,
+    "dauer": 2.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "vergleich_raten": "90,120",
+    "online_vorlauf": 1,
+    "online_tempo": 1.3,
+    "online_hz": 15.0,
+    "online_beschl": 3.0,
+    "richtung": "1,-0.5,-0.5,0.8,-0.8,1",
+    "override": 1.0,
+    "doku": false,
+    "real_robot": true
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "serie_1": {
+      "kennzahlen": {
+        "proben": 583,
+        "leserate_hz": 186.58765959339829,
+        "groesste_luecke_ms": 29.165267944335938,
+        "verzug_ms": 30.00000000000011,
+        "folgefehler_rms_mrad": 15.041991406762735,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.08649164917007156,
+        "dauer_faktor": 1.1494748208337986,
+        "welligkeit_prozent": 77.22782546390283,
+        "stillstand_prozent": 69.23076923076923,
+        "neue_werte_hz": 50.17158948031569,
+        "wiederholt_prozent": 68.84615384615384,
+        "welligkeit_neu_prozent": 50.55305127052745,
+        "einbruch_neu_prozent": 39.79617270303816,
+        "tempo_p5_anteil": 0.1178745272543225,
+        "v_ist_max": 0.6219213282121407,
+        "v_plan_max": 0.15707963267948966,
+        "spitze_hz": 49.33481152993348,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 71.85692102910609,
+        "ende_s": 2.293546781539919
+      },
+      "lesedauer_ms": 5.256891250610352,
+      "lesefehler": 0,
+      "taktueberlaeufe": 0,
+      "servo_hz": 15.0,
+      "online_hz": 15.0,
+      "codes": [
+        "None"
+      ],
+      "aufrufe": 37,
+      "fehler": null,
+      "vorlauf_takte": 2,
+      "tempo_faktor": 1.3,
+      "beschl_faktor": 1.5,
+      "v_tcp_ms": 0.17889408325418946,
+      "v_rot_rads": 0.41483661021837775,
+      "bewegt": true,
+      "richtung": [
+        1.0,
+        -0.5,
+        -0.5,
+        0.8,
+        -0.8,
+        1.0
+      ],
+      "mehrachs": {
+        "max_mrad": 43.61700043993988,
+        "gelenk": 4,
+        "je_gelenk_mrad": [
+          26.797875116109704,
+          23.160324387356933,
+          28.041681531368432,
+          37.975801072771596,
+          43.61700043993988,
+          26.729821431094702
+        ],
+        "ende_mrad": 0.37375801423578103
+      },
+      "serie": {
+        "art": "online",
+        "tempo": 1.3,
+        "beschl": 1.5,
+        "vorlauf": 2,
+        "lauf": 1,
+        "start": "17:00:17"
+      }
+    },
+    "serie_2": {
+      "kennzahlen": {
+        "proben": 586,
+        "leserate_hz": 188.4911019234226,
+        "groesste_luecke_ms": 16.21270179748535,
+        "verzug_ms": -69.99999999999999,
+        "folgefehler_rms_mrad": 9.875855629259636,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.0943368223987406,
+        "dauer_faktor": 1.0310229919584588,
+        "welligkeit_prozent": 75.71339234735358,
+        "stillstand_prozent": 70.8029197080292,
+        "neue_werte_hz": 50.33156597818878,
+        "wiederholt_prozent": 70.43795620437956,
+        "welligkeit_neu_prozent": 39.2105944971157,
+        "einbruch_neu_prozent": 19.80510951985038,
+        "tempo_p5_anteil": 0.2046302441601865,
+        "v_ist_max": 0.5269313888073973,
+        "v_plan_max": 0.15707963267948966,
+        "spitze_hz": 49.33481152993348,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 83.34822082360847,
+        "ende_s": 2.106647850036623
+      },
+      "lesedauer_ms": 5.163311958312988,
+      "lesefehler": 0,
+      "taktueberlaeufe": 0,
+      "servo_hz": 15.0,
+      "online_hz": 15.0,
+      "codes": [
+        "None"
+      ],
+      "aufrufe": 37,
+      "fehler": null,
+      "vorlauf_takte": 2,
+      "tempo_faktor": 2.0,
+      "beschl_faktor": 1.5,
+      "v_tcp_ms": 0.17889408325418946,
+      "v_rot_rads": 0.41483661021837775,
+      "bewegt": true,
+      "richtung": [
+        1.0,
+        -0.5,
+        -0.5,
+        0.8,
+        -0.8,
+        1.0
+      ],
+      "mehrachs": {
+        "max_mrad": 50.68243027471431,
+        "gelenk": 4,
+        "je_gelenk_mrad": [
+          20.073945975659992,
+          27.257785263905042,
+          25.03220339664347,
+          45.18042917949394,
+          50.68243027471431,
+          18.16945888867827
+        ],
+        "ende_mrad": 0.8770954602608239
+      },
+      "serie": {
+        "art": "online",
+        "tempo": 2.0,
+        "beschl": 1.5,
+        "vorlauf": 2,
+        "lauf": 2,
+        "start": "17:00:25"
+      }
+    },
+    "serie_3": {
+      "kennzahlen": {
+        "proben": 590,
+        "leserate_hz": 189.7016734509272,
+        "groesste_luecke_ms": 24.826765060424805,
+        "verzug_ms": -49.999999999999964,
+        "folgefehler_rms_mrad": 6.575993140380092,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.0968366568125923,
+        "dauer_faktor": 1.0195728708847072,
+        "welligkeit_prozent": 77.80958282081644,
+        "stillstand_prozent": 69.26070038910505,
+        "neue_werte_hz": 49.256553269320875,
+        "wiederholt_prozent": 69.26070038910505,
+        "welligkeit_neu_prozent": 37.093706470658034,
+        "einbruch_neu_prozent": 11.360186212289284,
+        "tempo_p5_anteil": 0.3450589636624271,
+        "v_ist_max": 0.5624159297381008,
+        "v_plan_max": 0.15707963267948966,
+        "spitze_hz": 49.225663716814154,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 82.39846374382638,
+        "ende_s": 2.3753134632110617
+      },
+      "lesedauer_ms": 5.139589309692383,
+      "lesefehler": 0,
+      "taktueberlaeufe": 0,
+      "servo_hz": 15.0,
+      "online_hz": 15.0,
+      "codes": [
+        "None"
+      ],
+      "aufrufe": 37,
+      "fehler": null,
+      "vorlauf_takte": 2,
+      "tempo_faktor": 2.0,
+      "beschl_faktor": 2.0,
+      "v_tcp_ms": 0.17889408325418946,
+      "v_rot_rads": 0.41483661021837775,
+      "bewegt": true,
+      "richtung": [
+        1.0,
+        -0.5,
+        -0.5,
+        0.8,
+        -0.8,
+        1.0
+      ],
+      "mehrachs": {
+        "max_mrad": 24.80360011807892,
+        "gelenk": 4,
+        "je_gelenk_mrad": [
+          16.115534026368795,
+          12.833793870458909,
+          16.668432607683137,
+          21.99067782857472,
+          24.80360011807892,
+          14.043386638826982
+        ],
+        "ende_mrad": 0.8239154622433076
+      },
+      "serie": {
+        "art": "online",
+        "tempo": 2.0,
+        "beschl": 2.0,
+        "vorlauf": 2,
+        "lauf": 3,
+        "start": "17:00:32"
+      }
+    },
+    "serie_4": {
+      "kennzahlen": {
+        "proben": 589,
+        "leserate_hz": 188.32606694654604,
+        "groesste_luecke_ms": 14.257431030273438,
+        "verzug_ms": -63.99999999999997,
+        "folgefehler_rms_mrad": 4.972726555323699,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.09871668209462013,
+        "dauer_faktor": 0.9856425909762726,
+        "welligkeit_prozent": 75.14410716061985,
+        "stillstand_prozent": 70.1492537313433,
+        "neue_werte_hz": 49.596704198504874,
+        "wiederholt_prozent": 70.1492537313433,
+        "welligkeit_neu_prozent": 31.84201312934668,
+        "einbruch_neu_prozent": 6.357977603469619,
+        "tempo_p5_anteil": 0.5081061446335527,
+        "v_ist_max": 0.5554407363361552,
+        "v_plan_max": 0.15707963267948966,
+        "spitze_hz": 49.33481152993348,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 88.87923241997785,
+        "ende_s": 1.9521114501953143
+      },
+      "lesedauer_ms": 5.155324935913086,
+      "lesefehler": 0,
+      "taktueberlaeufe": 0,
+      "servo_hz": 15.0,
+      "online_hz": 15.0,
+      "codes": [
+        "None"
+      ],
+      "aufrufe": 37,
+      "fehler": null,
+      "vorlauf_takte": 2,
+      "tempo_faktor": 2.0,
+      "beschl_faktor": 3.0,
+      "v_tcp_ms": 0.17889408325418946,
+      "v_rot_rads": 0.41483661021837775,
+      "bewegt": true,
+      "richtung": [
+        1.0,
+        -0.5,
+        -0.5,
+        0.8,
+        -0.8,
+        1.0
+      ],
+      "mehrachs": {
+        "max_mrad": 16.86866183907054,
+        "gelenk": 4,
+        "je_gelenk_mrad": [
+          9.857065199866192,
+          8.998306224605734,
+          11.110738315364799,
+          13.329312705190999,
+          16.86866183907054,
+          9.71630753130226
+        ],
+        "ende_mrad": 0.30147815777537346
+      },
+      "serie": {
+        "art": "online",
+        "tempo": 2.0,
+        "beschl": 3.0,
+        "vorlauf": 2,
+        "lauf": 4,
+        "start": "17:00:40"
+      }
+    },
+    "serie_5": {
+      "kennzahlen": {
+        "proben": 626,
+        "leserate_hz": 198.32162277176226,
+        "groesste_luecke_ms": 22.25017547607422,
+        "verzug_ms": 4.000000000000087,
+        "folgefehler_rms_mrad": 5.180367810978664,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.09888558476437999,
+        "dauer_faktor": 1.0199797160026463,
+        "welligkeit_prozent": 73.09871913217266,
+        "stillstand_prozent": 72.02797202797203,
+        "neue_werte_hz": 49.72419240350261,
+        "wiederholt_prozent": 72.02797202797203,
+        "welligkeit_neu_prozent": 27.483061508580498,
+        "einbruch_neu_prozent": 3.2979463658189587,
+        "tempo_p5_anteil": 0.5648055679705878,
+        "v_ist_max": 0.4483317262445304,
+        "v_plan_max": 0.15707963267948966,
+        "spitze_hz": 49.225663716814154,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 89.08006158940448,
+        "ende_s": 3.05076115036011
+      },
+      "lesedauer_ms": 4.854083061218262,
+      "lesefehler": 0,
+      "taktueberlaeufe": 0,
+      "servo_hz": 15.0,
+      "online_hz": 15.0,
+      "codes": [
+        "None"
+      ],
+      "aufrufe": 37,
+      "fehler": null,
+      "vorlauf_takte": 1,
+      "tempo_faktor": 2.0,
+      "beschl_faktor": 3.0,
+      "v_tcp_ms": 0.17889408325418946,
+      "v_rot_rads": 0.41483661021837775,
+      "bewegt": true,
+      "richtung": [
+        1.0,
+        -0.5,
+        -0.5,
+        0.8,
+        -0.8,
+        1.0
+      ],
+      "mehrachs": {
+        "max_mrad": 14.909562930075948,
+        "gelenk": 4,
+        "je_gelenk_mrad": [
+          10.305093052726825,
+          8.111075802181178,
+          9.896239800228912,
+          12.998618775668714,
+          14.909562930075948,
+          9.312117490585248
+        ],
+        "ende_mrad": 0.35316012767977467
+      },
+      "serie": {
+        "art": "online",
+        "tempo": 2.0,
+        "beschl": 3.0,
+        "vorlauf": 1,
+        "lauf": 5,
+        "start": "17:00:48"
+      }
+    },
+    "serie_6": {
+      "kennzahlen": {
+        "proben": 335,
+        "leserate_hz": 126.62240939485879,
+        "groesste_luecke_ms": 24.036884307861328,
+        "verzug_ms": 72.00000000000014,
+        "folgefehler_rms_mrad": 2.4116475853439856,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.10025740400901505,
+        "dauer_faktor": 1.0099141003995102,
+        "welligkeit_prozent": 74.16894877935172,
+        "stillstand_prozent": 55.81395348837209,
+        "neue_werte_hz": 47.521775519741404,
+        "wiederholt_prozent": 55.23255813953488,
+        "welligkeit_neu_prozent": 42.01220491921241,
+        "einbruch_neu_prozent": 20.71241816070953,
+        "tempo_p5_anteil": 0.22799595317858712,
+        "v_ist_max": 0.4913194008311465,
+        "v_plan_max": 0.15707963267948966,
+        "spitze_hz": 5.530973451327434,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 99.03649252490452,
+        "ende_s": 2.137834108352663
+      },
+      "lesedauer_ms": 7.42650032043457,
+      "lesefehler": 0,
+      "taktueberlaeufe": 3,
+      "servo_hz": 60.0,
+      "mehrachs": {
+        "max_mrad": 8.726995108870831,
+        "gelenk": 0,
+        "je_gelenk_mrad": [
+          8.726995108870831,
+          4.140665872601423,
+          4.289719669861913,
+          5.490110928420555,
+          4.97139216203446,
+          8.418775824586167
+        ],
+        "ende_mrad": 0.0494349277345707
+      },
+      "serie": {
+        "art": "servo_j",
+        "lauf": 6,
+        "start": "17:00:56"
+      }
+    }
+  },
+  "befunde": [
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

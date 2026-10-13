@@ -654,3 +654,8 @@ ist es möglich den planer bei override 0,2 soweit anzupassen das der arm nicht 
 
 greifer ist erstmal zweitrangig da dieser erst noch verdrahtet werden muss (dauert noch)
 
+
+GUI Anpassen checkup fenster
+Test dirket vor speichern von Protokoll gültig (davor war nicht richtig der roboter an simulation / power off)
+roboter switcht die ganze zeit zwischen idle und active
+

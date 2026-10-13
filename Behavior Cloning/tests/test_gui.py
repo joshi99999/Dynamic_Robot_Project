@@ -1164,3 +1164,10 @@ def test_protocol_lists_findings_and_full_output():
     assert "[FEHLER] Dwell zu kurz" in text
     assert "blockiert nicht" not in text.split("Vollstaendige Ausgabe")[0]
     assert text.endswith("ganze Ausgabe")
+
+
+def test_execution_only_in_argv_when_it_differs():
+    standard = recording.record_argv("out", execution=config.EXECUTION_MODE)
+    assert "--ausfuehrung" not in standard
+    online = recording.record_argv("out", execution="online")
+    assert online[online.index("--ausfuehrung") + 1] == "online"

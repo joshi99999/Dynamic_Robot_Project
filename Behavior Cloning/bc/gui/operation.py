@@ -91,6 +91,7 @@ def describe_policy(path):
         "in_simulation": recording.get("in_simulation"),
         "override": recording.get("override"),
         "servo_rate_hz": recording.get("servo_rate_hz"),
+        "execution": (recording.get("execution") or {}).get("mode") or "servo_j",
         "dataset": dataset.get("path"),
         "episodes": dataset.get("episodes"),
         "frames": dataset.get("frames"),
@@ -121,7 +122,9 @@ def policy_summary(described):
     second = []
     if described["rate_hz"] is not None:
         second.append("%g Hz" % described["rate_hz"])
-    if described["servo_rate_hz"] is not None:
+    if described.get("execution") == "online":
+        second.append("Ausführung online")
+    elif described["servo_rate_hz"] is not None:
         second.append("servo_j %g Hz" % described["servo_rate_hz"])
     if described["override"] is not None:
         second.append("Override %.2f" % described["override"])

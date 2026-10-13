@@ -53,6 +53,12 @@ CONSISTENCY_KEYS = (
     ("planner", "ptp_joint_speed_rads"),
     ("planner", "segment_ramp_s"),
     ("planner", "gripper_dwell_s"),
+    # Ausfuehrungsart (bc/execution.py): das Folgeverhalten des Arms wird
+    # mitgelernt -- servo_j- und online-Episoden nie mischen.
+    ("execution", "mode"),
+    ("execution", "lead_steps"),
+    ("execution", "speed_factor"),
+    ("execution", "accel_factor"),
 )
 
 _STATE_NAMES = [

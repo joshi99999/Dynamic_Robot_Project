@@ -1,0 +1,110 @@
+{
+  "erzeugt": "2026-10-13T16:30:13",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": false,
+  "argumente": {
+    "move": true,
+    "tests": "online_notstopp",
+    "joint": 1,
+    "amplitude": 0.1,
+    "dauer": 2.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "vergleich_raten": "90,120",
+    "online_vorlauf": 2,
+    "online_tempo": 1.3,
+    "online_beschl": 1.5,
+    "richtung": "1,-0.5,-0.5,0.8,-0.8,1",
+    "override": 1.0,
+    "doku": false,
+    "real_robot": true
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "online_notstopp": {
+      "kennzahlen": {
+        "proben": 473,
+        "leserate_hz": 202.65764742830913,
+        "groesste_luecke_ms": 14.097213745117188,
+        "verzug_ms": -47.99999999999996,
+        "folgefehler_rms_mrad": 30.600395343890973,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.055230798504448925,
+        "dauer_faktor": 1.297976303520014,
+        "welligkeit_prozent": 73.47434793189669,
+        "stillstand_prozent": 89.3470790378007,
+        "neue_werte_hz": 49.73714242346939,
+        "wiederholt_prozent": 72.5085910652921,
+        "welligkeit_neu_prozent": 64.87733196999373,
+        "einbruch_neu_prozent": 69.44024683771934,
+        "tempo_p5_anteil": -0.04566323392623394,
+        "v_ist_max": 0.4264698784679629,
+        "v_plan_max": 0.15707963267948966,
+        "spitze_hz": 49.7787610619469,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 7.225422648028951,
+        "ende_s": 0.6987994327545173
+      },
+      "lesedauer_ms": 4.873037338256836,
+      "lesefehler": 0,
+      "taktueberlaeufe": 0,
+      "servo_hz": 15.0,
+      "codes": [
+        "None"
+      ],
+      "aufrufe": 8,
+      "fehler": null,
+      "vorlauf_takte": 2,
+      "tempo_faktor": 1.3,
+      "beschl_faktor": 1.5,
+      "v_tcp_ms": 0.0874498010883271,
+      "v_rot_rads": 0.1570537953688403,
+      "bewegt": true,
+      "richtung": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "abbruch": "notstopp",
+      "stopp": {
+        "tempo_beim_stopp_rads": 0.10941884129784175,
+        "weg_nach_stopp_mrad": 4.0862461856982915,
+        "stillstand_nach_ms": 96.00000000000037,
+        "ueber_letztes_ziel_mrad": 0.0,
+        "rest_bis_letztes_ziel_mrad": 23.855447681249366,
+        "bewegung_nach_500ms_mrad": 0.038199716885831125
+      }
+    }
+  },
+  "befunde": [
+    [
+      "ok",
+      "online_notstopp: Arm steht nach 96 ms, 4.1 mrad nach dem Befehl -- haelt VOR dem letzten Ziel an (Restweg 23.9 mrad)."
+    ],
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "erzeugt": "2026-10-13T16:38:09",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": false,
+  "argumente": {
+    "move": true,
+    "tests": "online_mehrachs",
+    "joint": 1,
+    "amplitude": 0.1,
+    "dauer": 2.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "vergleich_raten": "90,120",
+    "online_vorlauf": 2,
+    "online_tempo": 2.0,
+    "online_beschl": 3.0,
+    "richtung": "1,-0.5,-0.5,0.8,-0.8,1",
+    "override": 1.0,
+    "doku": false,
+    "real_robot": true
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "online_mehrachs": {
+      "kennzahlen": {
+        "proben": 594,
+        "leserate_hz": 189.18827244023456,
+        "groesste_luecke_ms": 13.355493545532227,
+        "verzug_ms": -63.99999999999997,
+        "folgefehler_rms_mrad": 5.001703484124294,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.0989196649039546,
+        "dauer_faktor": 0.9851809580814976,
+        "welligkeit_prozent": 73.8714237282158,
+        "stillstand_prozent": 69.28838951310861,
+        "neue_werte_hz": 50.821470288836025,
+        "wiederholt_prozent": 69.28838951310861,
+        "welligkeit_neu_prozent": 31.481683206992077,
+        "einbruch_neu_prozent": 7.415573549209505,
+        "tempo_p5_anteil": 0.4817593149474194,
+        "v_ist_max": 0.5042269002171699,
+        "v_plan_max": 0.15707963267948966,
+        "spitze_hz": 49.225663716814154,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 87.13277810731593,
+        "ende_s": 3.057122873306277
+      },
+      "lesedauer_ms": 5.1773786544799805,
+      "lesefehler": 0,
+      "taktueberlaeufe": 0,
+      "servo_hz": 15.0,
+      "codes": [
+        "None"
+      ],
+      "aufrufe": 37,
+      "fehler": null,
+      "vorlauf_takte": 2,
+      "tempo_faktor": 2.0,
+      "beschl_faktor": 3.0,
+      "v_tcp_ms": 0.17894596859617623,
+      "v_rot_rads": 0.41490804129797426,
+      "bewegt": true,
+      "richtung": [
+        1.0,
+        -0.5,
+        -0.5,
+        0.8,
+        -0.8,
+        1.0
+      ],
+      "mehrachs": {
+        "max_mrad": 17.574282646684146,
+        "gelenk": 4,
+        "je_gelenk_mrad": [
+          10.501222010160266,
+          9.424779524830951,
+          11.563748061334866,
+          13.398474919597614,
+          17.574282646684146,
+          9.120040089817927
+        ],
+        "ende_mrad": 0.21796309046617432
+      },
+      "nicht_deutbar": []
+    }
+  },
+  "befunde": [
+    [
+      "ok",
+      "online_mehrachs: alle Gelenke folgen der Gelenkbahn (max 17.6 mrad an Gelenk 5, Ende 0.22 mrad) -- kein Konfigurationssprung."
+    ],
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

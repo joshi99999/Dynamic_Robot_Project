@@ -1,0 +1,121 @@
+{
+  "erzeugt": "2026-10-13T16:35:18",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": false,
+  "argumente": {
+    "move": true,
+    "tests": "online_mehrachs",
+    "joint": 1,
+    "amplitude": 0.1,
+    "dauer": 2.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "vergleich_raten": "90,120",
+    "online_vorlauf": 2,
+    "online_tempo": 1.3,
+    "online_beschl": 3.0,
+    "richtung": "1,-0.5,-0.5,0.8,-0.8,1",
+    "override": 1.0,
+    "doku": false,
+    "real_robot": true
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "online_mehrachs": {
+      "kennzahlen": {
+        "proben": 597,
+        "leserate_hz": 188.22042721234968,
+        "groesste_luecke_ms": 25.600194931030273,
+        "verzug_ms": 64.00000000000014,
+        "folgefehler_rms_mrad": 14.586965261811446,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.08700434929180384,
+        "dauer_faktor": 1.139710275860787,
+        "welligkeit_prozent": 68.30348784768715,
+        "stillstand_prozent": 70.1492537313433,
+        "neue_werte_hz": 49.594849556787025,
+        "wiederholt_prozent": 70.1492537313433,
+        "welligkeit_neu_prozent": 46.25356610501903,
+        "einbruch_neu_prozent": 37.25398087738045,
+        "tempo_p5_anteil": 0.2717377038487723,
+        "v_ist_max": 0.6724741826775287,
+        "v_plan_max": 0.15707963267948966,
+        "spitze_hz": 49.225663716814154,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 62.25838431273705,
+        "ende_s": 2.241506488800051
+      },
+      "lesedauer_ms": 5.119562149047852,
+      "lesefehler": 0,
+      "taktueberlaeufe": 0,
+      "servo_hz": 15.0,
+      "codes": [
+        "None"
+      ],
+      "aufrufe": 37,
+      "fehler": null,
+      "vorlauf_takte": 2,
+      "tempo_faktor": 1.3,
+      "beschl_faktor": 3.0,
+      "v_tcp_ms": 0.178983509528066,
+      "v_rot_rads": 0.4149544932654024,
+      "bewegt": true,
+      "richtung": [
+        1.0,
+        -0.5,
+        -0.5,
+        0.8,
+        -0.8,
+        1.0
+      ],
+      "mehrachs": {
+        "max_mrad": 29.698390768291226,
+        "gelenk": 0,
+        "je_gelenk_mrad": [
+          29.698390768291226,
+          10.40856055270184,
+          24.92212367061186,
+          16.75384006368835,
+          17.46365731956867,
+          26.351421456442203
+        ],
+        "ende_mrad": 0.41944787168746167
+      },
+      "nicht_deutbar": [
+        "Bahn lief 1.14-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht)"
+      ]
+    }
+  },
+  "befunde": [
+    [
+      "warnung",
+      "online_mehrachs: Gelenk 1 weicht unterwegs bis 29.7 mrad von der Gelenkbahn ab, kehrt aber in die Startstellung zurueck (Ende 0.42 mrad) -- kein anderer IK-Zweig, sondern Verzug/Glaettung der Steuerung. Mit groesseren Hoechstwerten wiederholen (--online-beschl 3)."
+    ],
+    [
+      "warnung",
+      "online_mehrachs nicht deutbar: Bahn lief 1.14-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht)."
+    ],
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

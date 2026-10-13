@@ -122,6 +122,7 @@ Override und servo_j-Rate der Aufzeichnung.
 |---|---|---|---|
 | Override | Backend-Leiste / `--override` | 2.2 | offen (Sicherheitsdiskussion); Empfehlung 1,0 |
 | servo_j-Rate | Aufnahme-Reiter / `--servo-rate` | 2.1 | offen; Standard 60 Hz |
+| **Ausführung** | Aufnahme-Reiter / `--ausfuehrung` | 2a | **entschieden 13.10.: `online` an der Anlage** (Vorlauf 2, Tempo ×1,3, Beschl. ×1,5) — gegen das Zittern, `Zittern-an-der-Anlage.md`. An echter Aufnahmebahn noch zu bestätigen |
 | Planer-Tempo | Aufnahme-Reiter / `--transit-speed`, `--approach-speed`, `--ptp-speed` | 2.5 | offen; Standard 0,15 / 0,05 m/s, 0,5 rad/s (provisorisch) |
 | Rampe, Dwell | `config.SEGMENT_RAMP_S`, `config.GRIPPER_DWELL_S` | 2.3 | Dwell unverifiziert |
 | Achs- und Filtergrenzen | `JOINT_LIMITS_RAD`, `SERVO_MAX_*` | 1, 2.2 | unverifiziert |
