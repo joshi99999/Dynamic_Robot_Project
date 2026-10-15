@@ -9,7 +9,8 @@ Ablauf pro Zeitschritt i (bei CONTROL_RATE_HZ):
    linear anfahren: Zwischenschritte mit SERVO_RATE_HZ (bc/servo.py), der
    letzte faellt genau auf Takt i (:class:`bc.sync.Pacer`). Dieselbe
    Interpolation nutzt die Inferenz -- sonst folgt der Arm dort anders als
-   in den Daten.
+   in den Daten. Ausfuehrung ``servo_j_pos``: dieselben Positionen ohne
+   Geschwindigkeit/Beschleunigung (Profil ``pos``).
    Ausfuehrung ``online`` (bc/execution.py): statt dessen EIN Ziel je Takt
    per ``robot.online_j`` -- der Sollwinkel des Schritts i+Vorlauf, die
    Steuerung interpoliert selbst (gegen das Zittern an der Anlage,
@@ -107,9 +108,12 @@ class EpisodeRecorder(object):
                 "%.4f rad > %.4f rad) -- vorher move_to_joints ausfuehren."
                 % (start_error, config.START_POSE_TOL_RAD)
             )
-        interp = ServoInterpolator(self.rate_hz, self.servo_rate_hz).reset(
-            plan.joints_noisy[0]
-        )
+        # Profil der Zwischenschritte: servo_j linear, servo_j_pos ohne v/a
+        # (bc/execution.py); bei online ungenutzt.
+        interp = ServoInterpolator(
+            self.rate_hz, self.servo_rate_hz,
+            profile=execution_module.servo_profile(self.execution) or "linear",
+        ).reset(plan.joints_noisy[0])
 
         steps = {
             "observation.state": [],

@@ -19,6 +19,13 @@ Geschwindigkeit und Beschleunigung zu jedem Zwischenschritt: v = Ziel-
 differenz / Taktdauer (konstant im Fenster), a = Aenderung dieser
 Geschwindigkeit gegenueber dem Vorfenster / Taktdauer. Beides ist kausal
 und passt zur gesendeten Position (ports.RobotPort.servo_j: nie pauschal 0).
+
+Profil ``pos`` (Ausfuehrung ``servo_j_pos``, bc/execution.py): dieselben
+Positionen, v = a = 0 -- BEWUSST, als eigene Ausfuehrungsart. VM
+2026-10-14 (tools/check_servo_stream.py, ganze Aufnahmebahn): mit v folgt
+die Steuerung jeder Stufe und faehrt wellig (quer 0,46 mm, Schwankung bei
+8-10 Hz); ohne v glaettet sie selbst (0,09 mm), um ~70 ms Verzug. Die
+Beschleunigung allein (Profil ``a0`` im Werkzeug) aenderte nichts.
 """
 
 import numpy as np
@@ -49,11 +56,17 @@ def substeps_for(servo_rate_hz, control_rate_hz=config.CONTROL_RATE_HZ):
 class ServoInterpolator(object):
     """Zerlegt 15-Hz-Ziele in Zwischenschritte fuer servo_j."""
 
-    def __init__(self, control_rate_hz=config.CONTROL_RATE_HZ, servo_rate_hz=config.SERVO_RATE_HZ):
+    PROFILES = ("linear", "pos")
+
+    def __init__(self, control_rate_hz=config.CONTROL_RATE_HZ, servo_rate_hz=config.SERVO_RATE_HZ,
+                 profile="linear"):
         substeps = substeps_for(servo_rate_hz, control_rate_hz)
+        if profile not in self.PROFILES:
+            raise ValueError("Profil %r unbekannt (%s)" % (profile, ", ".join(self.PROFILES)))
         self.substeps = substeps
         self.control_period = 1.0 / control_rate_hz
         self.servo_rate_hz = servo_rate_hz
+        self.profile = profile
         self._q = None
         self._v = None
 
@@ -85,12 +98,15 @@ class ServoInterpolator(object):
         velocity = (target - self._q) / self.control_period
         acceleration = (velocity - self._v) / self.control_period
         start = self._q
+        self._v = velocity
+        if self.profile == "pos":
+            velocity = np.zeros_like(velocity)
+            acceleration = np.zeros_like(acceleration)
         out = []
         for k in range(1, self.substeps + 1):
             q = target.copy() if k == self.substeps else start + (k / self.substeps) * (target - start)
             out.append((q, velocity.copy(), acceleration.copy()))
         self._q = target.copy()
-        self._v = velocity
         return out
 
 

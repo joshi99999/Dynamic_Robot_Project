@@ -1,0 +1,186 @@
+"""tools/check_servo_stream.py: Sollwert-Profile und Auswertung.
+
+Hardwarefrei. Die Auswertung muss glatte Fahrt, Stop-and-go laengs der Bahn
+und Zacken quer zur Bahn auseinanderhalten -- darum geht es beim Vergleich
+der Stromarten (Befund VM 2026-10-14).
+"""
+
+import sys
+from pathlib import Path
+
+import _paths  # noqa: F401
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+
+import check_servo_stream as tool  # noqa: E402
+from check_trajectory_buffer import sendetakt  # noqa: E402
+
+from bc.servo import ServoInterpolator  # noqa: E402
+
+
+def _knoten(n=40, seed=0):
+    rng = np.random.default_rng(seed)
+    q = np.cumsum(rng.normal(0.0, 0.01, size=(n, 6)), axis=0)
+    q[:3] = q[3]
+    q[-3:] = q[-4]
+    return q
+
+
+def test_linear_entspricht_dem_recorder():
+    q = _knoten()
+    prof = tool.Profil(q, "linear")
+    interp = ServoInterpolator(15.0, 60.0).reset(q[0])
+    k = 0
+    q0, v0, a0 = prof.at(0.0)
+    assert np.allclose(q0, interp.hold()[0])
+    for i in range(1, len(q)):
+        for qc, vc, ac in interp.window(q[i]):
+            k += 1
+            qp, vp, ap = prof.at(k / 60.0)
+            if k / 60.0 >= prof.dauer - 1e-12:
+                assert np.allclose(qp, qc)
+                continue
+            assert np.allclose(qp, qc) and np.allclose(vp, vc) and np.allclose(ap, ac)
+
+
+def test_a0_und_pos():
+    q = _knoten()
+    _, v, a = tool.Profil(q, "a0").at(0.5)
+    assert np.any(v != 0) and np.all(a == 0)
+    _, v, a = tool.Profil(q, "pos").at(0.5)
+    assert np.all(v == 0) and np.all(a == 0)
+
+
+def test_spline_trifft_ziele_und_ist_stetig():
+    q = _knoten()
+    prof = tool.Profil(q, "spline")
+    T = prof.T
+    for i in range(1, len(q) - 1):
+        assert np.allclose(prof.at(i * T)[0], q[i])
+        links = prof.at(i * T - 1e-7)[1]
+        rechts = prof.at(i * T + 1e-7)[1]
+        assert np.allclose(links, rechts, atol=1e-4)
+    # v ist die Ableitung von q
+    t = 0.71
+    dq = (prof.at(t + 1e-6)[0] - prof.at(t - 1e-6)[0]) / 2e-6
+    assert np.allclose(dq, prof.at(t)[1], atol=1e-5)
+    dv = (prof.at(t + 1e-6)[1] - prof.at(t - 1e-6)[1]) / 2e-6
+    assert np.allclose(dv, prof.at(t)[2], atol=1e-3)
+
+
+def test_sendezeiten_enden_am_letzten_ziel():
+    prof = tool.Profil(_knoten(n=31), "linear")   # 2 s
+    for rate in (30.0, 50.0, 60.0, 90.0, 120.0, 47.0):
+        ts = prof.sendezeiten(rate)
+        assert ts[0] == 0.0 and abs(ts[-1] - prof.dauer) < 1e-9
+        assert np.all(np.diff(ts) > 0)
+
+
+def test_parse_lauf():
+    l = tool.parse_lauf("spline-120-r0.5-o0.25")
+    assert l == {"name": "spline-120-r0.5-o0.25", "profil": "spline", "rate": 120.0,
+                 "rauschen": 0.5, "override": 0.25}
+    for falsch in ("spline-120-r0.5", "kubisch-60-r0-o1", "linear-60-r2-o1", "linear-1000-r0-o1"):
+        try:
+            tool.parse_lauf(falsch)
+        except ValueError:
+            continue
+        raise AssertionError("nicht abgelehnt: %s" % falsch)
+
+
+def test_standardmatrix_ist_gueltig():
+    class A:
+        laeufe = ""
+        matrix = "standard"
+    laeufe = tool.laeufe_aus(A)
+    assert len(laeufe) == sum(len(v) for v in tool.MATRIX.values())
+    assert len({l["name"] for l in laeufe}) == len(laeufe)  # Wiederholung umbenannt
+    assert laeufe[-1]["name"] == "linear-60-r0-o1#2"
+
+
+def test_raster_zeiten_entfernt_lesejitter():
+    rng = np.random.default_rng(1)
+    wahr = 5.0 + 0.02 * np.arange(300)
+    gelesen = wahr + rng.uniform(0.0, 0.004, size=300)   # erst nach bis zu 4 ms gesehen
+    t, info = tool.raster_zeiten(gelesen)
+    assert info["raster"]
+    assert np.max(np.abs(np.diff(t) - 0.02)) < 2e-5
+
+
+def test_raster_zeiten_lehnt_ab_ohne_raster():
+    rng = np.random.default_rng(2)
+    t_in = np.cumsum(rng.uniform(0.005, 0.035, size=200))
+    t, info = tool.raster_zeiten(t_in)
+    assert not info["raster"] and np.array_equal(t, t_in)
+
+
+def _fahrt(stop_and_go=False, zacken_mm=0.0, hz=50.0, dauer=4.0):
+    """Gerade Fahrt in x mit 0,1 m/s, optional mit 60-Hz-Halten bzw. Querzacken."""
+    t = np.arange(0.0, dauer, 1.0 / hz)
+    x = 0.1 * t
+    if stop_and_go:
+        # Arm faehrt jeden 60-Hz-Schritt in 4 ms an und steht dann
+        stufe = np.floor(t * 60.0) / 60.0
+        x = 0.1 * (stufe + np.minimum(t - stufe, 0.004) / 0.004 / 60.0)
+    y = zacken_mm * 1e-3 * np.where(np.sin(2 * np.pi * 7.0 * t + 0.1) >= 0, 1.0, -1.0)
+    return t, np.stack([x, y, np.zeros_like(t)], 1)
+
+
+def test_tempo_kennzahlen_trennen_glatt_und_stop_and_go():
+    t, p = _fahrt()
+    glatt = tool.tempo_kennzahlen(t, p)
+    t2, p2 = _fahrt(stop_and_go=True, hz=250.0)
+    treppe = tool.tempo_kennzahlen(t2, p2)
+    assert glatt["tempo_welligkeit_prozent"] < 1.0
+    assert treppe["tempo_welligkeit_prozent"] > 50.0
+    assert treppe["stillstand_prozent"] > 30.0
+
+
+def test_querabweichung_sieht_zacken_aber_nicht_langsfehler():
+    t, p = _fahrt(zacken_mm=0.5)
+    ref = np.stack([np.linspace(-0.01, 0.5, 2000), np.zeros(2000), np.zeros(2000)], 1)
+    dev = tool.querabweichung(p, ref)
+    assert np.allclose(np.abs(dev[:, 1]), 0.5e-3, atol=1e-9)
+    assert np.max(np.abs(dev[:, 0])) < 1e-6   # Laengsfehler zaehlt nicht
+    # Stop-and-go laengs ist quer unsichtbar
+    _, p2 = _fahrt(stop_and_go=True, hz=250.0)
+    assert np.max(np.linalg.norm(tool.querabweichung(p2, ref), axis=1)) < 1e-6
+
+
+def test_auswerten_lauf_findet_verzug():
+    q = _knoten(n=46)
+    prof = tool.Profil(q, "linear")
+    t = np.arange(-0.3, prof.dauer + 0.5, 0.02)
+    verzug = 0.06
+    ist = prof.positionen(t - verzug)
+
+    def fk_pos(qs):
+        return np.asarray(qs)[:, :3]
+
+    send = np.stack([np.arange(0, prof.dauer, 1 / 60.0)] * 3, 1)
+    k = tool.auswerten_lauf(send, t, ist, prof, 60.0, fk_pos, 0.0)
+    assert abs(k["verzug_ms"] - 60.0) <= 4.0
+    assert k["quer"]["rms_mm"] < 0.05
+    assert k["sendetakt"]["abstand_std_ms"] < 1e-6
+
+
+def test_sendetakt_sieht_jitter_ohne_ueberlauf():
+    rng = np.random.default_rng(3)
+    soll = np.arange(600) / 60.0
+    beginn = soll + rng.uniform(0.0, 0.006, size=600)
+    k = sendetakt(np.stack([soll, beginn, beginn + 0.003], 1), 60.0, soll[-1])
+    assert 1.0 < k["abstand_std_ms"] < 4.0
+    assert abs(k["aufruf_median_ms"] - 3.0) < 1e-6
+    assert abs(k["dauer_faktor"] - 1.0) < 0.01
+
+
+def test_online_nur_mit_einem_ziel_je_takt():
+    l = tool.parse_lauf("online-15-r1-o1")
+    assert l["profil"] == "online" and l["rate"] == 15.0
+    try:
+        tool.parse_lauf("online-60-r0-o1")
+    except ValueError:
+        return
+    raise AssertionError("online mit 60 Hz nicht abgelehnt")

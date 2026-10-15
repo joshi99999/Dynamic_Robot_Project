@@ -33,6 +33,14 @@ aus den Rohdaten in `Berichte/` nachrechenbar (Anhang E).
   `move_trajectory` (fehlt in v5.0.8). Die eigentliche Herstellerlösung —
   1 kHz über die C++/DDS-API — bleibt als späterer Weg offen.
 
+> **Nachtrag 14.10. (§ 9):** Das Stop-and-go entsteht schon in der
+> Steuerung, nicht erst in der Mechanik — auch die VM am PC fährt mit
+> perfektem Sendetakt wellig (quer 0,46 mm, Schwankung bei 6–12 Hz). Der
+> Laptop ist nur als VM-Host ein Problem. Neue Option **`servo_j_pos`**
+> (servo_j ohne Geschwindigkeit): in der VM so glatt wie Override 0,5
+> (0,09 mm), ~70 ms Verzug — an der Anlage noch ungeprüft.
+> Ablauf für den nächsten Termin: `Labortag-Messplan-Zittern.md`.
+
 ---
 
 ## 1. Das Problem
@@ -89,6 +97,13 @@ Arm, mobiler Plattform und Aufbau, die von den Stößen angeregt wird
    sind damit aus den Gelenkwinkeln **nicht messbar** — nur mit einem Sensor
    von außen (Handy) oder nach Gehör/Video.
 3. **15-Hz-Aufnahmen** lösen es ohnehin nicht auf.
+
+> **Korrektur 14.10. (§ 9.4):** Punkt 1 gilt für das *Zittern* (Mechanik),
+> nicht für die *Bahn*. Die VM zeigt das Stop-and-go der Sollwert-Umsetzung
+> sehr wohl: Querabweichung zur befohlenen Bahn (zeitunabhängig, also trotz
+> 50-Hz-Zustand messbar) 0,46 mm RMS bei servo_j 60 Hz, sichtbar als
+> zackige Spur im VM-Fenster. Punkt 2 trifft nur auf Kennzahlen zu, die die
+> Zeit brauchen.
 
 ### 2.4 Was es nicht ist
 
@@ -328,6 +343,10 @@ die 50-Hz-Quelle die 60-Hz-Stufen nicht auflöst.)*
 | Weg F (1 kHz über DDS) | `read_joint_state` aus der deb in WSL2 testen, nur lesend | wenn E nicht reicht |
 | Aufbau versteifen | Kamerastange | Gruppe |
 
+> **Stand 14.10.:** Die Punkte dieser Tabelle und die neuen aus § 9.8 sind
+> als abzuarbeitender Ablauf in `Labortag-Messplan-Zittern.md` übernommen.
+> Dort werden Ergebnisse eingetragen; hier nur noch die Entscheidungen.
+
 ---
 
 ## 8. Umsetzung (13.10.2026)
@@ -352,6 +371,200 @@ der Recorder bricht dann mit „Arm folgt nicht“ ab.
 Erster Schritt beim nächsten Termin (§ 7): eine Referenzfahrt ohne Rauschen
 mit Handy am Gelenk 5 und an der Kamerastange, danach *Aufnahmen bewerten*.
 `ONLINE_VERIFIED` bleibt bis dahin `False`.
+
+---
+
+## 9. Nachtrag 14.10.2026: Wie setzt die Steuerung unseren Strom um?
+
+Alle Messungen dieses Abschnitts in der **VM** (`v5.0.0-alpha.102`,
+`is_robot_in_simulation() = True`), sofern nicht anders vermerkt. Die VM hat
+keine Mechanik: gemessen wird, wie die Steuerung den Sollwertstrom
+**umsetzt**, nicht, wie der Arm schwingt.
+
+### 9.1 Anlass
+
+Der Anwender sah in der VM-Spur (weiße Linie im VM-Fenster) ein deutliches
+Ruckeln: am PC bei Override 1 eckig, bei 0,5 glatt; am Laptop in allen
+Einstellungen zackig, mit Rauschen stärker. Drei Fragen:
+
+1. Liegt das am Laptop — und ist der Laptop auch an der Anlage das Problem?
+2. Trägt das Rauschen zum Ruckeln bei?
+3. Verstärkt die Verarbeitung unseres Sollwertstroms in der Steuerung das
+   Zittern?
+
+### 9.2 Laptop als VM-Host
+
+Episoden des Anwenders vom 14.10. (Laptop, VM auf demselben Rechner) gegen
+dieselbe Bahn am PC:
+
+| | `servo_j` je Aufruf (Median) | Takt-Überläufe | Fahrzeit / Plan | Welligkeit quer, Override 1 / Rauschen 0 | dto. Override 0,5 |
+|---|---|---|---|---|---|
+| PC + VM | 2,2 ms | 0 | 1,00 | 0,47 mm | 0,09 mm |
+| Laptop + VM (ep 0–6) | **14–64 ms** | **357–1289** | **1,4–3,4** (4 von 7 verworfen) | 0,57 mm | **0,65 mm** |
+
+Auf dem Laptop rechnen VM und Python auf derselben CPU; bei 60 Hz bleiben
+16,7 ms je Sollwert, ein Aufruf brauchte mehr. **Laptop-VM-Läufe sind für
+die Glätte nicht aussagekräftig** (dort ist auch Override 0,5 wellig).
+
+An der **Anlage** rechnet die Control-Box, der Laptop sendet nur. Am 13.10.
+hielt er den Takt (Handy-Serie Lauf 6: Fahrzeit 1,01 × Plan, 3 Überläufe,
+`servo_j` ~4,7 ms). Nicht gemessen war die Streuung *innerhalb* des Takts —
+deshalb schreiben `check_trajectory_buffer.py` (Referenzläufe) und
+`check_servo_stream.py` jetzt jeden Sendezeitpunkt mit
+(`sendetakt`: Abstand-Streuung, Verspätung gegen den Pacer, Aufrufdauer).
+
+### 9.3 Werkzeug `tools/check_servo_stream.py`
+
+Fährt die **ganze Aufnahmebahn** (Arbeitskopie `pick_to_station`, Planer
+wie `apps/record.py`, Rauschen fest mit gleichem Seed → gleiche Rauschform,
+nur skaliert) und variiert, wie der Strom gesendet wird:
+
+| Profil | Position | Geschwindigkeit v | Beschleunigung a |
+|---|---|---|---|
+| `linear` (heute, `bc/servo.py`) | linear zwischen den 15-Hz-Zielen | konstant je Takt | Sprung von v, über den Takt wiederholt |
+| `a0` | linear | konstant je Takt | 0 |
+| `pos` | linear | 0 | 0 |
+| `spline` | kubisch (Catmull-Rom) durch die Ziele | stetig, passend | passend |
+
+Dazu Senderate (frei, auch 50 Hz), Rauschen und Override. Ein Lese-Thread
+schreibt die Gelenkwinkel mit; ausgewertet werden nur die **neuen** Werte
+der Steuerung (exakt alle 20,0 ms, deshalb auf dieses Raster gelegt). FK
+lokal (URDF, ohne Tool = TCP).
+
+| Messgröße | Bedeutung |
+|---|---|
+| Welligkeit quer | Anteil < 0,33 s der Abweichung von der befohlenen Bahn (nächster Punkt, zeitunabhängig) — das Zackige in der Spur |
+| Abstand quer gesamt | dto. inkl. langsamem Anteil — Abkürzen in Ecken |
+| Tempo-Welligkeit | RMS des TCP-Tempos gegen sein 0,25-s-Mittel — das Stop-and-go längs der Bahn; Rauschboden der Messung ~9 % |
+| Spektrum | Frequenz dieser Tempo-Schwankung, auflösbar bis 25 Hz |
+| Verzug | konstanter Zeitversatz Gelenke ↔ Profil |
+
+### 9.4 Ergebnisse (Matrix 14.10. 10:51–10:59, 28 Läufe, PC)
+
+Sendetakt in **allen** Läufen sauber: 0 Überläufe, Streuung des
+Sendeabstands 0,17–0,38 ms, Fahrzeit 1,00 × Plan. Was wellig ist, kommt
+also nicht vom Rechner.
+
+**Senderate und Profil** (Rauschen 0 / 1, Override 1):
+
+| Strom | Welligkeit quer R0 | R1 | Tempo-Welligkeit R0 | Verzug |
+|---|---|---|---|---|
+| linear 30 Hz | 0,87 mm | 1,23 | 31 % | 22 ms |
+| linear 50 Hz | 0,52 | 0,75 | 25 % | 16 ms |
+| **linear 60 Hz (heute)** | **0,46** | **0,74** | **23 %** | 14 ms |
+| linear 90 Hz | 0,31 | 0,53 | 21 % | 10 ms |
+| linear 120 Hz | 0,22 | 0,40 | 18 % | 10 ms |
+| a = 0, 60 Hz | 0,44 | 0,56 | 23 % | 14 ms |
+| Spline 60 Hz | 0,43 | 0,53 | 20 % | 14 ms |
+| Spline 120 Hz | 0,23 | 0,27 | 15 % | 10 ms |
+| **v = a = 0 (`pos`), 60 Hz** | **0,09** | **0,18** | **9 %** | **70 ms** |
+
+**Override × Rauschen** (servo_j linear 60 Hz):
+
+| Override | Welligkeit quer R0 / R0,5 / R1 | Abstand quer gesamt R0 / R0,5 / R1 | Verzug |
+|---|---|---|---|
+| 1 | 0,46 / 0,47 / 0,74 mm | 0,46 / 0,47 / 0,77 mm | 14 ms |
+| 0,5 | 0,08 / 0,14 / 0,32 | 1,19 / 1,10 / 1,52 | 68–74 ms |
+| 0,25 | 0,35 / 0,44 / 0,95 | **11,2 / 10,4 / 16,4** | 380–436 ms |
+
+Der Bezugslauf (linear 60 Hz, R0, Override 1) lief zweimal (Probe 10:50
+und am Ende der Matrix): 0,47 und 0,46 mm — die VM blieb über die Matrix
+stabil. Rohdaten `Berichte/2026-10-14_10-59-58_Servo-Strom.json` / `…_Mitschrieb.npz`.
+
+![Tempo](Bilder/Zittern/08_vm_tempo_vergleich.png)
+
+*Bild 8 — TCP-Tempo befohlen (grau) und gefahren (blau). Mit
+Geschwindigkeit im Befehl folgt die Steuerung jeder Stufe und schwankt um
+±30 %; ohne Geschwindigkeit (`pos`) glättet sie selbst und läuft ~70 ms
+hinterher — fast deckungsgleich mit Override 0,5.*
+
+![Art und Rate](Bilder/Zittern/09_vm_art_und_rate.png)
+
+*Bild 9 — Welligkeit und Verzug je Strom. Feinere Stufen helfen
+gleichmäßig; 50 Hz im Gleichtakt mit der Steuerung bringt nichts, a = 0
+nichts, der Spline wenig. Den Sprung macht erst v = 0.*
+
+![Override und Rauschen](Bilder/Zittern/10_vm_override_rauschen.png)
+
+*Bild 10 — Override 0,5 glättet, 0,25 kürzt die Bahn um 1–2 cm ab.
+Rauschen verstärkt die Welligkeit (Override 1: +60 %; geglättet
+relativ mehr, absolut aber klein: 0,18–0,32 mm), erzeugt sie aber nicht.*
+
+![Spektrum VM](Bilder/Zittern/11_vm_spektrum.png)
+
+*Bild 11 — Spektrum der Tempo-Schwankung. Die Spitze liegt zwischen 6 und
+12 Hz, bei 30, 50, 60, 90 und 120 Hz Senderate (Tabelle im Bericht:
+7,5 / 8,7 / 9,3 / 10,8 / 11,5 Hz). Ein Abtastartefakt der 50-Hz-Werte
+läge bei Senderate mod 50 (20 / 0 / 10 / 10 / 20 Hz) — passt nicht.*
+
+### 9.5 Bezug zur Anlage
+
+* Auch die **Anlagen**-Steuerung liefert neue Gelenkwerte exakt alle
+  **20 ms** (Mitschriebe 13.10., alle Läufe Median 19,8–20,4 ms).
+* Handy 13.10., Lauf 6 (servo_j 60 Hz): Energie 26 % bei 5–7 Hz, 38 % bei
+  7–9 Hz, **23 % bei 9–11 Hz**, mit einer eigenen Spitze bei **10,0 Hz**.
+  online-Läufe haben dort nichts (Bild 12).
+
+![Handy 10 Hz](Bilder/Zittern/12_handy_10hz.png)
+
+*Bild 12 — Handy an Gelenk 5, 13.10.: servo_j (orange) gegen online Lauf 1
+(blau). Neben der Eigenschwingung 6–8 Hz eine zweite Spitze bei 10 Hz.*
+
+### 9.6 Erkenntnisse
+
+1. **Das Stop-and-go entsteht in der Steuerung.** Mit perfektem Takt und
+   ohne Mechanik setzt die VM unseren Strom wellig um. Die Schwankung liegt
+   bei 6–12 Hz — an der Anlage direkt neben der Eigenschwingung des
+   Aufbaus (6–8 Hz). Das passt zum Handy-Befund, ist aber ein Rückschluss
+   aus der VM (§ 2.2 bleibt richtig, ist jetzt genauer).
+2. **Die mitgeschickte Geschwindigkeit ist der Schalter.** Mit v folgt die
+   Steuerung jeder Stufe (schnell, wellig); ohne v glättet sie (ruhig, ~1
+   Takt Verzug, ~1 mm Abkürzen). Die Beschleunigung spielt keine Rolle —
+   die Unstimmigkeit von `a` in `bc/servo.py` ist **nicht** die Ursache.
+3. **Senderate hilft gleichmäßig, Gleichtakt nicht.** 120 Hz halbiert die
+   Welligkeit; 50 Hz ist nicht besser als 60. Die Schwebungs-Hypothese
+   (60 gegen 50 Hz) ist als *Ursache* damit unwahrscheinlich.
+4. **Rauschen verstärkt, verursacht nicht** (Override 1: +60 % Welligkeit
+   bei Rauschen 1; mit Glättung 0,18–0,32 mm; der Befehl selbst bleibt
+   glatt).
+5. **Laptop:** als VM-Host ungeeignet für Glätte-Urteile; an der Anlage
+   hielt er den Takt — die Streuung im Takt wird ab jetzt gemessen.
+6. **Override 0,5 und `pos` sind gleichwertig glatt.** `pos` ändert nur den
+   Befehl, nicht die Steuerung (Override bremst auch andere Bewegungen und
+   streckt bei schneller Fahrt die Zeit, § 2.4).
+
+### 9.7 Umsetzung (14.10.)
+
+| Wo | Was |
+|---|---|
+| `bc/execution.py` | neue Ausführungsart **`servo_j_pos`**: servo_j mit v = a = 0; `auto` wählt sie **nie** (an der Anlage ungeprüft) |
+| `bc/servo.py` | `ServoInterpolator(profile="pos")`: gleiche Positionen, v = a = 0 |
+| `bc/recorder.py`, `apps/infer.py` | Profil aus der Ausführungsart — Aufnahme und Inferenz identisch; die servo_j-Rate wird auch für `servo_j_pos` gegen die Aufnahme geprüft |
+| `apps/record.py`, GUI (Aufnahme, Betrieb) | Auswahl „servo_j 60 Hz ohne Geschwindigkeit“; Metadaten `execution/mode = servo_j_pos`, der Export verbietet Mischungen (bestehender Konsistenzschlüssel) |
+| `tools/check_servo_stream.py` (neu) | Matrix über die ganze Bahn, § 9.3 |
+| `tools/check_trajectory_buffer.py` | Sendezeitpunkte je Referenzlauf (`sendetakt`) |
+| `tools/report_servo_stream.py` (neu) | Bilder 8–12 aus den Rohdaten |
+| Tests | `test_check_servo_stream` (12), Recorder/Execution/Servo je +1. Gesamt 335/336 (nur der bekannte ArUco-Fall) |
+
+Gegenprobe in der VM mit `apps/record.py --ausfuehrung servo_j_pos`
+(Rauschen 1): Episode vollständig, Welligkeit quer **0,16 mm** gegen 0,67 mm
+mit `servo_j` am Morgen, größter Schleppfehler 0,05 rad (Abbruchgrenze
+0,30). Daten `data_vm/2026-10-14/servo_j_pos/`.
+
+**Entscheidung bleibt bis zur Anlage:** `auto` = online an der Anlage.
+`servo_j_pos` ist der Gegenkandidat: bahntreuer als online, derselbe
+Befehl wie bisher, in der VM fahrbar.
+
+### 9.8 Offen (→ `Labortag-Messplan-Zittern.md`)
+
+* Glättet die **Anlagen**-Steuerung (v5.0.8) ohne v genauso? Ohne
+  Glättung wäre v = 0 „an jedem Sollwert anhalten“ — dann **mehr**
+  Stop-and-go. Erst an der kleinen Testbahn mit Handy prüfen.
+* `pos` gegen online an einer echten Aufnahmebahn, Handy an Gelenk 5 und
+  an der Kamerastange.
+* Hält der Laptop an der Anlage 120 Hz, wenn nichts anderes läuft
+  (Spline 120 Hz als Ausweichweg mit kleinem Verzug)?
+* Sendezeit-Streuung des Laptops an der Anlage.
 
 ---
 
@@ -460,8 +673,16 @@ Liest `Berichte/2026-10-13_*_Trajektorien-Puffer.json` (+ `_Mitschrieb.npz`)
 und die Handy-Datei, erzeugt die Bilder in `Dokumentation/Bilder/Zittern/`
 und gibt die Tabellen B und C aus. Braucht matplotlib (nur dieses Werkzeug).
 
+Abschnitt 9 (Bilder 8–12, Kennzahlen neu rechnen ohne Steuerung):
+
+```bat
+python tools/report_servo_stream.py
+python tools/check_servo_stream.py --auswerten Berichte/2026-10-14_10-59-58_Servo-Strom
+```
+
 ### F. Verwandte Dokumente
 
 * `Taktzeit-und-RPC-Latenz.md` — Aufrufkosten, Raten, VM-Gegenproben (§ 11)
 * `Laptop-Inbetriebnahme-Befunde.md` — das Ruckeln 01.–03.10. (Laptop-Leistung)
 * `Anlagentag-Checkliste.md` — Ablauf am Anlagentag (Abschnitt 2a)
+* `Labortag-Messplan-Zittern.md` — Ablauf und Ergebnisse des nächsten Termins (ab 14.10.)

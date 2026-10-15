@@ -371,6 +371,40 @@ class Mitschrieb(object):
 # -- Auswertung (hardwarefrei, getestet in tests/test_check_trajectory_buffer.py)
 
 
+def sendetakt(sendungen, rate, soll_dauer=None):
+    """Wie gleichmaessig gingen die Sollwerte raus? (Befund 2026-10-14)
+
+    ``sendungen``: (N, 3) mit Sollzeit des Pacers, Beginn und Ende jedes
+    Aufrufs (Host-Zeit). Takt-Ueberlaeufe zaehlen nur Sollwerte, die einen
+    GANZEN Takt zu spaet kamen -- ein Laptop, der jeden Aufruf um ein paar
+    Millisekunden verschiebt, faellt dort nicht auf, verformt aber die
+    Treppe, die die Steuerung faehrt. Deshalb hier der Abstand zwischen
+    zwei Aufrufen gegen die Sollperiode und die Verspaetung gegen den
+    Pacer. ``soll_dauer``: geplante Dauer der Bahn (s) fuer den
+    Streckungsfaktor.
+    """
+    s = np.asarray(sendungen, dtype=float).reshape(-1, 3)
+    if len(s) < 3:
+        return {}
+    periode = 1.0 / float(rate)
+    abstand = np.diff(s[:, 1])
+    spaet = s[:, 1] - s[:, 0]
+    dauer = s[:, 2] - s[:, 1]
+    out = {
+        "sendungen": int(len(s)),
+        "abstand_std_ms": 1e3 * float(np.std(abstand)),
+        "abstand_abw_p95_ms": 1e3 * float(np.percentile(np.abs(abstand - periode), 95)),
+        "abstand_max_ms": 1e3 * float(np.max(abstand)),
+        "verspaetung_median_ms": 1e3 * float(np.median(spaet)),
+        "verspaetung_p95_ms": 1e3 * float(np.percentile(spaet, 95)),
+        "aufruf_median_ms": 1e3 * float(np.median(dauer)),
+        "aufruf_p95_ms": 1e3 * float(np.percentile(dauer, 95)),
+    }
+    if soll_dauer:
+        out["dauer_faktor"] = float((s[-1, 1] - s[0, 1]) / float(soll_dauer))
+    return out
+
+
 def _gleitmittel(x, n):
     if n <= 1:
         return x
@@ -583,7 +617,9 @@ def zeile(name, k):
 
 def _stufe_text(st, args):
     if st["art"] == "servo_j":
-        return "servo_j %g Hz (heutiges Verfahren)" % args.servo_rate
+        return "servo_j %g Hz%s" % (
+            args.servo_rate,
+            " ohne Geschwindigkeit (pos)" if args.servo_profil == "pos" else " (heutiges Verfahren)")
     return "online Tempo x%.1f Beschl. x%.1f Vorlauf %d" % (st["tempo"], st["beschl"],
                                                            st["vorlauf"])
 
@@ -942,19 +978,21 @@ class Lauf(object):
         in Dokumentation/Taktzeit-und-RPC-Latenz.md, Abschnitt 11).
         """
         rate = float(rate if rate is not None else self.args.servo_rate)
-        section("2a. %s: servo_j wie im Recorder (%g Hz, linear je Takt)" % (name, rate))
+        profil = self.args.servo_profil
+        section("2a. %s: servo_j wie im Recorder (%g Hz, Profil %s)" % (name, rate, profil))
         self.an_den_start()
         mehrachs = bahn is not None
         bahn = bahn or self.bahn
         if mehrachs:
             pruefe_bahn(bahn.q0, [bahn.dauer], [bahn.q(0.5 * bahn.dauer)], bahn.q0,
                         bahn.amplitude)
-        interp = ServoInterpolator(config.CONTROL_RATE_HZ, rate).reset(bahn.q0)
+        interp = ServoInterpolator(config.CONTROL_RATE_HZ, rate, profile=profil).reset(bahn.q0)
         n = int(round(bahn.dauer * config.CONTROL_RATE_HZ))
         log = self.mitschreiben()
         self.bot.activate_servo("position")
         pacer = Pacer(RealClock(), rate).start()
         t_start = None
+        sendungen = []
         try:
             for k in range(1, n + 1 + int(config.CONTROL_RATE_HZ // 2)):
                 ziel = bahn.q(k / config.CONTROL_RATE_HZ)
@@ -962,13 +1000,22 @@ class Lauf(object):
                     t_soll = pacer.tick()
                     if t_start is None:
                         t_start = t_soll - 1.0 / rate
+                    t0 = host_time()
                     self.bot.servo_j(q_cmd, v_cmd, a_cmd)
+                    sendungen.append((t_soll, t0, host_time()))
         finally:
             self.bot.deactivate_servo()
         time.sleep(0.3)
         t, q = log.stop()
         k = auswerten(t, q, t_start, bahn)
-        extra = {"taktueberlaeufe": pacer.overruns, "servo_hz": rate}
+        takt = sendetakt(sendungen, rate)
+        extra = {"taktueberlaeufe": pacer.overruns, "servo_hz": rate, "sendetakt": takt,
+                 "servo_profil": profil}
+        if sendungen:
+            self.roh[name + "_send"] = np.asarray(sendungen) - t_start
+        if takt:
+            show("Sendeabstand", "Streuung %.2f ms, p95-Abweichung %.2f ms, groesster %.1f ms"
+                 % (takt["abstand_std_ms"], takt["abstand_abw_p95_ms"], takt["abstand_max_ms"]))
         if mehrachs and len(t) > 20:
             extra["mehrachs"] = mehrachs_abweichung(
                 t - t_start, q, bahn, k.get("verzug_ms", 0.0) / 1e3)
@@ -1449,6 +1496,10 @@ def main():
                     help="so viele Takte vor Ende des vorigen Abschnitts senden (Standard 1)")
     ap.add_argument("--servo-rate", type=float, default=config.SERVO_RATE_HZ,
                     help="servo_j-Rate der Referenz (Standard config.SERVO_RATE_HZ)")
+    ap.add_argument("--servo-profil", choices=ServoInterpolator.PROFILES, default="linear",
+                    help="servo_j-Profil der Referenz und des servo_j-Laufs der Serie: linear "
+                         "(Recorder, Standard) oder pos (v = a = 0, Ausfuehrung servo_j_pos; "
+                         "VM 2026-10-14 glatt, an der Anlage zuerst hier pruefen)")
     ap.add_argument("--vergleich-raten", default="90,120",
                     help="nach der Referenz dieselbe Fahrt per servo_j mit diesen Raten "
                          "(Komma-Liste, Vielfache von 15; leer = keine). Ausweichweg, "

@@ -460,3 +460,27 @@ def test_timing_findings_count_one_call_per_tick_for_online():
     meta["execution"] = {"mode": "online"}
     text = "\n".join(timing_findings(meta))
     assert "1 x online_j" in text
+
+
+def test_servo_j_pos_sends_same_positions_without_velocity():
+    # Ausfuehrung servo_j_pos (bc/execution.py, VM 2026-10-14): dieselben
+    # Sollpositionen wie servo_j, aber v = a = 0 -- die Steuerung glaettet
+    # dann selbst. Steht in den Metadaten, damit die Inferenz gleich faehrt.
+    from bc import execution
+
+    clock, robot, captures = _setup(robot_cls=SpyRobot)
+    plan = _plan(robot)
+    EpisodeRecorder(robot, captures, clock).record(plan)
+    linear = [np.asarray(c[0]) for c in robot.servo_calls]
+
+    clock, robot, captures = _setup(robot_cls=SpyRobot)
+    episode = EpisodeRecorder(robot, captures, clock,
+                              execution=execution.describe("servo_j_pos")).record(plan)
+    calls = robot.servo_calls
+    assert len(calls) == len(linear)
+    assert np.allclose(np.array([c[0] for c in calls]), np.array(linear))
+    for _, v, a in calls:
+        assert v is not None and a is not None
+        assert not np.any(v) and not np.any(a)
+    assert episode.metadata["execution"] == {"mode": "servo_j_pos"}
+    assert not episode.discarded, episode.discard_reason

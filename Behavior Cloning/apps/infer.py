@@ -115,7 +115,11 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
     first = (obs, state, executor.next_action(obs))
     execution = execution or execution_module.describe(execution_module.SERVO_J)
     online = execution["mode"] == execution_module.ONLINE
-    interp = ServoInterpolator(servo_rate_hz=servo_rate_hz).reset(state.joints)
+    # Wie in der Aufnahme: servo_j linear oder servo_j_pos ohne v/a.
+    interp = ServoInterpolator(
+        servo_rate_hz=servo_rate_hz,
+        profile=execution_module.servo_profile(execution) or "linear",
+    ).reset(state.joints)
     limiter = TargetLimiter().reset(state.joints)
     robot.activate_servo("position")
     # nach der Aktivierung; online: ein Aufruf je Regeltakt
@@ -251,7 +255,7 @@ def check_against_recording(info, args, robot_kind, cam_cfgs):
     if args.execution_mode != rec_mode:
         problems.append("Ausfuehrung Aufzeichnung %s, jetzt %s (--ausfuehrung %s)"
                         % (rec_mode, args.execution_mode, rec_mode))
-    if rec_mode == execution_module.SERVO_J and rec.get("servo_rate_hz") is not None \
+    if rec_mode in execution_module.SERVO_PROFILES and rec.get("servo_rate_hz") is not None \
             and float(rec["servo_rate_hz"]) != args.servo_rate:
         problems.append("servo_j-Rate Aufzeichnung %.0f Hz, jetzt %.0f Hz "
                         "(--servo-rate %.0f)"
@@ -313,7 +317,7 @@ def parse_args():
                              % config.CONTROL_RATE_HZ)
     parser.add_argument("--ausfuehrung", choices=(execution_module.AUTO,) + execution_module.MODES,
                         default=None,
-                        help="servo_j oder online (bc/execution.py). Default und Pflichtwert: "
+                        help="servo_j, servo_j_pos oder online (bc/execution.py). Default und Pflichtwert: "
                              "die der Aufzeichnung (bc_policy.json); --hold: auto")
     parser.add_argument("--realtime", action="store_true",
                         help="SimRobot mit echter Uhr (Latenz der Vorhersage wirkt wie an der Anlage)")
@@ -463,7 +467,10 @@ def main():
         print("Ausfuehrung: online, Vorlauf %d Takte, Tempo x%.2f, Beschl. x%.2f"
               % (execution["lead_steps"], execution["speed_factor"], execution["accel_factor"]))
     else:
-        print("Ausfuehrung: servo_j %.0f Hz" % args.servo_rate)
+        print("Ausfuehrung: servo_j %.0f Hz%s" % (
+            args.servo_rate,
+            " ohne Geschwindigkeit (servo_j_pos)" if execution["mode"] == execution_module.SERVO_J_POS
+            else ""))
 
     try:
         captures, cam_cfgs = start_cameras(camera_mode, clock, seed=args.seed,

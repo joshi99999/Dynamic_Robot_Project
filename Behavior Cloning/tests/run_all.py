@@ -63,6 +63,7 @@ MODULES = [
     "test_camera_assignment",
     "test_daheng_api",
     "test_check_trajectory_buffer",
+    "test_check_servo_stream",
     "contract.test_robot_contract",
     "contract.test_camera_contract",
 ]

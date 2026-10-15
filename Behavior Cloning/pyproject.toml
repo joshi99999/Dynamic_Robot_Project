@@ -38,6 +38,12 @@ gui = [
     # tests/test_gui.py ohne PySide6 abgedeckt.
     "PySide6>=6.6,<7",
 ]
+report = [
+    # Nur die Diagramm-Werkzeuge tools/report_zittern.py und
+    # tools/report_servo_stream.py; Pipeline und Tests brauchen es nicht.
+    # In bc_env installiert 2026-10-14 (3.11.2).
+    "matplotlib>=3.8,<4",
+]
 train = [
     # GEPINNT 2026-09-17 (AP 0.9 Punkt 6): das Datensatzformat (v3.0) und
     # die Checkpoints haengen an der Version -- bc.config.LEROBOT_VERSION

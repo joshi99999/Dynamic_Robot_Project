@@ -1,0 +1,75 @@
+{
+  "erzeugt": "2026-10-14T10:50:36",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. VM: wie die Steuerung den Strom umsetzt, keine Mechanik.",
+  "in_simulation": true,
+  "server_version": "v5.0.0-alpha.102",
+  "ablauf": "E:\\Projekt\\Dynamic_Robot_Project\\Behavior Cloning\\sequences\\arbeitskopien\\pick_to_station.json",
+  "seed": 7,
+  "argumente": {
+    "move": true,
+    "matrix": "standard",
+    "laeufe": "linear-60-r0-o1",
+    "ablauf": null,
+    "seed": 7,
+    "real_robot": false,
+    "auswerten": null
+  },
+  "laeufe": {
+    "linear-60-r0-o1": {
+      "lauf": {
+        "name": "linear-60-r0-o1",
+        "profil": "linear",
+        "rate": 60.0,
+        "rauschen": 0.0,
+        "override": 1.0
+      },
+      "start": "10:50:38",
+      "kennzahlen": {
+        "sendetakt": {
+          "sendungen": 685,
+          "abstand_std_ms": 0.24347447753571808,
+          "abstand_abw_p95_ms": 0.3230373064676918,
+          "abstand_max_ms": 17.128705978393555,
+          "verspaetung_median_ms": 0.2808570861816406,
+          "verspaetung_p95_ms": 0.5038261413574219,
+          "aufruf_median_ms": 2.828359603881836,
+          "aufruf_p95_ms": 4.133319854736327,
+          "dauer_faktor": 1.0000125985396535
+        },
+        "neue_werte_hz": 50.00255225476535,
+        "raster": {
+          "periode_ms": 19.999995022744926,
+          "rest_std_ms": 0.9226875590238126,
+          "luecken": 0,
+          "raster": true
+        },
+        "tempo": {
+          "fahrt_s": 10.359997421781873,
+          "tempo_welligkeit_prozent": 22.64991080816386,
+          "einbruch_prozent": 0.5791505791505885,
+          "stillstand_prozent": 0.0,
+          "tempo_max_ms": 0.19645993274318013,
+          "tempo_glatt_max_ms": 0.16430648829018357,
+          "spitze_hz": 9.490336280947616,
+          "anteil_15hz": 0.07251033828879841,
+          "anteil_10hz": 0.7743391682916658,
+          "abtastrate_hz": 50.00001244314068
+        },
+        "quer": {
+          "rms_mm": 0.46659897606931044,
+          "max_mm": 1.6716231991797241,
+          "welligkeit_rms_mm": 0.4638070400391228,
+          "welligkeit_max_mm": 1.6718386774143883
+        },
+        "verzug_ms": 13.999999999999995,
+        "folgefehler_rms_mrad": 0.7246254497898428,
+        "fahrzeit_faktor": 0.9964289399987363
+      },
+      "ueberlaeufe": 0,
+      "lesedauer_ms": 1.7101764678955078,
+      "lesefehler": 0,
+      "ruhe_erreicht": true,
+      "abbruch": ""
+    }
+  }
+}

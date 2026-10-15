@@ -541,12 +541,16 @@ class RecordingTab(ModeTab):
         self.execution = block_wheel(QComboBox())
         for key, text in (("auto", "auto (Anlage: online, VM: servo_j)"),
                           ("servo_j", "servo_j 60 Hz (bisher)"),
+                          ("servo_j_pos", "servo_j 60 Hz ohne Geschwindigkeit"),
                           ("online", "online (movelinear_online)")):
             self.execution.addItem(text, key)
         self.execution.setCurrentIndex(max(0, self.execution.findData(config.EXECUTION_MODE)))
         self.execution.setToolTip(
             "servo_j: 60 Sollwerte je Sekunde, linear interpoliert -- an der "
             "Anlage zittert der Arm (Treppe, Eigenschwingung 7-8 Hz).\n"
+            "servo_j ohne Geschwindigkeit: dieselben Sollwerte, v = a = 0 -- "
+            "die Steuerung glaettet selbst (VM: glatt, ~70 ms Verzug). An der "
+            "Anlage noch ungeprueft.\n"
             "online: ein Ziel je Takt per movelinear_online, die Steuerung "
             "interpoliert selbst -- gemessen 76 %% weniger Zittern, dafuer "
             "etwas weniger bahntreu (Vorlauf %d, Tempo x%.1f, Beschl. x%.1f).\n\n"

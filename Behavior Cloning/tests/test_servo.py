@@ -144,3 +144,17 @@ def test_interpolator_rejects_the_same_rates():
         except ValueError:
             continue
         raise AssertionError("%g Hz haette abgelehnt werden muessen" % bad)
+
+
+def test_pos_profile_keeps_positions_and_zeroes_velocity():
+    linear = ServoInterpolator(15.0, 60.0).reset(np.zeros(2))
+    pos = ServoInterpolator(15.0, 60.0, profile="pos").reset(np.zeros(2))
+    for target in ([0.01, -0.02], [0.03, -0.01], [0.03, -0.01]):
+        for (ql, vl, al), (qp, vp, ap) in zip(linear.window(target), pos.window(target)):
+            assert np.allclose(ql, qp)
+            assert not vp.any() and not ap.any()
+    try:
+        ServoInterpolator(15.0, 60.0, profile="spline")
+    except ValueError:
+        return
+    raise AssertionError("unbekanntes Profil nicht abgelehnt")

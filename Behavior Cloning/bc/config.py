@@ -45,6 +45,10 @@ SERVO_RATE_HZ = 60.0
 #:               der Arm: die Steuerung erwartet einen 1-kHz-Strom und faehrt
 #:               die 60-Hz-Stufen als Treppe (2026-10-13: 1,80 m/s^2 am
 #:               Gelenk 5, Eigenschwingung 7-8 Hz).
+#:   servo_j_pos -- wie servo_j, aber v = a = 0: die Steuerung glaettet
+#:               selbst (VM 2026-10-14: Welligkeit quer 0,09 statt 0,46 mm,
+#:               ~70 ms Verzug, tools/check_servo_stream.py). An der Anlage
+#:               UNGEPRUEFT -- nur ausdruecklich waehlbar, nie per auto.
 #:   online   -- ``movelinear_online``: ein kartesisches Ziel je 15-Hz-Takt,
 #:               die Steuerung interpoliert selbst (0,43 m/s^2, -76 %).
 #:   auto     -- online an der realen Anlage, sonst servo_j: die VM

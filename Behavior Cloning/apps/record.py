@@ -288,12 +288,14 @@ def parse_args():
     # wie die Sollwerte an die Steuerung gehen. Steht in den Metadaten und
     # wird von der Inferenz uebernommen.
     run = parser.add_argument_group(
-        "Ausfuehrung -- servo_j (60 Hz) oder online (movelinear_online), "
-        "fuer einen Datensatz einheitlich")
+        "Ausfuehrung -- servo_j (60 Hz), servo_j_pos (60 Hz ohne v/a) oder "
+        "online (movelinear_online), fuer einen Datensatz einheitlich")
     run.add_argument(
         "--ausfuehrung", choices=(execution_module.AUTO,) + execution_module.MODES,
         default=config.EXECUTION_MODE,
-        help="auto = online an der realen Anlage, servo_j in VM und SimRobot "
+        help="auto = online an der realen Anlage, servo_j in VM und SimRobot; "
+             "servo_j_pos = servo_j ohne Geschwindigkeit/Beschleunigung, die "
+             "Steuerung glaettet selbst (VM 2026-10-14, an der Anlage ungeprueft) "
              "(Default %(default)s)")
     run.add_argument("--online-vorlauf", type=int, default=config.ONLINE_LEAD_STEPS,
                      help="online: Ziel so viele 15-Hz-Takte voraus (Default %(default)s)")
@@ -512,7 +514,9 @@ def main():
                   "faehrt aber nicht -- der Recorder bricht dann mit 'arm folgt "
                   "nicht' ab. In der VM --ausfuehrung servo_j.")
     else:
-        print("Ausfuehrung: servo_j %.0f Hz" % args.servo_rate)
+        print("Ausfuehrung: servo_j %.0f Hz%s" % (
+            args.servo_rate,
+            " ohne Geschwindigkeit (servo_j_pos)" if mode == execution_module.SERVO_J_POS else ""))
 
     progress = EpisodeProgress(preview_writer)
     recorder = EpisodeRecorder(robot, captures, clock,

@@ -208,7 +208,9 @@ class RobotPort(abc.ABC):
         erreichen soll. Sie werden aus der geplanten Bahn abgeleitet
         (``trajectory.joint_derivatives``), nie pauschal zu 0 gesetzt: 0
         heisst "am Sollwert anhalten" und erzeugt bei 15 Hz Stop-and-go.
-        Bewusst 0 ist nur beim Halten der Ist-Stellung korrekt.
+        Bewusst 0 ist nur beim Halten der Ist-Stellung korrekt -- und in der
+        eigenen Ausfuehrungsart ``servo_j_pos`` (bc/execution.py), die es
+        ausdruecklich so will: dort glaettet die Steuerung (VM 2026-10-14).
 
         ``None`` ist nur fuer Implementierungen zulaessig, die die Werte
         ohnehin ignorieren (SimRobot); der Neura-Adapter verweigert es.

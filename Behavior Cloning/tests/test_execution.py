@@ -53,3 +53,15 @@ def test_lead_index_holds_the_last_target():
     assert execution.lead_index(0, 2, 10) == 2
     assert execution.lead_index(8, 2, 10) == 9
     assert execution.lead_index(9, 2, 10) == 9
+
+
+def test_servo_j_pos_only_when_chosen():
+    # An der Anlage ungeprueft (VM 2026-10-14) -- auto waehlt es nie.
+    for kind, sim in (("neura", False), ("neura", True), ("sim", True)):
+        assert execution.resolve_mode("auto", kind, sim) != "servo_j_pos"
+    assert execution.resolve_mode("servo_j_pos", "neura", False) == "servo_j_pos"
+    assert execution.describe("servo_j_pos") == {"mode": "servo_j_pos"}
+    assert execution.servo_profile({"mode": "servo_j_pos"}) == "pos"
+    assert execution.servo_profile({"mode": "servo_j"}) == "linear"
+    assert execution.servo_profile({}) == "linear"          # aeltere Aufnahmen
+    assert execution.servo_profile({"mode": "online"}) is None

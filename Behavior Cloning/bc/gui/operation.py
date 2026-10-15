@@ -125,7 +125,9 @@ def policy_summary(described):
     if described.get("execution") == "online":
         second.append("Ausführung online")
     elif described["servo_rate_hz"] is not None:
-        second.append("servo_j %g Hz" % described["servo_rate_hz"])
+        second.append("servo_j %g Hz%s" % (
+            described["servo_rate_hz"],
+            " ohne Geschwindigkeit" if described.get("execution") == "servo_j_pos" else ""))
     if described["override"] is not None:
         second.append("Override %.2f" % described["override"])
     if described["cameras"]:
