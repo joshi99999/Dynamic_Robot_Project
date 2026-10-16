@@ -1,0 +1,203 @@
+{
+  "erzeugt": "2026-10-16T11:51:34",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": false,
+  "argumente": {
+    "move": true,
+    "tests": "referenz",
+    "joint": 1,
+    "amplitude": 0.05,
+    "dauer": 4.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "servo_profil": "linear",
+    "vergleich_raten": "90,120",
+    "online_vorlauf": 1,
+    "online_tempo": 1.3,
+    "online_hz": 15.0,
+    "online_beschl": 3.0,
+    "richtung": "1,-0.5,-0.5,0.8,-0.8,1",
+    "override": 1.0,
+    "doku": false,
+    "real_robot": true
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "referenz": {
+      "kennzahlen": {
+        "proben": 658,
+        "leserate_hz": 150.7603608784731,
+        "groesste_luecke_ms": 115.03863334655762,
+        "verzug_ms": 170.00000000000023,
+        "folgefehler_rms_mrad": 2.7803653022479464,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.04996672771477105,
+        "dauer_faktor": 1.0702030681004033,
+        "welligkeit_prozent": 79.99954287601697,
+        "stillstand_prozent": 62.19839142091153,
+        "neue_werte_hz": 44.63898680888553,
+        "wiederholt_prozent": 61.3941018766756,
+        "welligkeit_neu_prozent": 54.34393806269931,
+        "einbruch_neu_prozent": 25.973416751500206,
+        "tempo_p5_anteil": -0.004582152399779485,
+        "v_ist_max": 0.15326700132866147,
+        "v_plan_max": 0.039269908169872414,
+        "spitze_hz": 49.83388704318937,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 79.62399913273002,
+        "ende_s": 4.703631784439091
+      },
+      "lesedauer_ms": 5.744814872741699,
+      "lesefehler": 0,
+      "taktueberlaeufe": 16,
+      "servo_hz": 60.0,
+      "sendetakt": {
+        "sendungen": 268,
+        "abstand_std_ms": 12.280632398676637,
+        "abstand_abw_p95_ms": 6.6103998819986955,
+        "abstand_max_ms": 209.43546295166016,
+        "verspaetung_median_ms": 0.40662288665771484,
+        "verspaetung_p95_ms": 7.6312661170959375,
+        "aufruf_median_ms": 10.56671142578125,
+        "aufruf_p95_ms": 21.753823757171624
+      },
+      "servo_profil": "linear",
+      "nicht_deutbar": [
+        "Steuerung liefert nur 45 neue Gelenkwerte je Sekunde, weniger als servo_j-Stufen (60 Hz) -- 61 % der Lesungen sind Wiederholungen, der Stillstand zaehlt sie mit; Stufen und Glaette sind hier nicht messbar"
+      ]
+    },
+    "referenz_90": {
+      "kennzahlen": {
+        "proben": 590,
+        "leserate_hz": 112.66530568389385,
+        "groesste_luecke_ms": 33.93697738647461,
+        "verzug_ms": 426.0000000000005,
+        "folgefehler_rms_mrad": 4.813568436170999,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.04992216137840426,
+        "dauer_faktor": 1.1907332935721222,
+        "welligkeit_prozent": 66.50149583106375,
+        "stillstand_prozent": 52.99684542586751,
+        "neue_werte_hz": 47.31534835216155,
+        "wiederholt_prozent": 51.73501577287066,
+        "welligkeit_neu_prozent": 44.34968751902458,
+        "einbruch_neu_prozent": 27.861932904388762,
+        "tempo_p5_anteil": 0.11153344063761118,
+        "v_ist_max": 0.12563717234215926,
+        "v_plan_max": 0.039269908169872414,
+        "spitze_hz": 50.3875968992248,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 90.82357034661479,
+        "ende_s": 4.942507453918461
+      },
+      "lesedauer_ms": 8.205056190490723,
+      "lesefehler": 0,
+      "taktueberlaeufe": 70,
+      "servo_hz": 90.0,
+      "sendetakt": {
+        "sendungen": 402,
+        "abstand_std_ms": 5.638100893139306,
+        "abstand_abw_p95_ms": 10.774999194675022,
+        "abstand_max_ms": 52.33311653137207,
+        "verspaetung_median_ms": 3.4165382385253906,
+        "verspaetung_p95_ms": 9.534573554992676,
+        "aufruf_median_ms": 11.156439781188965,
+        "aufruf_p95_ms": 21.837735176086415
+      },
+      "servo_profil": "linear",
+      "nicht_deutbar": [
+        "Mitschrieb nur 113 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen",
+        "Bahn lief 1.19-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht)"
+      ]
+    },
+    "referenz_120": {
+      "kennzahlen": {
+        "proben": 724,
+        "leserate_hz": 120.83152800184374,
+        "groesste_luecke_ms": 109.08174514770508,
+        "verzug_ms": 600.0000000000007,
+        "folgefehler_rms_mrad": 10.864897464234877,
+        "verzug_am_rand": true,
+        "auslenkung_rad": 0.049981333488874444,
+        "dauer_faktor": 1.407263697078426,
+        "welligkeit_prozent": 61.60039510881684,
+        "stillstand_prozent": 57.05705705705706,
+        "neue_werte_hz": 46.23024555263717,
+        "wiederholt_prozent": 55.55555555555556,
+        "welligkeit_neu_prozent": 43.81093580185135,
+        "einbruch_neu_prozent": 35.88931969748655,
+        "tempo_p5_anteil": -0.006779682952560781,
+        "v_ist_max": 0.12340006582234331,
+        "v_plan_max": 0.039269908169872414,
+        "spitze_hz": 50.3875968992248,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 53.94457578136407,
+        "ende_s": 6.48387316703797
+      },
+      "lesedauer_ms": 7.735610008239746,
+      "lesefehler": 0,
+      "taktueberlaeufe": 209,
+      "servo_hz": 120.0,
+      "sendetakt": {
+        "sendungen": 536,
+        "abstand_std_ms": 5.526635995247752,
+        "abstand_abw_p95_ms": 13.922707239786773,
+        "abstand_max_ms": 46.80609703063965,
+        "verspaetung_median_ms": 2.9211044311523438,
+        "verspaetung_p95_ms": 7.698357105255127,
+        "aufruf_median_ms": 9.90748405456543,
+        "aufruf_p95_ms": 22.187232971191406
+      },
+      "servo_profil": "linear",
+      "nicht_deutbar": [
+        "Mitschrieb nur 121 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen",
+        "Bahn lief 1.41-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht)",
+        "Verzug am Rand des Suchbereichs (600 ms) -- Zeitachse passt nicht zur Planung"
+      ]
+    }
+  },
+  "befunde": [
+    [
+      "warnung",
+      "referenz nicht deutbar: Steuerung liefert nur 45 neue Gelenkwerte je Sekunde, weniger als servo_j-Stufen (60 Hz) -- 61 % der Lesungen sind Wiederholungen, der Stillstand zaehlt sie mit; Stufen und Glaette sind hier nicht messbar."
+    ],
+    [
+      "warnung",
+      "referenz_90 nicht deutbar: Mitschrieb nur 113 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen; Bahn lief 1.19-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht)."
+    ],
+    [
+      "warnung",
+      "referenz_120 nicht deutbar: Mitschrieb nur 121 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen; Bahn lief 1.41-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht); Verzug am Rand des Suchbereichs (600 ms) -- Zeitachse passt nicht zur Planung."
+    ],
+    [
+      "info",
+      "servo_j 90 Hz: 70 Taktueberlaeufe; Glaette hier nicht vergleichbar."
+    ],
+    [
+      "info",
+      "servo_j 120 Hz: 209 Taktueberlaeufe; Glaette hier nicht vergleichbar."
+    ],
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

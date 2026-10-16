@@ -123,6 +123,78 @@ def test_infer_refuses_far_target():
     assert np.allclose(robot.read_state().joints, start)
 
 
+def _greif_fahrt(reach_tol_mm, max_steps=25):
+    """Inferenz online: Policy faehrt ein Ziel in 0.01-rad-Schritten bis 0.06
+    rad weiter (sanft genug fuer den ServoGuard) und greift dort ab der 8.
+    Vorhersage; der Arm laeuft deutlich hinterher."""
+    from infer import run_episode
+
+    from bc import execution
+    from bc.policy import ChunkEnsembler, HoldPolicy
+
+    robot, captures, clock, workspace = _infer_setup()
+    robot.ONLINE_GAIN = 0.1
+    start = robot.read_state().joints.copy()
+    ziel = start.copy()
+    ziel[1] += 0.06
+
+    class GreifPolicy(HoldPolicy):
+        calls = 0
+
+        def predict(self, observation):
+            GreifPolicy.calls += 1
+            chunk = super().predict(observation)
+            chunk[:, :6] = start + min(1.0, GreifPolicy.calls / 6.0) * (ziel - start)
+            chunk[:, 6] = 1.0 if GreifPolicy.calls >= 8 else 0.0
+            return chunk
+
+    greifer = []
+    original = robot.gripper_command
+
+    def gripper_command(close):
+        greifer.append((bool(close), robot.read_state().tcp_quat[:3].copy()))
+        return original(close)
+
+    robot.gripper_command = gripper_command
+    ex = execution.describe("online", reach_tol_mm=reach_tol_mm)
+    log = run_episode(robot, captures, ChunkEnsembler(GreifPolicy(), replan_steps=1), clock,
+                      max_steps=max_steps, workspace=workspace, threaded_watchdog=False,
+                      progress=None, execution=ex)
+    return log, greifer, robot, ex
+
+
+def test_infer_online_waits_at_the_gripper_change_like_the_recorder():
+    from bc import config
+
+    log, greifer, robot, ex = _greif_fahrt(config.ONLINE_REACH_TOL_MM)
+    assert log["stop_reason"] == "max_steps", log["stop_reason"]
+    assert len(log["reach_waits"]) == 1
+    halt = log["reach_waits"][0]
+    assert halt["reached"] and halt["start_mm"] > ex["reach_tol_mm"]
+    assert abs(log["reach_wait_s"] - halt["wait_s"]) < 1e-12
+    # die Wartezeit steht im Protokoll am Takt des Greiferwechsels
+    assert np.count_nonzero(log["halt_s"]) == 1
+    assert log["halt_s"][halt["step"]] == halt["wait_s"]
+    # Greifer schliesst erst am Ziel der Action dieses Takts (wie im Recorder
+    # am Haltepunkt des Plans; hier die gemittelte Action der Policy)
+    halte_tcp = robot.fk(log["action"][halt["step"]][:6])[:3]
+    zu = [p for close, p in greifer if close]
+    assert len(zu) == 1
+    assert 1e3 * np.linalg.norm(zu[0] - halte_tcp) <= ex["reach_tol_mm"]
+    assert log["pacer_overruns"] == 0
+
+
+def test_infer_online_without_reach_rule_grips_while_still_moving():
+    # Aeltere Aufnahmen ohne reach_*: wie bisher, kein Warten
+    log, greifer, robot, ex = _greif_fahrt(None)
+    assert log["reach_waits"] == [] and log["reach_wait_s"] == 0.0
+    assert not np.any(log["halt_s"])
+    zu = [p for close, p in greifer if close]
+    assert len(zu) == 1
+    ziel_tcp = robot.fk(log["action"][-1][:6])[:3]
+    assert 1e3 * np.linalg.norm(zu[0] - ziel_tcp) > 1.0
+
+
 def test_teach_loop_gripper_toggle():
     from teach import teach_loop
 

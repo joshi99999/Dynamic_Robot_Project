@@ -1,0 +1,394 @@
+{
+  "erzeugt": "2026-10-16T12:57:59",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. VM: wie die Steuerung den Strom umsetzt, keine Mechanik.",
+  "in_simulation": false,
+  "server_version": "v5.0.8",
+  "ablauf": "C:\\Users\\jerem\\OneDrive\\Projekt\\80_Github\\Dynamic_Robot_Project\\Behavior Cloning\\sequences\\arbeitskopien\\pick_to_station.json",
+  "seed": 7,
+  "argumente": {
+    "move": true,
+    "matrix": "standard",
+    "laeufe": "linear-60-r0-o1,pos-60-r0-o1,online-15-r0-o1,linear-60-r0-o0.5,pos-60-r1-o1,online-15-r1-o1",
+    "ablauf": null,
+    "seed": 7,
+    "real_robot": true,
+    "pause": null,
+    "auswerten": null
+  },
+  "laeufe": {
+    "linear-60-r0-o1": {
+      "lauf": {
+        "name": "linear-60-r0-o1",
+        "profil": "linear",
+        "rate": 60.0,
+        "rauschen": 0.0,
+        "override": 1.0
+      },
+      "start": "12:58:14",
+      "kennzahlen": {
+        "sendetakt": {
+          "sendungen": 821,
+          "abstand_std_ms": 8.160624981668967,
+          "abstand_abw_p95_ms": 8.392127354939777,
+          "abstand_max_ms": 225.79717636108398,
+          "verspaetung_median_ms": 0.42819976806640625,
+          "verspaetung_p95_ms": 8.547067642211914,
+          "aufruf_median_ms": 10.476827621459961,
+          "aufruf_p95_ms": 23.714303970336914,
+          "dauer_faktor": 1.0257139903743093
+        },
+        "neue_werte_hz": 47.91445602784485,
+        "raster": {
+          "raster": false,
+          "grund": "zwei Werte in einem Rasterschritt",
+          "periode_ms": 20.250797271728516
+        },
+        "tempo": {
+          "fahrt_s": 11.989295959472656,
+          "tempo_welligkeit_prozent": 45.980653830096266,
+          "einbruch_prozent": 12.76008639412623,
+          "stillstand_prozent": 0.0,
+          "tempo_max_ms": 0.29858549304178134,
+          "tempo_glatt_max_ms": 0.15668909499515227,
+          "spitze_hz": 8.342255736080102,
+          "anteil_15hz": 0.20353630267005576,
+          "anteil_10hz": 0.3777104136961635,
+          "abtastrate_hz": 49.38077185711931
+        },
+        "quer": {
+          "rms_mm": 0.4167020670745852,
+          "max_mm": 2.1239333740832627,
+          "welligkeit_rms_mm": 0.4152228573494325,
+          "welligkeit_max_mm": 1.9356722425244326
+        },
+        "verzug_ms": 246.0000000000005,
+        "folgefehler_rms_mrad": 19.49562605227788,
+        "fahrzeit_faktor": 1.0296973542469303
+      },
+      "ueberlaeufe": 21,
+      "lesedauer_ms": 6.556272506713867,
+      "lesefehler": 0,
+      "ruhe_erreicht": true,
+      "abbruch": ""
+    },
+    "pos-60-r0-o1": {
+      "lauf": {
+        "name": "pos-60-r0-o1",
+        "profil": "pos",
+        "rate": 60.0,
+        "rauschen": 0.0,
+        "override": 1.0
+      },
+      "start": "12:58:38",
+      "kennzahlen": {
+        "sendetakt": {
+          "sendungen": 821,
+          "abstand_std_ms": 10.070449100967956,
+          "abstand_abw_p95_ms": 8.103064695994057,
+          "abstand_max_ms": 209.78522300720215,
+          "verspaetung_median_ms": 0.42510032653808594,
+          "verspaetung_p95_ms": 8.855819702148438,
+          "aufruf_median_ms": 10.546207427978516,
+          "aufruf_p95_ms": 22.15862274169922,
+          "dauer_faktor": 1.0329659857401035
+        },
+        "neue_werte_hz": 48.65661925193588,
+        "raster": {
+          "raster": false,
+          "grund": "zwei Werte in einem Rasterschritt",
+          "periode_ms": 20.197629928588867
+        },
+        "tempo": {
+          "fahrt_s": 12.051456928253174,
+          "tempo_welligkeit_prozent": 35.69859073443525,
+          "einbruch_prozent": 7.393085557549325,
+          "stillstand_prozent": 1.9926475455529193,
+          "tempo_max_ms": 0.25854462891299296,
+          "tempo_glatt_max_ms": 0.15449196869044446,
+          "spitze_hz": 8.330168508970656,
+          "anteil_15hz": 0.1650933249792514,
+          "anteil_10hz": 0.23075289153373793,
+          "abtastrate_hz": 49.51075960573688
+        },
+        "quer": {
+          "rms_mm": 0.47779683456675415,
+          "max_mm": 1.4984854689814373,
+          "welligkeit_rms_mm": 0.21244197294796802,
+          "welligkeit_max_mm": 0.8677546793505222
+        },
+        "verzug_ms": 138.0000000000004,
+        "folgefehler_rms_mrad": 10.50323853170897,
+        "fahrzeit_faktor": 1.0322472932862072
+      },
+      "ueberlaeufe": 27,
+      "lesedauer_ms": 6.225109100341797,
+      "lesefehler": 0,
+      "ruhe_erreicht": true,
+      "abbruch": ""
+    },
+    "online-15-r0-o1": {
+      "lauf": {
+        "name": "online-15-r0-o1",
+        "profil": "online",
+        "rate": 15.0,
+        "rauschen": 0.0,
+        "override": 1.0,
+        "online": {
+          "mode": "online",
+          "lead_steps": 2,
+          "speed_factor": 1.3,
+          "accel_factor": 1.5,
+          "vel": [
+            0.195,
+            0.195,
+            0.195,
+            0.65,
+            0.65,
+            0.65
+          ],
+          "acc": [
+            0.7068583470577033,
+            0.7068583470577033,
+            0.7068583470577033,
+            2.356194490192345,
+            2.356194490192345,
+            2.356194490192345
+          ]
+        }
+      },
+      "start": "12:59:02",
+      "kennzahlen": {
+        "sendetakt": {
+          "sendungen": 206,
+          "abstand_std_ms": 0.24327605001521196,
+          "abstand_abw_p95_ms": 0.4512945810953765,
+          "abstand_max_ms": 67.27814674377441,
+          "verspaetung_median_ms": 0.38039684295654297,
+          "verspaetung_p95_ms": 0.6136894226074219,
+          "aufruf_median_ms": 12.067556381225586,
+          "aufruf_p95_ms": 21.77339792251587,
+          "dauer_faktor": 1.0000408451731613
+        },
+        "neue_werte_hz": 49.807103672194735,
+        "raster": {
+          "raster": false,
+          "grund": "zwei Werte in einem Rasterschritt",
+          "periode_ms": 20.01774311065674
+        },
+        "tempo": {
+          "fahrt_s": 13.406487703323364,
+          "tempo_welligkeit_prozent": 17.26672889844115,
+          "einbruch_prozent": 0.0,
+          "stillstand_prozent": 0.0,
+          "tempo_max_ms": 0.2533802426959221,
+          "tempo_glatt_max_ms": 0.17417834349836236,
+          "spitze_hz": 16.630974382276374,
+          "anteil_15hz": 0.2980364446603111,
+          "anteil_10hz": 0.2588573672962885,
+          "abtastrate_hz": 49.955681540724505
+        },
+        "quer": {
+          "rms_mm": 11.592574874947642,
+          "max_mm": 27.348788411213267,
+          "welligkeit_rms_mm": 1.2602997142953607,
+          "welligkeit_max_mm": 8.759852640856323
+        },
+        "verzug_ms": 1310.0000000000014,
+        "folgefehler_rms_mrad": 107.75980347965131,
+        "fahrzeit_faktor": 1.086871112265238
+      },
+      "ueberlaeufe": 0,
+      "lesedauer_ms": 4.475593566894531,
+      "lesefehler": 0,
+      "ruhe_erreicht": true,
+      "abbruch": ""
+    },
+    "linear-60-r0-o0.5": {
+      "lauf": {
+        "name": "linear-60-r0-o0.5",
+        "profil": "linear",
+        "rate": 60.0,
+        "rauschen": 0.0,
+        "override": 0.5
+      },
+      "start": "12:59:27",
+      "kennzahlen": {
+        "sendetakt": {
+          "sendungen": 821,
+          "abstand_std_ms": 3.320310090479526,
+          "abstand_abw_p95_ms": 8.264474074045813,
+          "abstand_max_ms": 35.10141372680664,
+          "verspaetung_median_ms": 0.4031658172607422,
+          "verspaetung_p95_ms": 6.874799728393555,
+          "aufruf_median_ms": 9.905815124511719,
+          "aufruf_p95_ms": 22.13287353515625,
+          "dauer_faktor": 1.0061244441241752
+        },
+        "neue_werte_hz": 47.5270988665795,
+        "raster": {
+          "raster": false,
+          "grund": "zwei Werte in einem Rasterschritt",
+          "periode_ms": 20.119905471801758
+        },
+        "tempo": {
+          "fahrt_s": 11.606618404388428,
+          "tempo_welligkeit_prozent": 26.759486072777705,
+          "einbruch_prozent": 2.2385687299326484,
+          "stillstand_prozent": 0.9894891479313186,
+          "tempo_max_ms": 0.2503544756608857,
+          "tempo_glatt_max_ms": 0.15424804950046678,
+          "spitze_hz": 3.5205599465965154,
+          "anteil_15hz": 0.283542112416548,
+          "anteil_10hz": 0.29666379098192575,
+          "abtastrate_hz": 49.702022775480216
+        },
+        "quer": {
+          "rms_mm": 0.5036741196153224,
+          "max_mm": 1.3093949020028475,
+          "welligkeit_rms_mm": 0.11389116657146099,
+          "welligkeit_max_mm": 0.6861639925373307
+        },
+        "verzug_ms": 148.0000000000004,
+        "folgefehler_rms_mrad": 3.5386417404303634,
+        "fahrzeit_faktor": 0.9890394268966303
+      },
+      "ueberlaeufe": 5,
+      "lesedauer_ms": 6.089448928833008,
+      "lesefehler": 0,
+      "ruhe_erreicht": true,
+      "abbruch": ""
+    },
+    "pos-60-r1-o1": {
+      "lauf": {
+        "name": "pos-60-r1-o1",
+        "profil": "pos",
+        "rate": 60.0,
+        "rauschen": 1.0,
+        "override": 1.0
+      },
+      "start": "12:59:55",
+      "kennzahlen": {
+        "sendetakt": {
+          "sendungen": 821,
+          "abstand_std_ms": 7.740201882280116,
+          "abstand_abw_p95_ms": 8.545460700988766,
+          "abstand_max_ms": 213.4113311767578,
+          "verspaetung_median_ms": 0.42057037353515625,
+          "verspaetung_p95_ms": 6.861209869384766,
+          "aufruf_median_ms": 10.624170303344727,
+          "aufruf_p95_ms": 22.57513999938965,
+          "dauer_faktor": 1.026859585831805
+        },
+        "neue_werte_hz": 47.703741833917405,
+        "raster": {
+          "raster": false,
+          "grund": "zwei Werte in einem Rasterschritt",
+          "periode_ms": 19.971847534179688
+        },
+        "tempo": {
+          "fahrt_s": 12.393232822418213,
+          "tempo_welligkeit_prozent": 33.18975072842788,
+          "einbruch_prozent": 4.488064154843081,
+          "stillstand_prozent": 0.0,
+          "tempo_max_ms": 0.3020543189198168,
+          "tempo_glatt_max_ms": 0.18179674859137407,
+          "spitze_hz": 8.333787667181568,
+          "anteil_15hz": 0.21460435307847375,
+          "anteil_10hz": 0.2938957550414649,
+          "abtastrate_hz": 50.0704803743673
+        },
+        "quer": {
+          "rms_mm": 0.4683792495439596,
+          "max_mm": 1.737515304573492,
+          "welligkeit_rms_mm": 0.24735393065101624,
+          "welligkeit_max_mm": 1.07170313525281
+        },
+        "verzug_ms": 340.00000000000057,
+        "folgefehler_rms_mrad": 21.8284022790521,
+        "fahrzeit_faktor": 1.028237918528115
+      },
+      "ueberlaeufe": 22,
+      "lesedauer_ms": 6.347179412841797,
+      "lesefehler": 0,
+      "ruhe_erreicht": true,
+      "abbruch": ""
+    },
+    "online-15-r1-o1": {
+      "lauf": {
+        "name": "online-15-r1-o1",
+        "profil": "online",
+        "rate": 15.0,
+        "rauschen": 1.0,
+        "override": 1.0,
+        "online": {
+          "mode": "online",
+          "lead_steps": 2,
+          "speed_factor": 1.3,
+          "accel_factor": 1.5,
+          "vel": [
+            0.195,
+            0.195,
+            0.195,
+            0.65,
+            0.65,
+            0.65
+          ],
+          "acc": [
+            0.7068583470577033,
+            0.7068583470577033,
+            0.7068583470577033,
+            2.356194490192345,
+            2.356194490192345,
+            2.356194490192345
+          ]
+        }
+      },
+      "start": "13:00:19",
+      "kennzahlen": {
+        "sendetakt": {
+          "sendungen": 206,
+          "abstand_std_ms": 0.2314360469371728,
+          "abstand_abw_p95_ms": 0.43613115946451714,
+          "abstand_max_ms": 67.44027137756348,
+          "verspaetung_median_ms": 0.38564205169677734,
+          "verspaetung_p95_ms": 0.6232261657714844,
+          "aufruf_median_ms": 12.314081192016602,
+          "aufruf_p95_ms": 22.234022617340088,
+          "dauer_faktor": 1.0000389436396158
+        },
+        "neue_werte_hz": 49.68388873893677,
+        "raster": {
+          "raster": false,
+          "grund": "zwei Werte in einem Rasterschritt",
+          "periode_ms": 20.090341567993164
+        },
+        "tempo": {
+          "fahrt_s": 14.62157940864563,
+          "tempo_welligkeit_prozent": 18.072635068271055,
+          "einbruch_prozent": 0.0,
+          "stillstand_prozent": 0.0,
+          "tempo_max_ms": 0.23167972853922433,
+          "tempo_glatt_max_ms": 0.17051104580215548,
+          "spitze_hz": 8.347387364543902,
+          "anteil_15hz": 0.29766940994449953,
+          "anteil_10hz": 0.2634097364868002,
+          "abtastrate_hz": 49.77516169228031
+        },
+        "quer": {
+          "rms_mm": 13.738559288244959,
+          "max_mm": 39.08060165877813,
+          "welligkeit_rms_mm": 2.2195407343360203,
+          "welligkeit_max_mm": 18.528879894923374
+        },
+        "verzug_ms": 1252.0000000000014,
+        "folgefehler_rms_mrad": 120.278388746815,
+        "fahrzeit_faktor": 1.1017963537355748
+      },
+      "ueberlaeufe": 0,
+      "lesedauer_ms": 4.387497901916504,
+      "lesefehler": 0,
+      "ruhe_erreicht": true,
+      "abbruch": ""
+    }
+  }
+}

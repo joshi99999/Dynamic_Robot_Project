@@ -23,6 +23,11 @@ Je Lauf einstellbar:
   ``online``  zum Vergleich: ``movelinear_online`` wie im Recorder (ein Ziel
               je 15-Hz-Takt, Vorlauf und Hoechstwerte aus bc/execution.py);
               Rate muss 15 sein. Nur an der Anlage -- die VM faehrt es nicht.
+              OHNE die Halteregel (wie vor dem 2026-10-16).
+  ``onlinehalt`` wie ``online``, mit "erst weiter, wenn erreicht" wie im
+              Recorder: am Greiferwechsel bleibt das Ziel stehen, bis der
+              TCP innerhalb ONLINE_REACH_TOL_MM steht, dann der volle Dwell
+              (bc/execution.py). Der Greifer schaltet trotzdem nicht.
 * Senderate in Hz -- frei, auch 50 Hz (kein Vielfaches von 15): der
   Sollwert wird zur Sendezeit aus dem Profil gerechnet.
 * Rauschfaktor (fest, gleicher Seed: gleiche Rauschform, nur skaliert).
@@ -42,7 +47,13 @@ Gemessen (Mitschrieb in eigenem Thread, nur NEUE Werte der Steuerung):
 * Spektrum dieser Tempo-Abweichung: staerkste Frequenz, Anteil bei 15 Hz
   (Zieltakt) und 10 Hz (60-Hz-Strom gegen 50-Hz-Zustand der Steuerung).
 * Verzug und Folgefehler im Gelenkraum (bei Override < 1 nur grob: dort
-  waechst der Verzug unterwegs).
+  waechst der Verzug unterwegs; bei ``onlinehalt`` verfaelscht die
+  Wartezeit Verzug und Fahrzeit-Faktor).
+* Haltepunkte (``online``/``onlinehalt``, je Greiferwechsel der Bahn, z. B.
+  PICK): tiefster Punkt gegenueber dem Haltepunkt in mm (+ = darueber),
+  kleinster Abstand, Verweilzeit innerhalb ONLINE_REACH_TOL_MM und am
+  tiefsten Punkt (+-HALT_UNTEN_MM), bei ``onlinehalt`` die Wartezeit.
+  Anlass: 2026-10-16 kehrte der Arm mit ``online`` 27 mm ueber PICK um.
 
 Grenzen: Die Steuerung liefert ~50 neue Gelenkwerte je Sekunde, aufloesbar
 ist bis ~25 Hz. Die Zeitpunkte der neuen Werte werden auf das Raster der
@@ -61,6 +72,7 @@ Ausfuehren (aus dem Ordner "Behavior Cloning"):
     python tools/check_servo_stream.py --move                       # VM, Standardmatrix
     python tools/check_servo_stream.py --move --matrix kurz
     python tools/check_servo_stream.py --move --laeufe linear-60-r0-o1,spline-60-r0-o1
+    python tools/check_servo_stream.py --move --real-robot --laeufe online-15-r0-o1,onlinehalt-15-r0-o1
     python tools/check_servo_stream.py --auswerten Berichte/<stempel>_Servo-Strom   # nur neu rechnen
 """
 
@@ -84,8 +96,18 @@ from check_trajectory_buffer import Mitschrieb, sendetakt
 BERICHTE = Path(__file__).resolve().parent.parent / "Berichte"
 
 PROFILE = ("linear", "a0", "pos", "spline")
+#: movelinear_online ohne und mit Halteregel (bc/execution.py).
+ONLINE_ARTEN = ("online", "onlinehalt")
 #: Lauf-Arten: die servo_j-Profile und movelinear_online zum Vergleich.
-ARTEN = PROFILE + ("online",)
+ARTEN = PROFILE + ONLINE_ARTEN
+
+#: Haltepunkt-Auswertung: nur Werte naeher als HALT_NAEHE_MM am Haltepunkt,
+#: im Zeitfenster HALT_VOR_S vor bis HALT_NACH_S nach dem geplanten Dwell
+#: (plus Wartezeit). "Am tiefsten Punkt" = hoechstens HALT_UNTEN_MM ueber ihm.
+HALT_NAEHE_MM = 60.0
+HALT_VOR_S = 1.0
+HALT_NACH_S = 3.0
+HALT_UNTEN_MM = 0.5
 
 #: Kleinste und groesste Senderate -- darueber haelt kein Rechner den Takt.
 MIN_RATE_HZ = 5.0
@@ -155,7 +177,7 @@ def parse_lauf(text):
     if profil not in ARTEN:
         raise ValueError("Lauf %r: Profil %r unbekannt (%s)" % (text, profil, ", ".join(ARTEN)))
     rate = float(teile[1])
-    if profil == "online" and rate != config.CONTROL_RATE_HZ:
+    if profil in ONLINE_ARTEN and rate != config.CONTROL_RATE_HZ:
         raise ValueError("Lauf %r: online sendet ein Ziel je Takt -- Rate %g"
                          % (text, config.CONTROL_RATE_HZ))
     rauschen = float(teile[2][1:])
@@ -468,6 +490,97 @@ def auswerten_lauf(sendungen, t, q, profil, rate, fk_pos, t_start):
     return k
 
 
+def _laengster_lauf(t, maske):
+    """Dauer (s) des laengsten zusammenhaengenden Abschnitts mit ``maske``."""
+    best, anfang = 0.0, None
+    for ti, m in zip(t, maske):
+        if m:
+            anfang = ti if anfang is None else anfang
+            best = max(best, float(ti - anfang))
+        else:
+            anfang = None
+    return best
+
+
+def halt_kennzahlen(t, q, ziele, halte, fk_pos, warte=None,
+                    takt_s=1.0 / config.CONTROL_RATE_HZ, tol_mm=config.ONLINE_REACH_TOL_MM):
+    """Wie nah und wie lange stand der Arm an jedem Haltepunkt?
+
+    ``t``/``q``: ALLE Lesungen (nicht nur neue Werte -- ein stehender Arm
+    liefert keine neuen), t = 0 beim ersten Sollwert. ``ziele``: Gelenkziele
+    des Plans, ``halte``: Liste (start, ende) aus bc.execution.hold_blocks.
+    ``warte``: Halte-Ergebnisse von ``onlinehalt`` (mit ``step``) -- sie
+    verschieben die Zeitfenster der folgenden Haltepunkte.
+
+    Je Haltepunkt: ``tief_mm`` tiefster Punkt gegenueber dem Haltepunkt
+    (+ = darueber; 2026-10-16 ohne Halteregel +27 mm), ``quer_tief_mm``
+    seitlicher Abstand dort, ``min_mm`` kleinster Abstand, ``verweil_s``
+    laengste Zeit innerhalb ``tol_mm``, ``unten_s`` laengste Zeit
+    hoechstens HALT_UNTEN_MM ueber dem tiefsten Punkt.
+    """
+    t = np.asarray(t, dtype=float)
+    q = np.asarray(q, dtype=float)
+    ziele = np.asarray(ziele, dtype=float)
+    warte_je = {int(w["step"]): w for w in (warte or []) if w.get("step") is not None}
+    out = []
+    versatz = 0.0
+    for start, ende in halte:
+        w = warte_je.get(int(start))
+        gewartet = float(w["wait_s"]) if w else 0.0
+        e = {"takt": int(start), "ende": int(ende)}
+        if w:
+            e["warten"] = {k: w.get(k) for k in ("reached", "wait_s", "start_mm", "dist_mm",
+                                                  "min_mm", "reason")}
+        m = ((t >= start * takt_s - HALT_VOR_S + versatz)
+             & (t <= ende * takt_s + HALT_NACH_S + versatz + gewartet))
+        versatz += gewartet
+        if m.sum() < 2:
+            e["fehler"] = "keine Lesungen im Zeitfenster"
+            out.append(e)
+            continue
+        tw = t[m]
+        pw = fk_pos(q[m])
+        ziel = fk_pos(ziele[start])[0]
+        d = 1e3 * np.linalg.norm(pw - ziel, axis=1)
+        e["min_mm"] = float(d.min())
+        nah = d <= HALT_NAEHE_MM
+        if not nah.any():
+            e["fehler"] = "nie naeher als %g mm" % HALT_NAEHE_MM
+            out.append(e)
+            continue
+        dz = 1e3 * (pw[:, 2] - ziel[2])
+        k = int(np.flatnonzero(nah)[np.argmin(dz[nah])])
+        e.update({
+            "tief_mm": float(dz[k]),
+            "quer_tief_mm": float(1e3 * np.linalg.norm(pw[k, :2] - ziel[:2])),
+            "t_tief_s": float(tw[k]),
+            "verweil_s": _laengster_lauf(tw, d <= tol_mm),
+            "unten_s": _laengster_lauf(tw, nah & (dz <= dz[k] + HALT_UNTEN_MM)),
+            "tol_mm": float(tol_mm),
+        })
+        out.append(e)
+    return out
+
+
+def halt_zeilen(name, halte):
+    """Ausgabe der Haltepunkt-Kennzahlen eines Laufs."""
+    zeilen = []
+    for e in halte or []:
+        if "fehler" in e:
+            zeilen.append("  %-20s Halt Takt %d: %s" % (name, e["takt"], e["fehler"]))
+            continue
+        text = ("  %-20s Halt Takt %d: tiefster Punkt %+.1f mm (quer %.1f), min. Abstand "
+                "%.1f mm, %.2f s <= %.1f mm, %.2f s unten"
+                % (name, e["takt"], e["tief_mm"], e["quer_tief_mm"], e["min_mm"],
+                   e["verweil_s"], e["tol_mm"], e["unten_s"]))
+        w = e.get("warten")
+        if w:
+            text += ", gewartet %.2f s%s" % (w["wait_s"], "" if w["reached"] else
+                                              " NICHT ERREICHT (%s)" % w["reason"])
+        zeilen.append(text)
+    return zeilen
+
+
 # -- Ausfuehrung -----------------------------------------------------------
 
 
@@ -522,13 +635,18 @@ def warten_bis_ruhe(bot, max_s):
     return False
 
 
-def fahre_lauf(bot, profil, rate, online=None, pause_s=0.0):
+def fahre_lauf(bot, profil, rate, online=None, pause_s=0.0, halte=(), fk_pos=None):
     """Sendet das Profil per servo_j mit ``rate``; liefert Rohdaten.
 
     ``online``: Eintrag aus bc.execution.describe("online") -- dann statt
     servo_j je 15-Hz-Takt EIN movelinear_online-Ziel mit Vorlauf, wie der
-    Recorder (Ausrollen, dann stop_online).
+    Recorder (Ausrollen, dann stop_online). Mit Halteregel (``reach_*``)
+    wartet er an jedem Haltepunkt aus ``halte`` wie der Recorder; Abstand
+    per ``fk_pos`` (lokale Kette) aus ``get_joint_angles``.
     """
+    halt = online is not None and execution.reach_rule(online)
+    halt_starts = {s for s, _ in halte} if halt else set()
+    warte = []
     ist = np.asarray(bot.get_joint_angles(), dtype=float)
     if float(np.max(np.abs(ist - profil.q[0]))) > config.START_POSE_TOL_RAD:
         bot.move_to_joints(profil.q[0])
@@ -558,13 +676,29 @@ def fahre_lauf(bot, profil, rate, online=None, pause_s=0.0):
                 t_start = t_soll
             t0 = host_time()
             if online is not None:
-                ziel = profil.q[min(i + int(online["lead_steps"]), profil.n - 1)]
+                ziel = profil.q[execution.lead_index(
+                    i, online["lead_steps"], profil.n,
+                    execution.next_hold_end(i, halte) if halt else None)]
                 bot.online_j(ziel, online["vel"], online["acc"])
+                if i in halt_starts:
+                    # wie der Recorder; Greifer schaltet hier nicht
+                    t_beginn = host_time()
+                    w = execution.wait_until_reached(
+                        bot, profil.q[i], online, RealClock(), config.CONTROL_RATE_HZ,
+                        target_tcp=fk_pos(profil.q[i])[0],
+                        measure_tcp=lambda: fk_pos(bot.get_joint_angles())[0])
+                    w.update(step=int(i), t_beginn_s=t_beginn - t_start)
+                    warte.append(w)
+                    print("  %s" % execution.reach_line(w))
+                    if not w["reached"]:
+                        abbruch = execution.reach_failure_text(w, i)
+                        break
+                    pacer.start().tick()   # Wartezeit ist kein Ueberlauf
             else:
                 q, v, a = profil.at(float(ts))
                 bot.servo_j(q, v, a)
             sendungen.append((t_soll, t0, host_time()))
-        if online is not None and not bot.stop_requested:
+        if online is not None and not bot.stop_requested and not abbruch:
             warten_bis_ruhe(bot, 5.0)   # Ausrollen bis zum letzten Ziel
     finally:
         if online is not None:
@@ -576,7 +710,7 @@ def fahre_lauf(bot, profil, rate, online=None, pause_s=0.0):
     return {
         "t_start": t_start, "sendungen": np.asarray(sendungen), "t": t, "q": q,
         "ueberlaeufe": pacer.overruns, "lesedauer_ms": log.lesedauer_ms(),
-        "lesefehler": log.fehler, "ruhe": ruhe, "abbruch": abbruch,
+        "lesefehler": log.fehler, "ruhe": ruhe, "abbruch": abbruch, "warte": warte,
     }
 
 
@@ -611,10 +745,15 @@ def tabelle(bericht):
     print(zeile_einheit())
     for name, e in bericht["laeufe"].items():
         print(zeile(name, e))
+    for name, e in bericht["laeufe"].items():
+        for z in halt_zeilen(name, e.get("kennzahlen", {}).get("halte")):
+            print(z)
     print("  (Ueb. = Takt-Ueberlaeufe; Abst. = Streuung des Sendeabstands; Fakt. = Sendedauer / Plan;\n"
           "   quer = Abstand zur befohlenen Bahn, well. = Anteil < 0,33 s; Tempo well. = RMS der\n"
           "   Tempo-Abweichung vom 0,25-s-Mittel; Einbr. = Fahrzeit unter 50 %; Still = Fahrzeit\n"
-          "   ohne Bewegung; Spitze/15Hz = Spektrum der Tempo-Abweichung, aufloesbar bis ~25 Hz)")
+          "   ohne Bewegung; Spitze/15Hz = Spektrum der Tempo-Abweichung, aufloesbar bis ~25 Hz;\n"
+          "   Halt = je Greiferwechsel: tiefster Punkt gegenueber dem Haltepunkt, + = darueber,\n"
+          "   Flansch-FK der lokalen Kette)")
 
 
 def auswerten_datei(stamm, fk_pos):
@@ -628,11 +767,48 @@ def auswerten_datei(stamm, fk_pos):
         if key not in plaene:
             plaene[key] = roh[key]
         art = e["lauf"]["profil"]
-        profil = Profil(plaene[key], "linear" if art == "online" else art)
+        if name + "_send" not in roh.files:
+            continue   # Lauf mit Fehler, keine Rohdaten
+        profil = Profil(plaene[key], "linear" if art in ONLINE_ARTEN else art)
         e["kennzahlen"] = auswerten_lauf(
             roh[name + "_send"], roh[name + "_t"], roh[name + "_q"], profil,
             e["lauf"]["rate"], fk_pos, 0.0)
+        if art in ONLINE_ARTEN:
+            # Haltepunkte stehen erst seit 2026-10-16 im Mitschrieb; aeltere
+            # Berichte: aus den Zielen rekonstruiert.
+            if "halte_r%g" % r in roh.files:
+                halte = [tuple(int(x) for x in b) for b in roh["halte_r%g" % r]]
+            else:
+                halte = halte_aus_zielen(plaene[key])
+            e["kennzahlen"]["halte"] = halt_kennzahlen(
+                roh[name + "_t"], roh[name + "_q"], plaene[key], halte, fk_pos,
+                warte=e.get("warte"))
     return bericht
+
+
+def halte_aus_zielen(ziele, dwell_steps=config.GRIPPER_DWELL_STEPS, tol=5e-6):
+    """Haltepunkte aus den Gelenkzielen allein (fuer Berichte ohne Greiferspur).
+
+    Der Planer haelt am Greiferwechsel ``dwell_steps`` Takte nach der Ankunft
+    exakt still (Rauschen dort 0); sonst steht die Bahn hoechstens einen Takt.
+    Ein Stillstand von mehr als ``dwell_steps`` Zielen ist darum ein Dwell:
+    (ende - dwell_steps + 1, ende) wie bc.execution.hold_blocks.
+    """
+    ziele = np.asarray(ziele, dtype=float)
+    gleich = np.max(np.abs(np.diff(ziele, axis=0)), axis=1) <= tol
+    halte, i = [], 0
+    while i < len(gleich):
+        if not gleich[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < len(gleich) and gleich[j + 1]:
+            j += 1
+        ende = j + 1                     # letztes Ziel des Stillstands
+        if ende - i >= dwell_steps and i > 0:
+            halte.append((ende - dwell_steps + 1, ende))
+        i = j + 1
+    return halte
 
 
 def main():
@@ -723,8 +899,11 @@ def main():
             plan = plane(bot, ablauf, r, args.seed)
             plaene[r] = plan
             roh["plan_r%g" % r] = np.asarray(plan.joints_noisy, dtype=float)
-            show("Plan Rauschen %g" % r, "%d Ziele, %.1f s, %d Rejects"
-                 % (len(plan), (len(plan) - 1) / config.CONTROL_RATE_HZ, plan.rejects))
+            halte_r = execution.hold_blocks(plan.gripper, plan.dwell_mask)
+            roh["halte_r%g" % r] = np.asarray(halte_r, dtype=int).reshape(-1, 2)
+            show("Plan Rauschen %g" % r, "%d Ziele, %.1f s, %d Rejects, Haltepunkte %s"
+                 % (len(plan), (len(plan) - 1) / config.CONTROL_RATE_HZ, plan.rejects,
+                    ", ".join("Takt %d-%d" % b for b in halte_r) or "keine"))
         if not move:
             print("\n(keine Fahrt -- --move)")
             return
@@ -732,19 +911,24 @@ def main():
             section("Lauf %d/%d: %s  (%s %g Hz, Rauschen %g, Override %g)"
                     % (nr, len(laeufe), l["name"], l["profil"], l["rate"], l["rauschen"], l["override"]))
             bot._call("set_override", l["override"])
-            ist_online = l["profil"] == "online"
+            ist_online = l["profil"] in ONLINE_ARTEN
             if ist_online and not real:
                 print("  uebersprungen: die VM nimmt movelinear_online an, faehrt aber nicht")
                 continue
-            profil = Profil(plaene[l["rauschen"]].joints_noisy,
-                            "linear" if ist_online else l["profil"])
-            online = execution.describe("online") if ist_online else None
+            plan = plaene[l["rauschen"]]
+            profil = Profil(plan.joints_noisy, "linear" if ist_online else l["profil"])
+            # online = wie vor dem 2026-10-16 (ohne Halteregel), onlinehalt = Recorder heute
+            online = (execution.describe(
+                "online", reach_tol_mm=None if l["profil"] == "online" else config.ONLINE_REACH_TOL_MM)
+                if ist_online else None)
+            halte = execution.hold_blocks(plan.gripper, plan.dwell_mask)
             if ist_online:
                 l["online"] = online
             start = datetime.now().strftime("%H:%M:%S")
             try:
                 d = fahre_lauf(bot, profil, l["rate"], online=online,
-                               pause_s=args.pause if args.pause is not None else (3.0 if real else 0.0))
+                               pause_s=args.pause if args.pause is not None else (3.0 if real else 0.0),
+                               halte=halte, fk_pos=fk_pos)
             except Exception as exc:
                 print("  [FEHLER] %s: %s" % (type(exc).__name__, exc))
                 bericht["laeufe"][l["name"]] = {"lauf": l, "start": start,
@@ -754,15 +938,20 @@ def main():
                 continue
             k = auswerten_lauf(d["sendungen"], d["t"], d["q"], profil, l["rate"],
                                fk_pos, d["t_start"])
+            if ist_online:
+                k["halte"] = halt_kennzahlen(np.asarray(d["t"]) - d["t_start"], d["q"],
+                                             plan.joints_noisy, halte, fk_pos, warte=d["warte"])
             e = {"lauf": l, "start": start, "kennzahlen": k, "ueberlaeufe": d["ueberlaeufe"],
                  "lesedauer_ms": d["lesedauer_ms"], "lesefehler": d["lesefehler"],
-                 "ruhe_erreicht": d["ruhe"], "abbruch": d["abbruch"]}
+                 "ruhe_erreicht": d["ruhe"], "abbruch": d["abbruch"], "warte": d["warte"]}
             bericht["laeufe"][l["name"]] = e
             roh[l["name"] + "_t"] = d["t"] - d["t_start"]
             roh[l["name"] + "_q"] = d["q"]
             roh[l["name"] + "_send"] = d["sendungen"] - d["t_start"]
             print(zeile_kopf())
             print(zeile(l["name"], e))
+            for z in halt_zeilen(l["name"], k.get("halte")):
+                print(z)
             if bot.stop_requested:
                 print("  Stopp angefordert -- Serie beendet.")
                 break

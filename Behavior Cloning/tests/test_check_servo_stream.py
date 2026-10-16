@@ -184,3 +184,103 @@ def test_online_nur_mit_einem_ziel_je_takt():
     except ValueError:
         return
     raise AssertionError("online mit 60 Hz nicht abgelehnt")
+
+
+def test_onlinehalt_ist_eine_online_art():
+    l = tool.parse_lauf("onlinehalt-15-r0-o1")
+    assert l["profil"] == "onlinehalt"
+    try:
+        tool.parse_lauf("onlinehalt-60-r0-o1")
+    except ValueError:
+        return
+    raise AssertionError("onlinehalt mit 60 Hz nicht abgelehnt")
+
+
+# -- Haltepunkte (Anlage 2026-10-16: online kehrte 27 mm ueber PICK um) -------
+
+
+def _fk_identitaet(qs):
+    """Testkette: die ersten drei "Gelenke" sind die TCP-Position in m."""
+    return np.atleast_2d(np.asarray(qs, dtype=float))[:, :3]
+
+
+def _abstieg(tiefster_mm, stand_s, takt_s=1.0 / 15.0, lese_hz=100.0):
+    """Lesungen: aus 50 mm Hoehe auf ``tiefster_mm`` ueber PICK, dort
+    ``stand_s`` stehen, wieder hoch. Haltepunkt im Plan bei Takt 30-37."""
+    pick = np.array([0.4, 0.0, 0.1])
+    t = np.arange(0.0, 6.0, 1.0 / lese_hz)
+    z = np.empty_like(t)
+    t_ab, t_auf = 2.0, 2.0 + stand_s
+    for k, tk in enumerate(t):
+        if tk < t_ab:
+            z[k] = 0.05 - (0.05 - 1e-3 * tiefster_mm) * min(1.0, tk / t_ab)
+        elif tk <= t_auf:
+            z[k] = 1e-3 * tiefster_mm
+        else:
+            z[k] = 1e-3 * tiefster_mm + 0.02 * (tk - t_auf)
+    q = np.zeros((len(t), 6))
+    q[:, :3] = pick
+    q[:, 2] += z
+    ziele = np.zeros((60, 6))
+    ziele[:, :3] = pick
+    return t, q, ziele, [(30, 37)], takt_s
+
+
+def test_halt_kennzahlen_sehen_das_umkehren_ueber_pick():
+    t, q, ziele, halte, takt_s = _abstieg(27.0, 0.0)
+    e, = tool.halt_kennzahlen(t, q, ziele, halte, _fk_identitaet, takt_s=takt_s)
+    assert abs(e["tief_mm"] - 27.0) < 0.1
+    assert abs(e["min_mm"] - 27.0) < 0.1 and e["quer_tief_mm"] < 1e-6
+    assert e["verweil_s"] == 0.0
+    assert e["unten_s"] < 0.1                  # kein Halt, nur Umkehr
+
+
+def test_halt_kennzahlen_messen_die_verweilzeit_am_haltepunkt():
+    t, q, ziele, halte, takt_s = _abstieg(0.2, 0.5)
+    e, = tool.halt_kennzahlen(t, q, ziele, halte, _fk_identitaet, takt_s=takt_s)
+    assert abs(e["tief_mm"] - 0.2) < 0.01
+    assert abs(e["verweil_s"] - 0.5) < 0.1     # + Ein-/Auslauf innerhalb 1 mm
+    assert abs(e["unten_s"] - 0.5) < 0.05
+    zeile, = tool.halt_zeilen("onlinehalt-15-r0-o1", [e])
+    assert "+0.2 mm" in zeile and "Takt 30" in zeile
+
+
+def test_halt_kennzahlen_verschieben_das_fenster_um_die_wartezeit():
+    # Ein Warten von 10 s an einem frueheren Haltepunkt schiebt alles spaeter
+    t, q, ziele, halte, takt_s = _abstieg(0.2, 0.5)
+    warte = [{"step": 5, "wait_s": 10.0, "reached": True, "start_mm": 3.0,
+              "dist_mm": 0.9, "min_mm": 0.9, "reason": ""}]
+    e = tool.halt_kennzahlen(t + 10.0, q, ziele, [(5, 6)] + halte, _fk_identitaet,
+                             warte=warte, takt_s=takt_s)
+    assert e[0]["warten"]["wait_s"] == 10.0
+    assert abs(e[1]["tief_mm"] - 0.2) < 0.01
+    assert "gewartet 10.00 s" in tool.halt_zeilen("x", e)[0]
+
+
+def test_halte_aus_zielen_findet_die_haltepunkte_des_planers():
+    """Fuer Berichte vor 2026-10-16 (ohne Greiferspur im Mitschrieb)."""
+    from bc import execution
+    from bc.adapters.sim_robot import SimRobot
+    from bc.clock import SimClock
+    from bc.collision import default_workspace
+    from bc.kinematics import Kinematics
+    from bc.noise import generate_plan
+    from bc.trajectory import Waypoint, build_ideal_trajectory
+
+    robot = SimRobot(clock=SimClock()).connect()
+    home = robot.read_state().joints
+    start = robot.fk(home)
+
+    def wp(dx, dz, g=False, approach=False):
+        pose = np.asarray(start, dtype=float).copy()
+        pose[0] += dx
+        pose[2] += dz
+        return Waypoint(pose, gripper_closed=g, approach=approach)
+
+    ideal = build_ideal_trajectory([wp(0, 0), wp(0.05, -0.02), wp(0.05, -0.04, g=True, approach=True),
+                                    wp(0.05, -0.01, g=True), wp(0.0, -0.01, g=False)])
+    plan = generate_plan(Kinematics(robot), default_workspace(table_height_m=float(start[2]) - 0.3),
+                         ideal, home, rng=np.random.default_rng(0))
+    soll = execution.hold_blocks(plan.gripper, plan.dwell_mask)
+    assert len(soll) == 2
+    assert tool.halte_aus_zielen(plan.joints_noisy) == soll

@@ -19,6 +19,11 @@ Ablauf pro Zeitschritt i (bei CONTROL_RATE_HZ):
    Takt haben soll.
 3. Greiferbefehl absetzen, wenn die Bahn an dieser Stelle wechselt --
    die Totzeit ist als Dwell-Schritte bereits IN der Bahn (AP 2.1).
+   Ausfuehrung ``online`` mit Halteregel (``reach_*``, bc/execution.py):
+   VOR dem Befehl am Haltepunkt warten, bis der Arm dort steht; der
+   Vorlauf schaut bis zum Ende des Dwells nicht darueber hinaus. Die
+   Wartezeit ist kein Schritt der Episode, sie steht in den Metadaten
+   (``reach_waits``); die Beobachtung dieses Takts wird danach gelesen.
 4. Zustand und juengste Frames abgreifen, Zeitstempel gegen das
    Latenzbudget bewerten (AP 1.3).
 5. Asymmetrisch paaren (AP 2.4): Observation = echter (verrauschter)
@@ -135,6 +140,11 @@ class EpisodeRecorder(object):
         cmd_hist = []   # Sollwerte der letzten Takte (Kriterium b)
         meas_hist = []  # zugehoerige Messungen
         online = self.execution["mode"] == execution_module.ONLINE
+        # "Erst weiter, wenn erreicht" (nur online): Haltepunkte des Plans.
+        halt = execution_module.reach_rule(self.execution)
+        holds = execution_module.hold_blocks(plan.gripper, plan.dwell_mask) if halt else []
+        hold_starts = {start for start, _ in holds}
+        reach_waits = []
         self.robot.activate_servo("position")
         # Takt erst NACH dem Aktivieren starten: die Aktivierung dauert an
         # der VM einige 10 ms -- bei 60 Hz zaehlte das bisher als 3
@@ -157,7 +167,8 @@ class EpisodeRecorder(object):
                     if not self.robot.stop_requested:
                         t_target = pacer.tick()
                         ziel = plan.joints_noisy[execution_module.lead_index(
-                            i, self.execution["lead_steps"], n)]
+                            i, self.execution["lead_steps"], n,
+                            execution_module.next_hold_end(i, holds))]
                         t0 = self.clock.now()
                         self.robot.online_j(ziel, self.execution["vel"],
                                             self.execution["acc"])
@@ -174,6 +185,25 @@ class EpisodeRecorder(object):
                 if self.robot.stop_requested:
                     discard_reason = "schutzstopp"
                     break
+
+                if i in hold_starts:
+                    # Haltepunkt: Ziel stehen lassen, bis der Arm dort ist
+                    # (Anlage 2026-10-16: ohne das kehrte er 27 mm ueber
+                    # PICK um). Erst danach Greiferbefehl und Dwell.
+                    halt_ergebnis = execution_module.wait_until_reached(
+                        self.robot, plan.joints_noisy[i], self.execution,
+                        self.clock, self.rate_hz)
+                    halt_ergebnis["step"] = i
+                    reach_waits.append(halt_ergebnis)
+                    if not halt_ergebnis["reached"]:
+                        discard_reason = execution_module.reach_failure_text(
+                            halt_ergebnis, i)
+                        break
+                    # Neuer Takt ab hier -- die Wartezeit ist kein
+                    # Rueckstand (sonst zaehlte der Pacer sie als Overruns);
+                    # der naechste Sollwert kommt eine Periode spaeter.
+                    pacer.start().tick()
+                    t_target = self.clock.now()
 
                 g = plan.gripper[i]
                 if prev_gripper is None or g != prev_gripper:
@@ -385,6 +415,10 @@ class EpisodeRecorder(object):
                 "execution": self.execution,
             }
         )
+        if halt:
+            # Wartezeiten an den Haltepunkten (Takt, Dauer, Abstand vorher/
+            # nachher) -- in duration_s enthalten, nicht in den Schritten.
+            meta.update(execution_module.reach_summary(reach_waits))
         return dataset.Episode(
             arrays=arrays,
             metadata=meta,
@@ -453,6 +487,8 @@ def timing_findings(metadata):
     soll = metadata.get("planned_duration_s")
     if not dauer or not soll:
         return out
+    # Wartezeit an Haltepunkten (online) ist gewollt, kein langsamer Takt.
+    dauer -= float(metadata.get("reach_wait_s") or 0.0)
     faktor = dauer / soll
     if faktor <= config.RECORDER_SLOW_FACTOR_WARN:
         return out

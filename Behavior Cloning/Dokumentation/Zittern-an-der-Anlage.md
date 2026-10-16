@@ -41,6 +41,12 @@ aus den Rohdaten in `Berichte/` nachrechenbar (Anhang E).
 > (0,09 mm), ~70 ms Verzug — an der Anlage noch ungeprüft.
 > Ablauf für den nächsten Termin: `Labortag-Messplan-Zittern.md`.
 
+> **Nachtrag 16.10. (§ 10):** Mit `online` (×1,3/×1,5) läuft der Arm ~1,3 s
+> hinter dem Ziel her und kehrte **27 mm über PICK** um, ohne zu halten.
+> Neu: Halteregel „erst weiter, wenn erreicht“ — am Greiferwechsel bleibt
+> das Ziel stehen, bis der TCP auf 1 mm dort steht, dann der normale Dwell.
+> In Aufnahme und Inferenz gleich; an der Anlage noch zu messen (§ 10.4).
+
 ---
 
 ## 1. Das Problem
@@ -565,6 +571,162 @@ Befehl wie bisher, in der VM fahrbar.
 * Hält der Laptop an der Anlage 120 Hz, wenn nichts anderes läuft
   (Spline 120 Hz als Ausweichweg mit kleinem Verzug)?
 * Sendezeit-Streuung des Laptops an der Anlage.
+
+---
+
+## 10. Halteregel „erst weiter, wenn erreicht“ (16.10.2026)
+
+### 10.1 Anlass
+
+Ziel des Anwenders: Der Roboter soll sich möglichst so bewegen wie mit dem
+Neura-Standardprogramm. Messungen an der Anlage am 16.10. (Mitschriebe
+`Berichte/2026-10-16_*_Servo-Strom*`, Handy an Achse 5 = H1, RMS über 5 Hz):
+
+| Lauf | Bericht | Tempo/Beschl. | Dwell | H1 RMS | Verzug | tiefster Punkt ggü. PICK | ≤ 1 mm | am tiefsten Punkt |
+|---|---|---|---|---|---|---|---|---|
+| Neura-Standard | – | – | – | 0,18 m/s² | – | – | – | – |
+| `online` | 12-47-00, 13-00-44, 14-01-59, 14-03-10, 14-05-06 | 1,3 / 1,5 | 0,5 s | 0,20 m/s² | 1,31 s | **+27,3 … +27,6 mm** | 0 s | 0,09–0,12 s |
+| `online`, Rauschen 1 | 12-47-00, 13-00-44 | 1,3 / 1,5 | 0,5 s | – | 1,21–1,25 s | +33,1 / +33,3 mm | 0 s | 0,11 s |
+| Test 2 | 14-15-21 | 2,0 / 3,0 | 0,5 s | 0,67 m/s², Spitze 15 Hz | 0,63 s | +0,1 mm | 0,61 s | 0,57 s |
+| Test 3 | 14-18-59 | 1,3 / 1,5 | **1,5 s** | 0,26 m/s² | 1,39 s | +0,2 mm | 0,25 s | 0,25 s |
+| zum Vergleich `servo_j_pos` | 12-47-00 … 14-05-06 | – | 0,5 s | 0,83 m/s² | 0,14–0,34 s | – | – | – |
+| zum Vergleich `servo_j` linear | – | – | – | 2,0 m/s² | – | – | – | – |
+
+Die Spalten „tiefster Punkt“, „≤ 1 mm“ und „am tiefsten Punkt“ sind
+nachträglich mit der neuen Auswertung aus den Mitschrieben gerechnet
+(§ 10.4; Haltepunkt aus den Zielen rekonstruiert, Flansch-FK). H1 und
+die Eindrücke sind die Mitschriebe vom 16.10. („0,33 s unten“ bei Test 3
+war dort anders abgegrenzt als hier).
+
+* **`online` ×1,3/×1,5** ist so ruhig wie der Standard, kommt aber nicht
+  an: Das Ziel steht nur den Dwell lang (0,5 s) auf PICK, der Arm hängt
+  ~1,3 s hinterher und dreht 27 mm darüber um. Die Neura-Leuchte blieb
+  grün — kein Halt. Gegriffen hätte der Greifer in der Luft.
+* **Test 2** (schnellere Grenzen) erreicht PICK, regt aber an: 0,67 m/s²
+  mit 15-Hz-Spitze (Zieltakt), an Ecken ruckiger.
+* **Test 3** (längerer Dwell) erreicht PICK und bleibt glatt (Anwender:
+  „sehr glatt“) — aber nur, weil 1,5 s zufällig länger sind als der Verzug.
+  Der Dwell ist Teil der Bahn (mitgelernt, AP 2.1); ihn auf den Verzug
+  auszulegen hieße, jede Episode um diese Wartezeit zu verlängern, auch wo
+  der Arm schon steht.
+
+### 10.2 Die Regel
+
+Gilt nur für `online` und an **Haltepunkten = Greiferwechseln** (Dwell-
+Block des Planers, `bc/execution.hold_blocks`):
+
+1. Der Vorlauf (2 Takte) läuft wie bisher bis zum Haltepunkt.
+2. Im Takt des Greiferwechsels, **vor** dem Greiferbefehl: Das Ziel bleibt
+   auf PICK (wird je 15-Hz-Takt neu gesendet), bis der TCP **≤ 1 mm** am
+   Ziel steht, **2 Messungen in Folge** (`bc/execution.wait_until_reached`).
+3. Dann Greiferbefehl und der **normale Dwell** (0,5 s). Bis zu dessen Ende
+   schaut der Vorlauf nicht über PICK hinaus — sonst liefe das Abfahrtsziel
+   2 Takte zu früh los (`lead_index(..., hold_end)`).
+4. Danach weiter wie geplant.
+5. **Zeitlimit 3 s.** Erreicht der Arm den Punkt nicht: kein Not-Halt (das
+   Ziel ruht, der Arm fährt darauf zu), sondern geordnetes Ende — Aufnahme:
+   Episode verworfen mit „haltepunkt nicht erreicht: noch x mm … (Takt i)“;
+   Inferenz: Fahrt beendet mit demselben Grund. Ein Stopp während des
+   Wartens zählt wie sonst als Schutzstopp.
+
+Werte in `bc/config.py` (`ONLINE_REACH_TOL_MM = 1.0`,
+`ONLINE_REACH_SETTLE_STEPS = 2`, `ONLINE_REACH_TIMEOUT_S = 3.0`),
+**provisorisch** bis zur Messung (§ 10.4). Abstand im TCP-Raum, beide
+Seiten aus derselben Kette (Ziel einmal per FK, Messung aus `read_state`).
+
+**Warum so und nicht länger Dwell oder schnellere Grenzen:** Die ruhige
+Einstellung ×1,3/×1,5 bleibt (H1 wie Standard), gewartet wird nur so lange,
+wie der Arm wirklich braucht, und der Dwell bleibt der verifizierte
+Greiferwert. Das entspricht dem Standardprogramm: Bewegung „genau“ beenden,
+dann greifen.
+
+**Was das für die Daten heißt.** Die Wartezeit ist **kein Schritt** der
+Episode — die Schrittfolge bleibt die des Plans. Zwischen der Beobachtung
+des Takts vor dem Haltepunkt (Arm noch bis ~27 mm darüber) und der des
+Haltepunkts (Arm auf PICK) liegt die Wartezeit. Die Inferenz wartet an
+derselben Stelle (Greiferwechsel der Policy) mit derselben Regel, sieht
+also dieselbe Abfolge. Nachvollziehbar in den Metadaten jeder Episode:
+
+* `execution/reach_tol_mm`, `reach_settle_steps`, `reach_timeout_s`,
+  `hold_dwell_steps` — die Regel (Konsistenzschlüssel im Export, die
+  Inferenz übernimmt sie aus `bc_policy.json`),
+* `reach_waits` — je Halt: Takt, Wartezeit, Abstand vorher/zuletzt/minimal,
+  erreicht ja/nein,
+* `reach_wait_s`, `reach_wait_max_s` — Summe und längster Halt; in
+  `duration_s` enthalten, `timing_findings` rechnet sie heraus.
+
+Inferenz-Protokoll: `halt_s` je Takt in `rollout_*.npz`, `reach_waits` und
+`reach_wait_s` je Fahrt in `summary.json`. Beide Programme geben je Halt
+eine Zeile aus, z. B. „Halt Takt 146: 1.20 s gewartet, 27.4 -> 0.8 mm“.
+
+**Ältere `online`-Aufnahmen** (ohne `reach_*`) fahren in der Inferenz
+weiter ohne Warten — so, wie sie aufgenommen wurden.
+`apps/record.py --online-halt-mm 0` nimmt ebenfalls ohne Regel auf.
+
+### 10.3 Umsetzung (16.10.)
+
+| Wo | Was |
+|---|---|
+| `bc/config.py` | `ONLINE_REACH_TOL_MM`, `ONLINE_REACH_SETTLE_STEPS`, `ONLINE_REACH_TIMEOUT_S` |
+| `bc/execution.py` | `describe()` mit `reach_*`/`hold_dwell_steps`; `reach_rule`, `hold_blocks`, `next_hold_end`, `lead_index(..., hold_end)`, `wait_until_reached`, Texte/Zusammenfassung |
+| `bc/recorder.py` | Warten am Haltepunkt vor dem Greiferbefehl, Vorlauf-Kappung bis Dwell-Ende, Pacer danach neu (kein Overrun), Abbruch → verworfen; Metadaten `reach_waits` |
+| `apps/infer.py` | dieselbe Regel beim Greiferwechsel der Policy; Regel aus der Aufzeichnung; Protokoll `halt_s`, `reach_waits` |
+| `apps/record.py` | `--online-halt-mm` (0 = aus), `--online-halt-s`; Ausgabe je Halt |
+| `bc/lerobot_io.py` | Konsistenzschlüssel `execution/reach_*`, `hold_dwell_steps` |
+| `tools/check_servo_stream.py` | Laufart **`onlinehalt`**; für `online`/`onlinehalt` Auswertung je Haltepunkt (§ 10.4); `--auswerten` rekonstruiert die Haltepunkte älterer Berichte |
+| Tests | `test_execution` +7, `test_recorder` +4, `test_apps` +2, `test_check_servo_stream` +5 (SimRobot). Gesamt **355/355** |
+
+### 10.4 Messung an der Anlage (vorbereitet)
+
+```
+python tools/check_servo_stream.py --move --real-robot --laeufe online-15-r0-o1,onlinehalt-15-r0-o1
+```
+
+`online` = wie bisher (Bezug), `onlinehalt` = wie der Recorder jetzt. Der
+Greifer schaltet im Werkzeug nicht; gewartet wird trotzdem. Ausgabe je Lauf
+und Haltepunkt (Form; die Zahlen sind nur ein Beispiel):
+
+```
+  onlinehalt-15-r0-o1  Halt Takt 146: tiefster Punkt +0.2 mm (quer 0.1), min. Abstand 0.3 mm,
+                       0.55 s <= 1.0 mm, 0.52 s unten, gewartet 1.20 s
+```
+
+* **tiefster Punkt** — Höhe des tiefsten Punkts nahe PICK gegenüber PICK
+  (+ = darüber), **quer** — seitlicher Abstand dort,
+* **≤ 1,0 mm** — längste Zeit am Stück innerhalb der Toleranz um PICK,
+* **unten** — längste Zeit höchstens 0,5 mm über dem tiefsten Punkt
+  (Verweilen, auch wenn PICK nicht erreicht wird),
+* **gewartet** — nur `onlinehalt`: Wartezeit der Regel, bzw. „NICHT
+  ERREICHT“.
+
+Alte Berichte nachrechnen (schreibt die Kennzahlen in den Bericht):
+`python tools/check_servo_stream.py --auswerten Berichte/<stempel>_Servo-Strom`.
+Danach eine Aufnahme `apps/record.py` (online, Handy an Achse 5) — Zeile
+„Halt Takt …“ und `reach_waits` in `meta.json` prüfen.
+
+**Abnahme:** tiefster Punkt ≤ 1 mm über PICK, Verweilzeit ≥ Dwell (0,5 s),
+Wartezeit deutlich unter dem Zeitlimit, H1 wie `online` (≈ 0,20 m/s²),
+Neura-Leuchte zeigt den Halt wie beim Standardlauf.
+
+| Lauf | tiefster Punkt | ≤ 1 mm | unten | gewartet | H1 RMS | Eindruck |
+|---|---|---|---|---|---|---|
+| `online-15-r0-o1` | | | | – | | |
+| `onlinehalt-15-r0-o1` | | | | | | |
+| `apps/record.py` online, 1 Episode | | | | | | |
+
+### 10.5 Offen
+
+* **Toleranz und Zeitlimit** an der Anlage festlegen (1 mm / 3 s sind
+  Vorschläge). Die Wartezeit hängt vom Verzug ab (~1,3 s bei ×1,3/×1,5).
+* **2 Messungen in Folge** kosten auch dann einen Takt (67 ms), wenn der
+  Arm schon steht — bewusst, gegen ein Durchschwingen durch die Toleranz.
+* Geprüft wird nur die **Position**, nicht die Orientierung.
+* **Datensätze nicht mischen:** `online`-Episoden ohne `reach_*` (vor dem
+  16.10.) zählt der Export als „fehlt“, nicht als Konflikt. Vor dem
+  Training die Ausgabe des Exports lesen.
+* Unverändert aus der Zeit davor: Die Inferenz setzt den Greiferbefehl einen
+  Takt früher als der Recorder (Action = Ziel für t+1); der Dwell nach dem
+  Halt ist dort einen Takt länger.
 
 ---
 

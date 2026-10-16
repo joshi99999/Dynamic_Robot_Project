@@ -1,0 +1,257 @@
+{
+  "erzeugt": "2026-10-16T11:45:26",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": false,
+  "argumente": {
+    "move": true,
+    "tests": "referenz,komplett,knoten15,anschluss,leerlauf,stopp,online",
+    "joint": 1,
+    "amplitude": null,
+    "dauer": 4.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "servo_profil": "linear",
+    "vergleich_raten": "90,120",
+    "online_vorlauf": 1,
+    "online_tempo": 1.3,
+    "online_hz": 15.0,
+    "online_beschl": 3.0,
+    "richtung": "1,-0.5,-0.5,0.8,-0.8,1",
+    "override": 1.0,
+    "doku": false,
+    "real_robot": true
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "referenz": {
+      "kennzahlen": {
+        "proben": 605,
+        "leserate_hz": 137.6377508326907,
+        "groesste_luecke_ms": 25.254249572753906,
+        "verzug_ms": 64.00000000000014,
+        "folgefehler_rms_mrad": 0.3769184233349886,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.04993152405411158,
+        "dauer_faktor": 1.0034893816024673,
+        "welligkeit_prozent": 82.1045869887738,
+        "stillstand_prozent": 59.25925925925925,
+        "neue_werte_hz": 48.08497051036255,
+        "wiederholt_prozent": 58.994708994709,
+        "welligkeit_neu_prozent": 46.53712843679503,
+        "einbruch_neu_prozent": 24.99949439484284,
+        "tempo_p5_anteil": 0.18852014788366844,
+        "v_ist_max": 0.16683087104979627,
+        "v_plan_max": 0.039269908169872414,
+        "spitze_hz": 9.966777408637874,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 99.16125671702551,
+        "ende_s": 4.427671123504643
+      },
+      "lesedauer_ms": 6.577730178833008,
+      "lesefehler": 0,
+      "taktueberlaeufe": 2,
+      "servo_hz": 60.0,
+      "sendetakt": {
+        "sendungen": 268,
+        "abstand_std_ms": 3.468244613993684,
+        "abstand_abw_p95_ms": 7.982761065165201,
+        "abstand_max_ms": 40.531158447265625,
+        "verspaetung_median_ms": 0.4229545593261719,
+        "verspaetung_p95_ms": 7.684040069580076,
+        "aufruf_median_ms": 10.98620891571045,
+        "aufruf_p95_ms": 22.968375682830796
+      },
+      "servo_profil": "linear",
+      "nicht_deutbar": [
+        "Mitschrieb nur 138 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen"
+      ]
+    },
+    "referenz_90": {
+      "kennzahlen": {
+        "proben": 626,
+        "leserate_hz": 126.08001923828418,
+        "groesste_luecke_ms": 28.215646743774414,
+        "verzug_ms": 346.0000000000004,
+        "folgefehler_rms_mrad": 3.8318693834571853,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.049919539829206216,
+        "dauer_faktor": 1.1413768466322418,
+        "welligkeit_prozent": 68.70914813638706,
+        "stillstand_prozent": 57.608695652173914,
+        "neue_werte_hz": 48.27095356596826,
+        "wiederholt_prozent": 57.608695652173914,
+        "welligkeit_neu_prozent": 38.07972776553136,
+        "einbruch_neu_prozent": 19.799470324142945,
+        "tempo_p5_anteil": 0.20989815758688896,
+        "v_ist_max": 0.1448405931920825,
+        "v_plan_max": 0.039269908169872414,
+        "spitze_hz": 49.83388704318937,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 92.94549116840538,
+        "ende_s": 4.916843530654912
+      },
+      "lesedauer_ms": 7.64918327331543,
+      "lesefehler": 0,
+      "taktueberlaeufe": 56,
+      "servo_hz": 90.0,
+      "sendetakt": {
+        "sendungen": 402,
+        "abstand_std_ms": 5.448562083594935,
+        "abstand_abw_p95_ms": 14.320521884494358,
+        "abstand_max_ms": 51.8345832824707,
+        "verspaetung_median_ms": 1.8906593322753906,
+        "verspaetung_p95_ms": 8.812832832336426,
+        "aufruf_median_ms": 9.937644004821777,
+        "aufruf_p95_ms": 25.322759151458733
+      },
+      "servo_profil": "linear",
+      "nicht_deutbar": [
+        "Mitschrieb nur 126 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen",
+        "Bahn lief 1.14-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht)"
+      ]
+    },
+    "referenz_120": {
+      "kennzahlen": {
+        "proben": 786,
+        "leserate_hz": 119.37340619307832,
+        "groesste_luecke_ms": 28.313636779785156,
+        "verzug_ms": 600.0000000000007,
+        "folgefehler_rms_mrad": 11.982409432898121,
+        "verzug_am_rand": true,
+        "auslenkung_rad": 0.04994987489849789,
+        "dauer_faktor": 1.492892470315238,
+        "welligkeit_prozent": 59.787228037525665,
+        "stillstand_prozent": 55.952380952380956,
+        "neue_werte_hz": 49.041244965261896,
+        "wiederholt_prozent": 52.976190476190474,
+        "welligkeit_neu_prozent": 41.765628728170405,
+        "einbruch_neu_prozent": 34.712631310675086,
+        "tempo_p5_anteil": 0.018324198127867015,
+        "v_ist_max": 0.10710901009162652,
+        "v_plan_max": 0.039269908169872414,
+        "spitze_hz": 50.3875968992248,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 54.37280827791204,
+        "ende_s": 6.18650292396546
+      },
+      "lesedauer_ms": 8.02457332611084,
+      "lesefehler": 0,
+      "taktueberlaeufe": 256,
+      "servo_hz": 120.0,
+      "sendetakt": {
+        "sendungen": 536,
+        "abstand_std_ms": 9.884399544411513,
+        "abstand_abw_p95_ms": 12.524120012919104,
+        "abstand_max_ms": 211.42053604125977,
+        "verspaetung_median_ms": 4.016399383544922,
+        "verspaetung_p95_ms": 7.847011089324951,
+        "aufruf_median_ms": 10.728836059570312,
+        "aufruf_p95_ms": 20.83677053451538
+      },
+      "servo_profil": "linear",
+      "nicht_deutbar": [
+        "Mitschrieb nur 119 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen",
+        "Bahn lief 1.49-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht)",
+        "Verzug am Rand des Suchbereichs (600 ms) -- Zeitachse passt nicht zur Planung"
+      ]
+    },
+    "online": {
+      "kennzahlen": {
+        "proben": 1106,
+        "leserate_hz": 224.98009976935043,
+        "groesste_luecke_ms": 12.152433395385742,
+        "verzug_ms": 184.00000000000026,
+        "folgefehler_rms_mrad": 2.7749273599703725,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.04849566410763853,
+        "dauer_faktor": 1.0381850519961482,
+        "welligkeit_prozent": 71.91949200631575,
+        "stillstand_prozent": 74.96136012364761,
+        "neue_werte_hz": 50.29573312094179,
+        "wiederholt_prozent": 74.96136012364761,
+        "welligkeit_neu_prozent": 25.59252180817082,
+        "einbruch_neu_prozent": 0.7092075944872938,
+        "tempo_p5_anteil": 0.6044736092178543,
+        "v_ist_max": 0.08456512101157575,
+        "v_plan_max": 0.039269908169872414,
+        "spitze_hz": 50.3875968992248,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 91.21993933756617,
+        "ende_s": 4.465869123458866
+      },
+      "lesedauer_ms": 4.315733909606934,
+      "lesefehler": 0,
+      "taktueberlaeufe": 0,
+      "servo_hz": 15.0,
+      "online_hz": 15.0,
+      "codes": [
+        "None"
+      ],
+      "aufrufe": 67,
+      "fehler": null,
+      "vorlauf_takte": 1,
+      "tempo_faktor": 1.3,
+      "beschl_faktor": 3.0,
+      "v_tcp_ms": 0.02173468187805643,
+      "v_rot_rads": 0.03926344884198404,
+      "bewegt": true,
+      "richtung": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "nicht_deutbar": []
+    }
+  },
+  "befunde": [
+    [
+      "warnung",
+      "referenz nicht deutbar: Mitschrieb nur 138 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen."
+    ],
+    [
+      "warnung",
+      "referenz_90 nicht deutbar: Mitschrieb nur 126 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen; Bahn lief 1.14-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht)."
+    ],
+    [
+      "warnung",
+      "referenz_120 nicht deutbar: Mitschrieb nur 119 Hz (mindestens 150) -- 60-Hz-Stufen sind nicht aufloesbar, der Stillstand zaehlt wiederholte Lesungen; Bahn lief 1.49-fach langsamer als geplant -- der Sollwertstrom kam zu spaet (Rechner/Steuerung haelt den Takt nicht); Verzug am Rand des Suchbereichs (600 ms) -- Zeitachse passt nicht zur Planung."
+    ],
+    [
+      "info",
+      "servo_j 90 Hz: 56 Taktueberlaeufe; Glaette hier nicht vergleichbar."
+    ],
+    [
+      "info",
+      "servo_j 120 Hz: 256 Taktueberlaeufe; Glaette hier nicht vergleichbar."
+    ],
+    [
+      "warnung",
+      "movelinear_online, 15-Hz-Ziele: Welligkeit 25.6 %, Tempo-Einbruch 1 % der Fahrzeit, Tempo p5 0.60 der Bahn, Verzug 184 ms, Folgefehler 2.77 mrad (servo_j: Welligkeit 46.5 %, Einbruch 25 %) -- pulsiert im Takt; Vorlauf/Hoechstwerte anpassen (--online-vorlauf, --online-tempo)."
+    ],
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

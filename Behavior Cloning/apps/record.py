@@ -305,6 +305,13 @@ def parse_args():
     run.add_argument("--online-beschl", type=float, default=config.ONLINE_ACCEL_FACTOR,
                      help="online: Beschleunigungsgrenze als Vielfaches der Planer-Spitze "
                           "(Default %(default)s)")
+    run.add_argument("--online-halt-mm", type=float, default=config.ONLINE_REACH_TOL_MM,
+                     help="online: am Greiferwechsel warten, bis der TCP naeher als so "
+                          "viele mm am Haltepunkt steht; 0 = nicht warten "
+                          "(Default %(default)s, bc/execution.py)")
+    run.add_argument("--online-halt-s", type=float, default=config.ONLINE_REACH_TIMEOUT_S,
+                     help="online: hoechstens so lange warten, sonst Episode verwerfen "
+                          "(Default %(default)s)")
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--out", default="data_out")
     parser.add_argument(
@@ -356,6 +363,8 @@ def parse_args():
     if (not 0 <= args.online_vorlauf <= 5 or not 0.5 <= args.online_tempo <= 3.0
             or not 0.5 <= args.online_beschl <= 10.0):
         parser.error("--online-vorlauf 0..5, --online-tempo 0.5..3, --online-beschl 0.5..10")
+    if not 0 <= args.online_halt_mm <= 20 or not 0 < args.online_halt_s <= 30:
+        parser.error("--online-halt-mm 0..20 (0 = aus), --online-halt-s 0..30")
     if args.seed is None:
         args.seed = int(np.random.SeedSequence().entropy % (2**31))
     return args
@@ -503,12 +512,18 @@ def main():
     execution = execution_module.describe(
         mode, transit_speed=args.transit_speed, ptp_speed=args.ptp_speed,
         lead_steps=args.online_vorlauf, speed_factor=args.online_tempo,
-        accel_factor=args.online_beschl)
+        accel_factor=args.online_beschl,
+        reach_tol_mm=args.online_halt_mm or None, reach_timeout_s=args.online_halt_s)
     if mode == execution_module.ONLINE:
         print("Ausfuehrung: online (movelinear_online), Vorlauf %d Takte, Tempo x%.2f, "
               "Beschl. x%.2f -- Grenzen %.3f m/s / %.2f rad/s"
               % (execution["lead_steps"], execution["speed_factor"],
                  execution["accel_factor"], execution["vel"][0], execution["vel"][3]))
+        if execution_module.reach_rule(execution):
+            print("   Greiferwechsel: warten bis %.1f mm am Haltepunkt (hoechstens %.1f s)"
+                  % (execution["reach_tol_mm"], execution["reach_timeout_s"]))
+        else:
+            print("   Greiferwechsel: OHNE Warten (--online-halt-mm 0)")
         if robot_kind == "neura" and robot_info.get("in_simulation"):
             print("   WARNUNG: Die VM (v5.0.0-alpha.102) nimmt movelinear_online an, "
                   "faehrt aber nicht -- der Recorder bricht dann mit 'arm folgt "
@@ -715,6 +730,8 @@ def main():
             # (0 % schlechte Frames, kein Abbruch) und wird trotzdem mitgelernt.
             for zeile in timing_findings(episode.metadata):
                 print("   HINWEIS: %s" % zeile)
+            for halt in episode.metadata.get("reach_waits") or []:
+                print("   %s" % execution_module.reach_line(halt))
     finally:
         for cap in captures:
             cap.stop()

@@ -10,7 +10,11 @@ Aufbau der Schleife (AP 4.1/4.2), in jedem 15-Hz-Takt:
     4. Ziel fuer t+1 mit SERVO_RATE_HZ interpoliert anfahren (servo.py, wie
        im Recorder). Jeder Zwischenschritt laeuft im Adapter durch den
        Sprung- und Geschwindigkeitsfilter (servo.ServoGuard).
-    5. Greiferbefehl bei Wechsel (Schwelle 0.5).
+    5. Greiferbefehl bei Wechsel (Schwelle 0.5). Ausfuehrung ``online`` mit
+       Halteregel (``reach_*`` aus der Aufzeichnung, bc/execution.py): vor
+       dem Befehl am Ziel der Policy warten, bis der Arm dort steht, und
+       bis zum Ende des Dwells nicht darueber hinaus vorausschauen -- wie
+       der Recorder. Die Wartezeit steht je Takt in ``halt_s``.
     Geofence-Watchdog parallel (echte Uhr: eigener Thread; SimClock: je Takt).
 
 Vor jeder Fahrt geht es ausserhalb der Policy an die Startstellung der
@@ -107,7 +111,7 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
         watchdog.start()
 
     log = {k: [] for k in ("t", "joints", "tcp", "action", "gripper_cmd", "predict_s",
-                           "delay_steps", "ensemble_spread", "ensemble_count")}
+                           "delay_steps", "ensemble_spread", "ensemble_count", "halt_s")}
     # Takt 0 VOR dem Aktivieren des Servo-Interface: die erste Vorhersage
     # (bei asynchroner Vorhersage wird auf sie gewartet) haelt so keinen
     # laufenden Servostrom an. Der Arm steht, die Beobachtung bleibt gueltig.
@@ -115,6 +119,10 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
     first = (obs, state, executor.next_action(obs))
     execution = execution or execution_module.describe(execution_module.SERVO_J)
     online = execution["mode"] == execution_module.ONLINE
+    # "Erst weiter, wenn erreicht" wie im Recorder: hold_end ist der letzte
+    # Dwell-Takt nach einem Greiferwechsel, bis dahin kein Vorlauf darueber.
+    halt = execution_module.reach_rule(execution)
+    hold_end, last_target, reach_waits = None, None, []
     # Wie in der Aufnahme: servo_j linear oder servo_j_pos ohne v/a.
     interp = ServoInterpolator(
         servo_rate_hz=servo_rate_hz,
@@ -154,10 +162,19 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
                 # Action dieses Takts ist das Ziel fuer t+1, also liegt das
                 # Ziel fuer t+Vorlauf (lead_steps - 1) Actions weiter.
                 vorlauf = max(0, int(execution["lead_steps"]) - 1)
-                ziel = executor.lookahead(vorlauf) if vorlauf else action
+                if hold_end is not None and step <= hold_end:
+                    # Im Dwell: hoechstens bis zu dessen Ende vorausschauen
+                    # (Recorder: lead_index mit hold_end). -1 = das Ziel
+                    # des Vortakts, also weiter am Haltepunkt stehen.
+                    vorlauf = min(vorlauf, hold_end - step - 1)
+                if vorlauf < 0:
+                    ziel = last_target
+                else:
+                    ziel = limiter.limit((executor.lookahead(vorlauf) if vorlauf else action)[:6])
                 if not robot.stop_requested:
                     pacer.tick()
-                    robot.online_j(limiter.limit(ziel[:6]), execution["vel"], execution["acc"])
+                    robot.online_j(ziel, execution["vel"], execution["acc"])
+                    last_target = ziel
             else:
                 for q, v, a in interp.window(limiter.limit(action[:6])):
                     if robot.stop_requested:
@@ -168,6 +185,25 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
                 stop_reason = "stopp: %s" % (watchdog.tripped or "angefordert")
                 break
             gripper = dataset.gripper_from_action(action)
+            wait_s = 0.0
+            if halt and prev_gripper is not None and gripper != prev_gripper:
+                # Haltepunkt: das Ziel dieser Action halten, bis der Arm dort
+                # steht, dann Greiferbefehl und voller Dwell (wie der Recorder;
+                # der erste Greiferbefehl ist der Startzustand, kein Halt).
+                last_target = limiter.limit(action[:6])
+                ergebnis = execution_module.wait_until_reached(
+                    robot, last_target, execution, clock, config.CONTROL_RATE_HZ)
+                ergebnis["step"] = step
+                reach_waits.append(ergebnis)
+                wait_s = ergebnis["wait_s"]
+                if not ergebnis["reached"]:
+                    stop_reason = ("stopp: %s" % (watchdog.tripped or "angefordert")
+                                   if ergebnis["reason"] == "schutzstopp"
+                                   else execution_module.reach_failure_text(ergebnis, step))
+                    break
+                hold_end = step + int(execution.get("hold_dwell_steps",
+                                                    config.GRIPPER_DWELL_STEPS))
+                pacer.start().tick()   # Wartezeit ist kein Rueckstand, naechster Takt in 1/15 s
             if gripper != prev_gripper:
                 robot.gripper_command(gripper)
                 prev_gripper = gripper
@@ -182,6 +218,7 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
             log["delay_steps"].append(getattr(executor, "last_delay_steps", 0) if predicted else np.nan)
             log["ensemble_spread"].append(getattr(executor, "last_spread", 0.0))
             log["ensemble_count"].append(getattr(executor, "last_count", 1))
+            log["halt_s"].append(wait_s)
 
             if end_joints is not None:
                 near = float(np.max(np.abs(np.asarray(state.joints) - end_joints))) < END_TOL_RAD
@@ -220,6 +257,7 @@ def run_episode(robot, captures, executor, clock, max_steps, workspace,
     arrays["reached_end"] = stop_reason == "endstellung"
     arrays["guard_rejections"] = guard.rejections
     arrays["limiter_clamped"] = limiter.clamped
+    arrays.update(execution_module.reach_summary(reach_waits))
     return arrays
 
 
@@ -455,17 +493,32 @@ def main():
     rec = info.get("recording") or {}
     rec_exec = rec.get("execution") or {}
     rec_planner = rec.get("planner") or {}
+    # Halteregel wie in der Aufzeichnung: dort ohne reach_* (aeltere online-
+    # Aufnahmen) auch hier ohne Warten; --hold ohne Aufzeichnung: config.
+    if rec_exec.get("mode"):
+        reach = {"reach_tol_mm": rec_exec.get("reach_tol_mm"),
+                 "reach_settle_steps": rec_exec.get("reach_settle_steps")
+                 or config.ONLINE_REACH_SETTLE_STEPS,
+                 "reach_timeout_s": rec_exec.get("reach_timeout_s")
+                 or config.ONLINE_REACH_TIMEOUT_S,
+                 "dwell_steps": rec_exec.get("hold_dwell_steps") or config.GRIPPER_DWELL_STEPS}
+    else:
+        reach = {}
     execution = execution_module.describe(
         args.execution_mode,
         transit_speed=rec_planner.get("transit_speed_ms") or config.TRANSIT_SPEED_MS,
         ptp_speed=rec_planner.get("ptp_joint_speed_rads") or config.PTP_JOINT_SPEED_RADS,
         lead_steps=rec_exec.get("lead_steps", config.ONLINE_LEAD_STEPS),
         speed_factor=rec_exec.get("speed_factor") or config.ONLINE_SPEED_FACTOR,
-        accel_factor=rec_exec.get("accel_factor") or config.ONLINE_ACCEL_FACTOR)
+        accel_factor=rec_exec.get("accel_factor") or config.ONLINE_ACCEL_FACTOR,
+        **reach)
     robot_info["execution"] = execution
     if execution["mode"] == execution_module.ONLINE:
-        print("Ausfuehrung: online, Vorlauf %d Takte, Tempo x%.2f, Beschl. x%.2f"
-              % (execution["lead_steps"], execution["speed_factor"], execution["accel_factor"]))
+        print("Ausfuehrung: online, Vorlauf %d Takte, Tempo x%.2f, Beschl. x%.2f, %s"
+              % (execution["lead_steps"], execution["speed_factor"], execution["accel_factor"],
+                 "Greiferwechsel erst bei %.1f mm (hoechstens %.1f s)"
+                 % (execution["reach_tol_mm"], execution["reach_timeout_s"])
+                 if execution_module.reach_rule(execution) else "Greiferwechsel ohne Warten"))
     else:
         print("Ausfuehrung: servo_j %.0f Hz%s" % (
             args.servo_rate,
@@ -556,6 +609,8 @@ def main():
                 predict_ms_median=float(np.median(predict) * 1e3) if len(predict) else None,
                 predict_ms_p95=float(np.percentile(predict, 95) * 1e3) if len(predict) else None,
                 ensemble_spread_p95_rad=float(np.percentile(log["ensemble_spread"], 95)) if len(log["ensemble_spread"]) else None,
+                reach_wait_s=log["reach_wait_s"],
+                reach_waits=log["reach_waits"],
                 wall_s=wall,
                 **robot_info,
             )
@@ -569,6 +624,8 @@ def main():
                      _mm(summary.get("path_dev_p95_m")), log["stop_reason"],
                      "%.1f" % summary["predict_ms_median"] if summary["predict_ms_median"] else "-",
                      summary["pacer_overruns"], summary["limiter_clamped_steps"]))
+            for halt in log["reach_waits"]:
+                print("   %s" % execution_module.reach_line(halt))
     finally:
         if hasattr(executor, "close"):
             executor.close()

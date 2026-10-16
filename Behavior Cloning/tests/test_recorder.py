@@ -462,6 +462,131 @@ def test_timing_findings_count_one_call_per_tick_for_online():
     assert "1 x online_j" in text
 
 
+# -- "Erst weiter, wenn erreicht" (online, Anlage 2026-10-16) ----------------
+
+
+def _online_protokoll(robot):
+    """Schreibt online_j-Ziele und Greiferbefehle in Reihenfolge mit."""
+    ereignisse = []
+    online, greifer = robot.online_j, robot.gripper_command
+
+    def online_j(q, vel, acc):
+        ereignisse.append(("online", np.asarray(q, dtype=float).copy()))
+        return online(q, vel, acc)
+
+    def gripper_command(close):
+        ereignisse.append(("greifer", bool(close), robot.read_state().tcp_quat[:3].copy()))
+        return greifer(close)
+
+    robot.online_j = online_j
+    robot.gripper_command = gripper_command
+    return ereignisse
+
+
+def test_online_waits_at_the_gripper_change_until_the_arm_is_there():
+    from bc import execution
+
+    clock, robot, captures = _setup()
+    robot.ONLINE_GAIN = 0.15        # Arm laeuft hinterher wie an der Anlage
+    plan = _plan(robot, gripper=True)
+    ex = execution.describe("online", lead_steps=2)
+    holds = execution.hold_blocks(plan.gripper, plan.dwell_mask)
+    assert len(holds) == 1
+    h, e = holds[0]
+    pick = robot.fk(plan.joints_noisy[h])[:3]
+    ereignisse = _online_protokoll(robot)
+
+    episode = EpisodeRecorder(robot, captures, clock, execution=ex).record(plan)
+
+    n = len(plan)
+    assert not episode.discarded, episode.discard_reason
+    assert len(episode) == n                    # Wartezeit ist kein Schritt
+    meta = episode.metadata
+    assert len(meta["reach_waits"]) == 1
+    halt = meta["reach_waits"][0]
+    assert halt["step"] == h and halt["reached"] and halt["ticks"] > 0
+    assert halt["start_mm"] > ex["reach_tol_mm"]       # ohne Warten: zu hoch
+    assert abs(meta["reach_wait_s"] - halt["wait_s"]) < 1e-12 and halt["wait_s"] > 0
+    assert meta["pacer_overruns"] == 0
+
+    # Greifer schliesst erst, wenn der Arm am Haltepunkt steht ...
+    zu = [k for k, ev in enumerate(ereignisse) if ev[0] == "greifer" and ev[1]]
+    assert len(zu) == 1
+    assert 1e3 * np.linalg.norm(ereignisse[zu[0]][2] - pick) <= ex["reach_tol_mm"]
+    # ... und die Beobachtung dieses Takts zeigt ihn dort
+    obs_tcp = episode.arrays["observation.state"][h, 6:9]
+    assert 1e3 * np.linalg.norm(obs_tcp - pick) <= ex["reach_tol_mm"] + 1e-3
+
+    # Danach der volle Dwell: bis zu dessen Ende kein Abfahrtsziel, dann
+    # weiter mit Vorlauf.
+    nachher = [ev[1] for ev in ereignisse[zu[0] + 1:] if ev[0] == "online"]
+    assert len(nachher) == n - 1 - h
+    for k in range(e - h):                      # Takte h+1 .. e
+        assert np.allclose(nachher[k], plan.joints_noisy[e])
+    assert np.allclose(nachher[e - h], plan.joints_noisy[min(e + 1 + 2, n - 1)])
+    # vor dem Halt: Vorlauf schaut nicht ueber das Dwell-Ende hinaus
+    vorher = [ev[1] for ev in ereignisse[:zu[0]] if ev[0] == "online"]
+    assert np.allclose(vorher[0], plan.joints_noisy[2])
+
+
+def test_online_hold_timeout_discards_the_episode_cleanly():
+    from bc import execution
+
+    clock, robot, captures = _setup()
+    plan = _plan(robot, gripper=True)
+    (h, _), = execution.hold_blocks(plan.gripper, plan.dwell_mask)
+    ex = execution.describe("online", reach_timeout_s=0.5)
+    zaehler = {"n": 0}
+    original = robot.online_j
+
+    def bleibt_stehen(q, vel, acc):
+        # Ab einige Takte vor dem Haltepunkt nimmt die Steuerung nichts mehr an
+        zaehler["n"] += 1
+        if zaehler["n"] > h - 8:
+            return None
+        return original(q, vel, acc)
+
+    robot.online_j = bleibt_stehen
+    episode = EpisodeRecorder(robot, captures, clock, execution=ex,
+                              max_follow_error_rad=None).record(plan)
+    assert episode.discarded
+    assert episode.discard_reason.startswith("haltepunkt nicht erreicht")
+    assert "Takt %d" % h in episode.discard_reason
+    assert len(episode) == h                    # bis vor den Haltepunkt
+    halt, = episode.metadata["reach_waits"]
+    assert not halt["reached"] and halt["reason"] == "zeit"
+    assert not robot.stop_requested             # geordnet, kein Not-Halt
+    assert not robot.gripper_closed             # nie gegriffen
+
+
+def test_online_without_reach_rule_behaves_as_before():
+    """Aeltere online-Aufnahmen (ohne reach_*) fahren ohne Warten."""
+    from bc import execution
+
+    clock, robot, captures = _setup()
+    plan = _plan(robot, gripper=True)
+    ex = execution.describe("online", lead_steps=2, reach_tol_mm=None)
+    ereignisse = _online_protokoll(robot)
+    episode = EpisodeRecorder(robot, captures, clock, execution=ex).record(plan)
+    assert not episode.discarded, episode.discard_reason
+    assert "reach_waits" not in episode.metadata
+    ziele = [ev[1] for ev in ereignisse if ev[0] == "online"]
+    n = len(plan)
+    assert len(ziele) == n
+    for i, q in enumerate(ziele):
+        assert np.allclose(q, plan.joints_noisy[min(i + 2, n - 1)])
+
+
+def test_timing_findings_ignore_the_hold_wait():
+    from bc.recorder import timing_findings
+
+    meta = _meta(20.0, 14.5, 9.0, 8.0)
+    meta["execution"] = {"mode": "online"}
+    assert timing_findings(meta)
+    meta["reach_wait_s"] = 5.5
+    assert timing_findings(meta) == []
+
+
 def test_servo_j_pos_sends_same_positions_without_velocity():
     # Ausfuehrung servo_j_pos (bc/execution.py, VM 2026-10-14): dieselben
     # Sollpositionen wie servo_j, aber v = a = 0 -- die Steuerung glaettet

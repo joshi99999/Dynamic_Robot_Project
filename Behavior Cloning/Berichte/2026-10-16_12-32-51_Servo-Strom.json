@@ -1,0 +1,19 @@
+{
+  "erzeugt": "2026-10-16T12:32:50",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. VM: wie die Steuerung den Strom umsetzt, keine Mechanik.",
+  "in_simulation": false,
+  "server_version": "v5.0.8",
+  "ablauf": "C:\\Users\\jerem\\OneDrive\\Projekt\\80_Github\\Dynamic_Robot_Project\\Behavior Cloning\\sequences\\arbeitskopien\\pick_to_station.json",
+  "seed": 7,
+  "argumente": {
+    "move": true,
+    "matrix": "standard",
+    "laeufe": "linear-60-r0-o1,pos-60-r0-o1,online-15-r0-o1,linear-60-r0-o0.5,pos-60-r1-o1,online-15-r1-o1",
+    "ablauf": null,
+    "seed": 7,
+    "real_robot": true,
+    "pause": null,
+    "auswerten": null
+  },
+  "laeufe": {}
+}

@@ -73,6 +73,20 @@ ONLINE_VERIFIED = False
 #: den Not-Halt am Bahnende ausgeloest zu haben, Taktzeit-Doku 6.5).
 ONLINE_SETTLE_S = 1.0
 
+#: "Erst weiter, wenn erreicht" an Greiferwechseln (nur ``online``,
+#: bc/execution.py). Anlage 2026-10-16: der Arm laeuft ~1,3 s hinter dem
+#: Ziel her; mit dem 0,5-s-Dwell kehrte er 27 mm ueber PICK um, ohne zu
+#: halten. Jetzt bleibt das Ziel am Haltepunkt stehen, bis der TCP naeher
+#: als ONLINE_REACH_TOL_MM am Ziel ist (ONLINE_REACH_SETTLE_STEPS Takte in
+#: Folge); erst dann Greiferbefehl und der normale GRIPPER_DWELL. Nach
+#: ONLINE_REACH_TIMEOUT_S ohne Erfolg: Abbruch (Aufnahme verworfen,
+#: Inferenzfahrt beendet). Aufnahme und Inferenz nutzen dieselben Werte --
+#: sie stehen in den Metadaten (execution/reach_*). PROVISORISCH bis zur
+#: Messung an der Anlage (tools/check_servo_stream.py, Lauf onlinehalt-15-r0-o1).
+ONLINE_REACH_TOL_MM = 1.0
+ONLINE_REACH_SETTLE_STEPS = 2
+ONLINE_REACH_TIMEOUT_S = 3.0
+
 #: Maximal zulaessige Zeitdifferenz zwischen den Quellen eines Frames.
 #: Deutlich kleiner als ein halber Frame-Abstand (AP 1.3).
 SYNC_MAX_SKEW_S = 0.030

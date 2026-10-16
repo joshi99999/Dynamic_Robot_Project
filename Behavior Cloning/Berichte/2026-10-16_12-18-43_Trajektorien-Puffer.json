@@ -1,0 +1,98 @@
+{
+  "erzeugt": "2026-10-16T12:18:33",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. In der VM Stellvertreter, kein Massstab -- an der Anlage wiederholen.",
+  "in_simulation": false,
+  "argumente": {
+    "move": true,
+    "tests": "referenz",
+    "joint": 1,
+    "amplitude": 0.05,
+    "dauer": 4.0,
+    "knoten_hz": 100.0,
+    "chunk_takte": 4,
+    "vorlauf_takte": 1,
+    "servo_rate": 60.0,
+    "servo_profil": "pos",
+    "vergleich_raten": "",
+    "online_vorlauf": 1,
+    "online_tempo": 1.3,
+    "online_hz": 15.0,
+    "online_beschl": 3.0,
+    "richtung": "1,-0.5,-0.5,0.8,-0.8,1",
+    "override": 1.0,
+    "doku": false,
+    "real_robot": true
+  },
+  "funktionen": {
+    "move_trajectory": false,
+    "plan_move_joint": true,
+    "executor": true,
+    "wait_motion_finished": true,
+    "motion_status": true,
+    "movelinear_online": true,
+    "stop_movelinear_online": true,
+    "servo_x": true,
+    "move_joint": true,
+    "_weitere": [
+      "get_servo_trajectory_scaling_factor",
+      "list_recorded_path",
+      "move_recorded_path",
+      "plan_move_recorded_path"
+    ]
+  },
+  "tests": {
+    "referenz": {
+      "kennzahlen": {
+        "proben": 695,
+        "leserate_hz": 151.17877739331027,
+        "groesste_luecke_ms": 44.04950141906738,
+        "verzug_ms": 120.00000000000018,
+        "folgefehler_rms_mrad": 0.7034370046405551,
+        "verzug_am_rand": false,
+        "auslenkung_rad": 0.04987085391552819,
+        "dauer_faktor": 1.0533284983705729,
+        "welligkeit_prozent": 70.4622199576058,
+        "stillstand_prozent": 62.71186440677966,
+        "neue_werte_hz": 48.39535362421468,
+        "wiederholt_prozent": 62.227602905569015,
+        "welligkeit_neu_prozent": 32.544427438681076,
+        "einbruch_neu_prozent": 13.922848131681866,
+        "tempo_p5_anteil": 0.07814852654528591,
+        "v_ist_max": 0.1468067550906213,
+        "v_plan_max": 0.039269908169872414,
+        "spitze_hz": 50.3875968992248,
+        "spitze_aussagekraeftig": true,
+        "anteil_ueber_5hz_prozent": 97.91537270945543,
+        "ende_s": 4.694960926055913
+      },
+      "lesedauer_ms": 5.894899368286133,
+      "lesefehler": 0,
+      "taktueberlaeufe": 14,
+      "servo_hz": 60.0,
+      "sendetakt": {
+        "sendungen": 268,
+        "abstand_std_ms": 12.379175084960593,
+        "abstand_abw_p95_ms": 7.630840937296541,
+        "abstand_max_ms": 209.45405960083008,
+        "verspaetung_median_ms": 0.4200935363769531,
+        "verspaetung_p95_ms": 9.565746784210194,
+        "aufruf_median_ms": 10.256171226501465,
+        "aufruf_p95_ms": 21.663498878479
+      },
+      "servo_profil": "pos",
+      "nicht_deutbar": [
+        "Steuerung liefert nur 48 neue Gelenkwerte je Sekunde, weniger als servo_j-Stufen (60 Hz) -- 62 % der Lesungen sind Wiederholungen, der Stillstand zaehlt sie mit; Stufen und Glaette sind hier nicht messbar"
+      ]
+    }
+  },
+  "befunde": [
+    [
+      "warnung",
+      "referenz nicht deutbar: Steuerung liefert nur 48 neue Gelenkwerte je Sekunde, weniger als servo_j-Stufen (60 Hz) -- 62 % der Lesungen sind Wiederholungen, der Stillstand zaehlt sie mit; Stufen und Glaette sind hier nicht messbar."
+    ],
+    [
+      "warnung",
+      "Rollender Puffer (noch) nicht freigegeben: move_trajectory fehlt, Anschluss nicht getestet, Stopp nicht getestet."
+    ]
+  ]
+}

@@ -59,6 +59,11 @@ CONSISTENCY_KEYS = (
     ("execution", "lead_steps"),
     ("execution", "speed_factor"),
     ("execution", "accel_factor"),
+    # "Erst weiter, wenn erreicht" (online): die Inferenz wartet genauso.
+    ("execution", "reach_tol_mm"),
+    ("execution", "reach_settle_steps"),
+    ("execution", "reach_timeout_s"),
+    ("execution", "hold_dwell_steps"),
 )
 
 _STATE_NAMES = [

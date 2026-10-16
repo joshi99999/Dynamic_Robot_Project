@@ -1,0 +1,97 @@
+{
+  "erzeugt": "2026-10-16T14:14:49",
+  "geltungsbereich": "Zahlen gelten NUR fuer die hier gemessene Steuerung. VM: wie die Steuerung den Strom umsetzt, keine Mechanik.",
+  "in_simulation": false,
+  "server_version": "v5.0.8",
+  "ablauf": "C:\\Users\\jerem\\OneDrive\\Projekt\\80_Github\\Dynamic_Robot_Project\\Behavior Cloning\\sequences\\arbeitskopien\\pick_to_station.json",
+  "seed": 7,
+  "argumente": {
+    "move": true,
+    "matrix": "standard",
+    "laeufe": "online-15-r0-o1",
+    "ablauf": null,
+    "seed": 7,
+    "real_robot": true,
+    "pause": null,
+    "auswerten": null
+  },
+  "laeufe": {
+    "online-15-r0-o1": {
+      "lauf": {
+        "name": "online-15-r0-o1",
+        "profil": "online",
+        "rate": 15.0,
+        "rauschen": 0.0,
+        "override": 1.0,
+        "online": {
+          "mode": "online",
+          "lead_steps": 2,
+          "speed_factor": 2.0,
+          "accel_factor": 3.0,
+          "vel": [
+            0.3,
+            0.3,
+            0.3,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "acc": [
+            1.4137166941154067,
+            1.4137166941154067,
+            1.4137166941154067,
+            4.71238898038469,
+            4.71238898038469,
+            4.71238898038469
+          ]
+        }
+      },
+      "start": "14:14:57",
+      "kennzahlen": {
+        "sendetakt": {
+          "sendungen": 206,
+          "abstand_std_ms": 0.229548651643432,
+          "abstand_abw_p95_ms": 0.43648084004720145,
+          "abstand_max_ms": 67.22331047058105,
+          "verspaetung_median_ms": 0.36728382110595703,
+          "verspaetung_p95_ms": 0.5978941917419434,
+          "aufruf_median_ms": 12.08794116973877,
+          "aufruf_p95_ms": 22.033512592315674,
+          "dauer_faktor": 1.0000367280913562
+        },
+        "neue_werte_hz": 49.932104981535055,
+        "raster": {
+          "raster": false,
+          "grund": "zwei Werte in einem Rasterschritt",
+          "periode_ms": 19.93870735168457
+        },
+        "tempo": {
+          "fahrt_s": 12.640751600265503,
+          "tempo_welligkeit_prozent": 18.656201586054234,
+          "einbruch_prozent": 0.8532727464253249,
+          "stillstand_prozent": 0.17227735900355257,
+          "tempo_max_ms": 0.246356197907547,
+          "tempo_glatt_max_ms": 0.14527945878619253,
+          "spitze_hz": 16.672717371738045,
+          "anteil_15hz": 0.2637592227765667,
+          "anteil_10hz": 0.1955227005551123,
+          "abtastrate_hz": 50.153702662951844
+        },
+        "quer": {
+          "rms_mm": 4.430927472197296,
+          "max_mm": 11.648505126768006,
+          "welligkeit_rms_mm": 0.6538474008629085,
+          "welligkeit_max_mm": 4.332742339381398
+        },
+        "verzug_ms": 634.0000000000008,
+        "folgefehler_rms_mrad": 67.91399540929125,
+        "fahrzeit_faktor": 0.993905032553324
+      },
+      "ueberlaeufe": 0,
+      "lesedauer_ms": 4.527568817138672,
+      "lesefehler": 0,
+      "ruhe_erreicht": true,
+      "abbruch": ""
+    }
+  }
+}
