@@ -8,7 +8,7 @@ Gegenstück zu [Environment-Einrichtung.md](Environment-Einrichtung.md) (PC,
 `E:\Enviroments\bc_env`, RTX 5070 Ti). Befunde zum Rechner selbst stehen in
 [Laptop-Inbetriebnahme-Befunde.md](Laptop-Inbetriebnahme-Befunde.md).
 
-> **Stand 2026-10-01: `C:\Enviromentsc_env` ist angelegt und abgenommen**
+> **Stand 2026-10-01: `C:\Enviroments\bc_env` ist angelegt und abgenommen**
 > (Python 3.11, ohne torch/lerobot). Siehe Abschnitt 4. Eingefrorener
 > Ist-Stand: [environment-lock-laptop.txt](environment-lock-laptop.txt).
 
@@ -83,20 +83,20 @@ es fehlt nur Qt zum Starten.
 
 ## 4. Was eingerichtet ist
 
-`C:\Enviromentsc_env` — **Python 3.11**, bewusst ohne torch und lerobot.
+`C:\Enviroments\bc_env` — **Python 3.11**, bewusst ohne torch und lerobot.
 Damit entfällt die Installation von Python 3.12 vollständig: lerobot verlangt
 torch hart, ohne torch gibt es also auch keinen Grund für 3.12.
 
 ```bash
-py -3.11 -m venv C:\Enviromentsc_env
-C:\Enviromentsc_env\Scripts\python.exe -m pip install --upgrade pip
-C:\Enviromentsc_env\Scripts\python.exe -m pip install "numpy>=1.26,<2.3" "scipy>=1.13,<2" "opencv-python>=4.9,<4.14" "PySide6-Essentials>=6.6,<7" "pywin32>=306" "prettytable>=3.17" "pygame>=2.5,<3"
+py -3.11 -m venv C:\Enviroments\bc_env
+C:\Enviroments\bc_env\Scripts\python.exe -m pip install --upgrade pip
+C:\Enviroments\bc_env\Scripts\python.exe -m pip install "numpy>=1.26,<2.3" "scipy>=1.13,<2" "opencv-python>=4.9,<4.14" "PySide6-Essentials>=6.6,<7" "pywin32>=306" "prettytable>=3.17" "pygame>=2.5,<3"
 ```
 
 Starten:
 
 ```bash
-C:\Enviromentsc_env\Scripts\python.exe -m bc.gui
+C:\Enviroments\bc_env\Scripts\python.exe -m bc.gui
 ```
 
 ### 4.1 Gemessener Aufwand
@@ -127,7 +127,7 @@ Erweiterung dieses einen — `lerobot==0.6.1` ist auf 3.11 nicht
 installierbar. Reihenfolge:
 
 ```bash
-py -3.12 -m venv C:\Enviromentsc_env312
+py -3.12 -m venv C:\Enviroments\bc_env312
 … wie oben, aber numpy auf ">=2.0,<2.3"
 … "torch==2.11.0" "torchvision==0.26.0"          # CPU-Build, KEIN cu128-Index
 … "lerobot==0.6.1" "diffusers==0.39.0" "torchcodec==0.11.1" "av==15.1.0" "datasets==4.8.5"
@@ -192,7 +192,7 @@ im `PATH` der Unterprozesse. Es reicht also, `ffmpeg.exe` nach
 ## 6. Abnahme — Ergebnis vom 2026-10-01
 
 ```bash
-C:\Enviromentsc_env\Scripts\python.exe tests/run_all.py
+C:\Enviroments\bc_env\Scripts\python.exe tests/run_all.py
 ```
 
 **250 bestanden, 1 fehlgeschlagen** —

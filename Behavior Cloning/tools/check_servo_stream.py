@@ -789,10 +789,15 @@ def auswerten_datei(stamm, fk_pos):
 def halte_aus_zielen(ziele, dwell_steps=config.GRIPPER_DWELL_STEPS, tol=5e-6):
     """Haltepunkte aus den Gelenkzielen allein (fuer Berichte ohne Greiferspur).
 
-    Der Planer haelt am Greiferwechsel ``dwell_steps`` Takte nach der Ankunft
-    exakt still (Rauschen dort 0); sonst steht die Bahn hoechstens einen Takt.
-    Ein Stillstand von mehr als ``dwell_steps`` Zielen ist darum ein Dwell:
-    (ende - dwell_steps + 1, ende) wie bc.execution.hold_blocks.
+    Der Planer haelt am Greiferwechsel nach der Ankunft exakt still
+    (Rauschen dort 0); sonst steht die Bahn hoechstens einen Takt. Ein
+    Stillstand von mindestens ``dwell_steps`` Zielen ist darum ein Dwell:
+    (erster Takt nach der Ankunft, letzter Dwell-Takt) wie
+    bc.execution.hold_blocks -- der Planer schaltet den Greifer im ersten
+    Takt nach der Ankunft (bc/trajectory.py). Der Beginn wird NICHT aus
+    ``dwell_steps`` zurueckgerechnet: der Dwell eines Berichts kann vom
+    heutigen GRIPPER_DWELL_S abweichen (Test 3 am 2026-10-16: 1,5 s, der
+    Haltepunkt landete sonst 15 Takte zu spaet).
     """
     ziele = np.asarray(ziele, dtype=float)
     gleich = np.max(np.abs(np.diff(ziele, axis=0)), axis=1) <= tol
@@ -806,7 +811,7 @@ def halte_aus_zielen(ziele, dwell_steps=config.GRIPPER_DWELL_STEPS, tol=5e-6):
             j += 1
         ende = j + 1                     # letztes Ziel des Stillstands
         if ende - i >= dwell_steps and i > 0:
-            halte.append((ende - dwell_steps + 1, ende))
+            halte.append((i + 1, ende))  # i = Ankunft, i + 1 = Greiferwechsel
         i = j + 1
     return halte
 

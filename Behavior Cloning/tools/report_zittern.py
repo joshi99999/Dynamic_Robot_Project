@@ -75,61 +75,172 @@ def _gleit(x, n):
     return np.column_stack([np.convolve(x[:, i], k, mode="same") for i in range(x.shape[1])])
 
 
+def zeitabschnitte(zeilen, t_ende):
+    """Abschnitte einer phyphox-Messung aus dem Blatt "Metadata Time".
+
+    phyphox zaehlt die Experimentzeit ueber PAUSE/START hinweg OHNE Luecke
+    weiter (Labortag 2026-10-16: eine Datei mit drei Abschnitten ueber 16
+    Minuten, Experimentzeit nur 377 s). Die Uhrzeit eines Messwerts ergibt
+    sich deshalb nur ueber den START seines Abschnitts. Rueckgabe: Liste
+    ``(e0, e1, s0)`` -- Experimentzeit von/bis und Systemzeit (Unix) bei
+    e0. Ohne verwertbare Zeilen ein Abschnitt ohne Systemzeit.
+    """
+    ereignisse = []
+    for z in (zeilen or [])[1:]:
+        if len(z) >= 3 and z[0] in ("START", "PAUSE") and z[1] is not None:
+            try:
+                ereignisse.append((z[0], float(z[1]), None if z[2] is None else float(z[2])))
+            except (TypeError, ValueError):
+                continue
+    out = []
+    for k, (art, e, s) in enumerate(ereignisse):
+        if art != "START":
+            continue
+        ende = next((e2 for art2, e2, _ in ereignisse[k + 1:] if art2 == "PAUSE"), float(t_ende))
+        if ende > e:
+            out.append((e, ende, s))
+    return out or [(0.0, float(t_ende), None)]
+
+
+def systemzeit(t, abschnitte):
+    """Experimentzeit -> Systemzeit (Unix) ueber den Abschnitt, in dem sie liegt."""
+    for e0, e1, s0 in abschnitte:
+        if e0 <= t <= e1 and s0 is not None:
+            return s0 + (t - e0)
+    return None
+
+
+def experimentzeit(uhr, abschnitte):
+    """Systemzeit (Unix) -> Experimentzeit; None, wenn sie in einer Pause liegt."""
+    for e0, e1, s0 in abschnitte:
+        if s0 is not None and s0 <= uhr <= s0 + (e1 - e0):
+            return e0 + (uhr - s0)
+    return None
+
+
+def fenster_auswerten(h, uhr_von, uhr_bis):
+    """Zittern in einem Uhrzeit-Fenster (statt automatisch erkannter Fahrten).
+
+    Fuer Laeufe, deren Beginn und Ende aus den Messwerkzeugen bekannt sind
+    (LOS-Zeit, Mitschrieb) -- die automatische Erkennung haengt an der
+    Lageaenderung des Handys und uebersieht ruhige Fahrten.
+    """
+    e0 = experimentzeit(uhr_von, h["abschnitte"])
+    e1 = experimentzeit(uhr_bis, h["abschnitte"])
+    if e0 is None or e1 is None:
+        return None
+    m = (h["t"] >= e0) & (h["t"] <= e1) & np.isfinite(h["betrag"])
+    if m.sum() < h["fs"]:
+        return None
+    x = h["hp"][m]
+    F = np.fft.rfft(x * np.hanning(len(x))[:, None], axis=0)
+    P = np.sum(np.abs(F) ** 2, axis=1)
+    f = np.fft.rfftfreq(len(x), 1.0 / h["fs"])
+    b = h["betrag"][m]
+    return {"t0": float(e0), "t1": float(e1), "uhr0": float(uhr_von), "abschnitt": next(
+                k for k, (a0, a1, _) in enumerate(h["abschnitte"]) if a0 <= e0 <= a1),
+            "beginn": datetime.fromtimestamp(uhr_von).strftime("%H:%M:%S"),
+            "rms": float(np.sqrt(np.mean(b ** 2))), "p99": float(np.percentile(b, 99)),
+            "f": f, "spektrum": np.sqrt(P) / len(x) * 2,
+            "spitze_hz": float(f[f > 5][np.argmax(P[f > 5])])}
+
+
 def handy_auswerten(pfad):
     """Fahrten finden (langsame Lageaenderung) und Zittern je Fahrt (> 5 Hz)."""
     b = lies_xlsx(pfad)
     roh = np.array([r[:4] for r in b["Raw Data"][1:] if r and r[0] is not None], dtype=float)
-    start = float(b["Metadata Time"][1][2])
     t, a = roh[:, 0], roh[:, 1:4]
+    return handy_auswerten_daten(t, a, zeitabschnitte(b.get("Metadata Time"), t[-1]))
+
+
+def handy_auswerten_daten(t, a, abschnitte):
+    """Wie :func:`handy_auswerten`, aus Zeit (s), Beschleunigung (N, 3) und
+    den Abschnitten (:func:`zeitabschnitte`).
+
+    Jeder Abschnitt wird fuer sich auf das gleichmaessige Raster gelegt und
+    gefiltert -- ueber eine Pause hinweg wird weder interpoliert noch
+    geglaettet, und eine Fahrt endet spaetestens am Abschnittsende. Die
+    Schwelle fuer "in Bewegung" gilt fuer die ganze Datei (ein reiner
+    Ruhe-Abschnitt liefert sonst Rauschen als Fahrt).
+    """
+    t = np.asarray(t, dtype=float)
+    a = np.asarray(a, dtype=float)
     fs = round(1.0 / float(np.median(np.diff(t))))
-    tg = np.arange(t[0], t[-1], 1.0 / fs)
-    ag = np.column_stack([np.interp(tg, t, a[:, i]) for i in range(3)])
-    langsam = _gleit(ag, 0.25 * fs)
-    d = _gleit(np.linalg.norm(np.gradient(langsam, axis=0), axis=1) * fs, 0.3 * fs)
-    an = d > 0.25 * np.percentile(d, 99)
-    kanten = np.flatnonzero(np.diff(an.astype(int)))
-    fahrten, i = [], 0
-    if an[0]:
-        kanten = np.concatenate([[-1], kanten])
-    while i + 1 < len(kanten):
-        s0, s1 = kanten[i] + 1, kanten[i + 1] + 1
-        if fahrten and (s0 - fahrten[-1][1]) / fs < 1.0:
-            fahrten[-1][1] = s1
-        else:
-            fahrten.append([s0, s1])
-        i += 2
-    fahrten = [f for f in fahrten if (f[1] - f[0]) / fs > 1.0]
-    hp = ag - _gleit(ag, fs / 5.0)              # Hochpass ~5 Hz
-    betrag = np.sqrt(np.sum(hp ** 2, axis=1))
-    # Die ersten/letzten 0,5 s sind Randeffekte des Filters, keine Messung.
     rand = fs // 2
-    betrag[:rand] = np.nan
-    betrag[-rand:] = np.nan
-    ruhe = np.isfinite(betrag)
-    for s0, s1 in fahrten:
-        ruhe[max(0, s0 - fs):s1 + fs] = False
-    ruhe &= np.isfinite(betrag)
-    out = {"fs": fs, "t": tg, "betrag": betrag, "start": start, "fahrten": [],
-           "boden_rms": float(np.sqrt(np.mean(betrag[ruhe] ** 2)))}
-    for s0, s1 in fahrten:
-        x = hp[s0:s1]
-        F = np.fft.rfft(x * np.hanning(len(x))[:, None], axis=0)
-        P = np.sum(np.abs(F) ** 2, axis=1)
-        f = np.fft.rfftfreq(len(x), 1.0 / fs)
+    teile = []
+    for k, (e0, e1, s0) in enumerate(abschnitte):
+        m = (t >= e0) & (t <= e1)
+        if m.sum() < 2 * fs:
+            continue
+        tk, ak = t[m], a[m]
+        tg = np.arange(tk[0], tk[-1], 1.0 / fs)
+        ag = np.column_stack([np.interp(tg, tk, ak[:, i]) for i in range(3)])
+        langsam = _gleit(ag, 0.25 * fs)
+        d = _gleit(np.linalg.norm(np.gradient(langsam, axis=0), axis=1) * fs, 0.3 * fs)
+        # Randeffekte der Filter (0,5 s je Seite) sind keine Bewegung
+        d[:rand] = 0.0
+        d[-rand:] = 0.0
+        teile.append((k, e0, s0, tg, ag, d))
+    if not teile:
+        raise ValueError("keine Messwerte in den Abschnitten")
+    schwelle = 0.25 * np.percentile(np.concatenate([p[5] for p in teile]), 99)
+    out = {"fs": fs, "t": [], "betrag": [], "hp": [], "start": abschnitte[0][2], "fahrten": [],
+           "abschnitte": abschnitte}
+    ruhe_werte = []
+    for k, e0, s0, tg, ag, d in teile:
+        an = d > schwelle
+        kanten = np.flatnonzero(np.diff(an.astype(int)))
+        if an[0]:
+            kanten = np.concatenate([[-1], kanten])
+        if an[-1]:
+            kanten = np.concatenate([kanten, [len(an) - 1]])
+        fahrten, i = [], 0
+        while i + 1 < len(kanten):
+            f0, f1 = kanten[i] + 1, kanten[i + 1] + 1
+            if fahrten and (f0 - fahrten[-1][1]) / fs < 1.0:
+                fahrten[-1][1] = f1
+            else:
+                fahrten.append([f0, f1])
+            i += 2
+        fahrten = [f for f in fahrten if (f[1] - f[0]) / fs > 1.0]
+        hp = ag - _gleit(ag, fs / 5.0)              # Hochpass ~5 Hz
+        betrag = np.sqrt(np.sum(hp ** 2, axis=1))
+        betrag[:rand] = np.nan
+        betrag[-rand:] = np.nan
+        ruhe = np.isfinite(betrag)
+        for f0, f1 in fahrten:
+            ruhe[max(0, f0 - fs):f1 + fs] = False
+        ruhe_werte.append(betrag[ruhe])
+        out["t"].append(tg)
+        out["betrag"].append(betrag)
+        out["hp"].append(hp)
+        for f0, f1 in fahrten:
+            x = hp[f0:f1]
+            F = np.fft.rfft(x * np.hanning(len(x))[:, None], axis=0)
+            P = np.sum(np.abs(F) ** 2, axis=1)
+            f = np.fft.rfftfreq(len(x), 1.0 / fs)
 
-        def band(f0, bw=1.5):
-            m = (f > f0 - bw) & (f < f0 + bw)
-            return float(np.sqrt(np.sum(P[m]))) / len(x) * 2
+            def band(f_0, bw=1.5):
+                mb = (f > f_0 - bw) & (f < f_0 + bw)
+                return float(np.sqrt(np.sum(P[mb]))) / len(x) * 2
 
-        m = betrag[s0:s1]
-        out["fahrten"].append({
-            "t0": tg[s0], "t1": tg[s1 - 1],
-            "beginn": datetime.fromtimestamp(start + tg[s0]).strftime("%H:%M:%S"),
-            "rms": float(np.sqrt(np.mean(m ** 2))), "p99": float(np.percentile(m, 99)),
-            "b15": band(15), "b30": band(30), "b60": band(60),
-            "f": f, "spektrum": np.sqrt(P) / len(x) * 2,
-            "spitze_hz": float(f[f > 5][np.argmax(P[f > 5])]),
-        })
+            mw = betrag[f0:f1]
+            mw = mw[np.isfinite(mw)]
+            uhr = None if s0 is None else s0 + (tg[f0] - e0)
+            out["fahrten"].append({
+                "t0": tg[f0], "t1": tg[f1 - 1], "abschnitt": k, "uhr0": uhr,
+                "beginn": "-" if uhr is None else datetime.fromtimestamp(uhr).strftime("%H:%M:%S"),
+                "rms": float(np.sqrt(np.mean(mw ** 2))) if len(mw) else float("nan"),
+                "p99": float(np.percentile(mw, 99)) if len(mw) else float("nan"),
+                "b15": band(15), "b30": band(30), "b60": band(60),
+                "f": f, "spektrum": np.sqrt(P) / len(x) * 2,
+                "spitze_hz": float(f[f > 5][np.argmax(P[f > 5])]),
+            })
+    out["t"] = np.concatenate(out["t"])
+    out["betrag"] = np.concatenate(out["betrag"])
+    out["hp"] = np.concatenate(out["hp"])
+    ruhe_alle = np.concatenate(ruhe_werte)
+    out["boden_rms"] = float(np.sqrt(np.mean(ruhe_alle ** 2))) if len(ruhe_alle) else float("nan")
     return out
 
 

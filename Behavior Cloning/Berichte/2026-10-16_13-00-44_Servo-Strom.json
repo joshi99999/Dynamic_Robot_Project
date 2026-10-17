@@ -195,7 +195,20 @@
         },
         "verzug_ms": 1310.0000000000014,
         "folgefehler_rms_mrad": 107.75980347965131,
-        "fahrzeit_faktor": 1.086871112265238
+        "fahrzeit_faktor": 1.086871112265238,
+        "halte": [
+          {
+            "takt": 146,
+            "ende": 153,
+            "min_mm": 28.137385923829996,
+            "tief_mm": 27.313788425563203,
+            "quer_tief_mm": 6.757917465470849,
+            "t_tief_s": 10.580313444137573,
+            "verweil_s": 0.0,
+            "unten_s": 0.11653733253479004,
+            "tol_mm": 1.0
+          }
+        ]
       },
       "ueberlaeufe": 0,
       "lesedauer_ms": 4.475593566894531,
@@ -382,7 +395,20 @@
         },
         "verzug_ms": 1252.0000000000014,
         "folgefehler_rms_mrad": 120.278388746815,
-        "fahrzeit_faktor": 1.1017963537355748
+        "fahrzeit_faktor": 1.1017963537355748,
+        "halte": [
+          {
+            "takt": 146,
+            "ende": 153,
+            "min_mm": 34.74138570895702,
+            "tief_mm": 33.329632466579106,
+            "quer_tief_mm": 10.269471014830248,
+            "t_tief_s": 10.596956253051758,
+            "verweil_s": 0.0,
+            "unten_s": 0.11369609832763672,
+            "tol_mm": 1.0
+          }
+        ]
       },
       "ueberlaeufe": 0,
       "lesedauer_ms": 4.387497901916504,

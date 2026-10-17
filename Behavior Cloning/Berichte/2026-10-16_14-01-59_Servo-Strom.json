@@ -140,7 +140,20 @@
         },
         "verzug_ms": 1324.0000000000014,
         "folgefehler_rms_mrad": 107.71257268712648,
-        "fahrzeit_faktor": 1.0866367700623303
+        "fahrzeit_faktor": 1.0866367700623303,
+        "halte": [
+          {
+            "takt": 146,
+            "ende": 153,
+            "min_mm": 28.132887928873526,
+            "tief_mm": 27.34542806647111,
+            "quer_tief_mm": 6.609610206359502,
+            "t_tief_s": 10.589507818222046,
+            "verweil_s": 0.0,
+            "unten_s": 0.09455609321594238,
+            "tol_mm": 1.0
+          }
+        ]
       },
       "ueberlaeufe": 0,
       "lesedauer_ms": 4.433870315551758,

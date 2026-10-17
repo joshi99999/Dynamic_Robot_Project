@@ -64,6 +64,7 @@ MODULES = [
     "test_daheng_api",
     "test_check_trajectory_buffer",
     "test_check_servo_stream",
+    "test_report_handy",
     "contract.test_robot_contract",
     "contract.test_camera_contract",
 ]

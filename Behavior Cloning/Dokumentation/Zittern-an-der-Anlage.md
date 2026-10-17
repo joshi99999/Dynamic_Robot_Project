@@ -47,6 +47,16 @@ aus den Rohdaten in `Berichte/` nachrechenbar (Anhang E).
 > das Ziel stehen, bis der TCP auf 1 mm dort steht, dann der normale Dwell.
 > In Aufnahme und Inferenz gleich; an der Anlage noch zu messen (§ 10.4).
 
+> **Nachtrag 16.10. abends (§ 11, Nachrechnung am PC):** Die Halteregel ist
+> in sich schlüssig (bleibt nicht hängen, 1 mm ist erreichbar). Aber
+> `online` ×1,3/×1,5 hat ein größeres Problem: In den Dreh-Abschnitten
+> erreicht die Steuerung nur ~30 % der übergebenen Drehgrenze, der Arm
+> hängt bis **0,79 rad** hinterher und fährt **26–49 mm / bis 31°** neben
+> der Planbahn. Recorder (Schleppfehler 0,30 rad) und Inferenz (Ziel–Ist
+> 0,35 rad) würden **jede** `online`-Fahrt abbrechen. `servo_j` linear mit
+> **Override 0,5** ist gleich ruhig (H1 0,21 m/s²) und bleibt auf der Bahn
+> (≤ 2 mm) — Entscheidung offen (§ 11.7).
+
 ---
 
 ## 1. Das Problem
@@ -730,6 +740,184 @@ Neura-Leuchte zeigt den Halt wie beim Standardlauf.
 
 ---
 
+## 11. Nachrechnung 16.10. am PC: Halteregel, Bahntreue, Handy
+
+Alle Zahlen dieses Abschnitts erzeugt
+`python tools/report_labortag_2026_10_16.py --handy-ordner <Ordner der phyphox-Exporte>`
+aus den Mitschrieben `Berichte/2026-10-16_*` und den Handy-Dateien
+(Bilder 13–15). Abstände am **Flansch** (lokale URDF-Kette, ohne das Tool
+`ZimmerLWR50`).
+
+### 11.1 Handy H1 — über Zeitfenster statt automatischer Erkennung
+
+`tools/report_handy.py` hatte zwei Fehler, beide behoben
+(`tools/report_zittern.py`, Tests `tests/test_report_handy.py`):
+
+1. **Uhrzeit nach phyphox-Pause falsch.** phyphox zählt die Experimentzeit
+   über PAUSE/START ohne Lücke weiter; verwendet wurde nur der erste START.
+   Jetzt wird jeder Abschnitt aus „Metadata Time“ über seinen START auf die
+   Uhrzeit abgebildet und **für sich** gefiltert (keine Interpolation oder
+   Glättung über eine Pause).
+2. **Ruhige Fahrten wurden nicht gefunden.** Die automatische Erkennung
+   hängt an der Lageänderung des Handys; `online`, Override 0,5 und der
+   Neura-Lauf fielen durch, `linear` wurde in Stücke zerlegt. Neu:
+   `--fenster name@HH:MM:SS+dauer` — die Läufe hier über LOS-Zeit und die
+   Bewegungsdauer laut Mitschrieb.
+
+| Art | Läufe | H1 RMS (m/s²) | p99 | Spitze |
+|---|---|---|---|---|
+| Neura-Standard (Pendant) | 1 | **0,16** | 0,46 | 15 Hz |
+| `online` ×1,3/×1,5 | D1, D2, T1, W, W2 (+ 2× Rauschen 1) | **0,19–0,21** | 0,61–0,68 | 5,6 Hz (r1: 15,4 Hz) |
+| `servo_j` linear, Override 0,5 | D1, D2 | **0,20–0,22** | 0,50–0,54 | 5,5–5,7 Hz |
+| `online`, Dwell 1,5 s (Test 3) | 1 | 0,26 | 1,04 | 5,5 Hz |
+| `online` ×2/×3 (Test 2) | 1 | 0,66 | 2,24 | 14,6 Hz |
+| `servo_j_pos` | D1, D2, T1, W2 (+ 2× r1) | 0,83–0,90 | 2,3–2,8 | 8,3 Hz |
+| `servo_j` linear (bisher) | D1, D2 | 1,95–2,05 | 4,7–4,9 | 8,3 Hz |
+
+Die Zahlen aus § 10.1 (Hilfsskript am Labortag) stimmen bis auf den
+Neura-Lauf (dort 0,18; Fensterlage) überein. Die 13.10.-Werte (Anhang B)
+ändern sich mit der neuen Randbehandlung um höchstens 0,02.
+
+![H1](Bilder/Zittern/13_labortag16_h1.png)
+
+*Bild 13 — Zittern je Ausführungsart, ganze Aufnahmebahn, 16.10.*
+
+### 11.2 Halteregel: Code geprüft
+
+* **Bleibt nicht hängen.** `wait_until_reached` endet sicher nach
+  `reach_timeout_s` (3 s), bei Stopp oder bei Erreichen; der Aufrufer
+  verwirft dann die Episode bzw. beendet die Fahrt. Kein Pfad ohne Zeitlimit.
+* **1 mm ist erreichbar.** Wo der Arm PICK erreicht, steht er dort auf
+  **0,1–0,2 mm** (Test 2, Test 3; `pos` und Override 0,5: 0,0–0,1 mm) —
+  die Steuerung bleibt nicht knapp über der Toleranz stehen.
+* **Erwartete Wartezeit ~1,6 s** (×1,3/×1,5): In Test 3 war der Arm beim
+  Greiferwechsel noch 67 mm entfernt und stand 1,57 s später innerhalb
+  1 mm. Reserve zum Zeitlimit ~1,4 s.
+* **SimRobot:** `apps/record.py --sim --ausfuehrung online` — zwei Halte
+  à 0,07 s (2 Messungen in Folge), Episode vollständig.
+* **Fehler gefunden und behoben** in `tools/check_servo_stream.halte_aus_zielen`
+  (rekonstruiert den Haltepunkt älterer Berichte): Der Beginn wurde aus dem
+  *heutigen* Dwell (8 Takte) zurückgerechnet; Test 3 lief mit 1,5 s
+  (23 Takte), der Haltepunkt lag dadurch bei Takt 161 statt 146. Jetzt:
+  erster Takt nach der Ankunft. Test ergänzt; Bericht `14-18-59` neu
+  gerechnet (tiefster Punkt unverändert +0,2 mm).
+* **Kleinigkeit Inferenz:** Am Halt ruft `apps/infer.py`
+  `limiter.limit(...)` im selben Takt ein zweites Mal (erst für das
+  gesendete Vorlauf-Ziel, dann für das Halteziel). Am Dwell sind beide
+  Ziele gleich; `limiter_clamped` kann einen Takt doppelt zählen. Nicht
+  geändert.
+
+**Aber:** Die Halteregel behebt nur das Symptom am PICK — siehe 11.3/11.4.
+
+### 11.3 `online` ×1,3/×1,5 würde von Recorder und Inferenz abgebrochen
+
+Nachgestellt wie im Recorder: Gelenkziel des Takts *i* gegen die Messung
+zur Zeit *i*/15 s.
+
+| Lauf | max. Schleppfehler | Recorder-Abbruch a (> 0,30 rad, 4 Takte) | Inferenz Ziel–Ist > 0,35 rad |
+|---|---|---|---|
+| `online` ×1,3/×1,5 (D1, D2, T3) | **0,79 rad** (Takt 46) | **Takt 23** | ja |
+| `online` Rauschen 1 | 0,83–0,84 rad | Takt 25 | ja |
+| `online` ×2/×3 (T2) | 0,53 rad | Takt 30 | ja |
+| `servo_j` Override 0,5 | 0,09–0,20 rad | – | nein |
+| `servo_j_pos` | 0,10–0,31 rad | – (einmal Takt 113 bei r1) | nein |
+
+Die Messwerkzeuge prüfen den Schleppfehler nicht — darum fiel das am
+16.10. nicht auf. `apps/record.py --ausfuehrung online` hätte **jede**
+Episode nach ~1,5 s als „arm folgt nicht“ verworfen; `apps/infer.py`
+bräche mit „Ziel … von der Ist-Stellung entfernt“ ab.
+
+![Schleppfehler](Bilder/Zittern/14_labortag16_schleppfehler.png)
+
+*Bild 14 — Schleppfehler wie Recorder und Inferenz ihn prüfen.*
+
+### 11.4 Warum: `online` erreicht nur ~30 % der Drehgrenze
+
+| Lauf | Grenzen v / ω | gemessen im ersten Dreh-Abschnitt | Plan dort |
+|---|---|---|---|
+| `online` ×1,3/×1,5 | 0,195 m/s / 0,65 rad/s | 0,032 m/s / **0,199 rad/s (31 %)** | bis 0,59 rad/s |
+| `online` ×2/×3 | 0,30 / 1,0 | 0,050 / **0,300 rad/s (30 %)** | dto. |
+| `servo_j` Override 0,5 | – | 0,085 / 0,50 rad/s | dto. |
+
+Der Plan liegt rechnerisch unter den Grenzen (Flansch bis 0,15 m/s,
+Drehung bis 0,59 rad/s) — die Steuerung setzt die übergebene Drehgrenze
+von `movelinear_online` aber nur zu ~30 % um (Ursache unbekannt: Einheit,
+Bezug auf das Tool, eigene Begrenzung). Folge: In den PTP-Abschnitten mit
+viel Drehung (CLEAR_FOV → APPROACH_01 → PRE_GRASP) wächst der Verzug auf
+über 2 s, und weil `movelinear_online` kartesisch geradeaus auf das weit
+vorauslaufende Ziel zufährt, **kürzt der Arm die Bahn ab**:
+
+| Abschnitt (Flansch, zeitunabhängig) | `online` ×1,3/×1,5 | `online` ×2/×3 | `servo_j` Override 0,5 | `servo_j_pos` |
+|---|---|---|---|---|
+| CLEAR_FOV → APPROACH_01 | **26 mm / 31°** / 0,15 rad | 12 mm / 14° | 2 mm / 1° | 1 mm / 1° |
+| APPROACH_01 → PRE_GRASP | **49 mm** / 9° / 0,14 rad | 20 mm / 9° | 1 / 1 | 1 / 1 |
+| PRE_GRASP → PICK | 16 mm / 14° | 10 mm / 9° | 0 / 0 | 1 / 0 |
+| PICK → PRE_GRASP → PRE_PLACE | 10–12 mm / ≤ 2° | ≤ 4 mm | ≤ 1 mm | ≤ 1 mm |
+
+(Position / Orientierung / Gelenkraum, je größter Abstand zum nächsten
+Punkt der Planbahn.) Die 27 mm über PICK aus § 10 sind also kein
+Einzelfall am Haltepunkt, sondern die Folge davon. Eine Halteregel an allen
+Punkten würde die Ecken treffen, nicht die Abschnitte dazwischen.
+
+![Bahn](Bilder/Zittern/15_labortag16_bahn.png)
+
+*Bild 15 — Flanschbahn von der Seite und von oben: `online` schneidet die
+gekrümmten PTP-Abschnitte, `servo_j` Override 0,5 liegt auf der Planbahn.*
+
+### 11.5 `servo_j` linear, Override 0,5 — der bessere Kandidat?
+
+Nach den Daten vom 16.10. ja:
+
+| | `online` ×1,3/×1,5 | `servo_j` Override 0,5 |
+|---|---|---|
+| H1 RMS | 0,20 | 0,21 |
+| Bahn (Flansch) | bis 49 mm / 31° | ≤ 2 mm / 1° |
+| PICK | 27 mm darüber (ohne Halteregel) | 0,0–0,1 mm, 0,87 s ≤ 1 mm |
+| Verzug | 1,2–1,4 s, wachsend | 0,1–0,4 s |
+| Recorder / Inferenz | Abbruch | durch (bis auf 11.6) |
+| Neue Logik nötig | Halteregel + Lösung für 11.3 | keine |
+
+Der Einwand aus § 2.4 („Override verfälscht die Daten“) stammte aus der
+**VM** (Override 0,2: Verzug wachsend bis 2,3 s). An der Anlage bei 0,5:
+Verzug 0,1–0,4 s, Bahn auf 2 mm — der Arm fährt die Bahn, nur etwas später.
+
+### 11.6 Neu entdeckt: Pause nach Stillstand bei `servo_j`
+
+Nach dem PICK-Dwell bleibt der Arm bei **allen** `servo_j`-Varianten
+0,3–1,8 s stehen, obwohl die Sollwerte schon weiterlaufen (Neura-Leuchte
+„kurz blau“). Im Lauf `linear` Override 1 (12-47-00) blockierte dort ein
+`servo_j`-Aufruf **1014 ms**. Folgen:
+
+* Recorder-Kriterium **b** („Sollwert wandert, Arm nicht“) schlägt dort
+  an — auch bei Override 0,5 (Takt 97 bzw. 157). Das ist ein Fehlalarm: der
+  Steuerkanal lebt, der Arm fährt danach weiter.
+* Vor einer Aufnahme mit `servo_j` Override 0,5 muss Kriterium b das
+  tolerieren (z. B. nach einem Dwell eine Anlaufzeit erlauben) — sonst
+  wird jede Episode am PICK verworfen.
+
+### 11.7 Hänger von ~210 ms
+
+24 Hänger in ~16 000 Befehlsaufrufen des Tages (0,1–0,2 %), fast alle
+**206–226 ms**, an zufälliger Stelle, in `servo_j` wie `online_j`; dazu der
+1014-ms-Aufruf aus 11.6. Der parallele Lese-Thread hatte in keinem Fall
+eine Lücke (größte 23–115 ms). Netz oder USB-LAN-Adapter sind damit
+unwahrscheinlich — sie träfen auch die Lese-Aufrufe. Wahrscheinlicher:
+in der Steuerung (Befehlsweg) oder ein Verzögerungs-Mechanismus nur auf
+dieser Verbindung. Test 3: die 4 Überläufe und 14 ms Sendeabstand-Streuung
+sind genau zwei solche Hänger (219, 216 ms).
+
+### 11.8 Entscheidung offen
+
+| Weg | Was zu tun wäre | Risiko |
+|---|---|---|
+| **A** `servo_j` linear, **Override 0,5** | Kriterium b nach Dwell lockern (11.6); `config.DEFAULT_OVERRIDE`/Override der Aufnahme 0,5; eine Aufnahme + Inferenz-Probefahrt an der Anlage | Override ist ein Sicherheitsthema (Absprache); Override bremst auch andere Bewegungen |
+| **B** `online` + Halteregel | Schleppfehler-Grenzen für `online` neu fassen (Recorder und Inferenz), Ursache der 30 % klären (Neura) | Bahn bleibt bis 49 mm / 31° daneben; Zustand hängt den Labels bis > 2 s hinterher — schlecht fürs Lernen |
+| **C** `online` mit höherer Drehgrenze | Tempo ×3–4 bei Beschl. ×1,5 an der Anlage messen | 13.10./16.10.: höhere Grenzen → 15-Hz-Pulsieren |
+
+Empfehlung nach den Daten: **A** zuerst an der Anlage bestätigen.
+
+---
+
 ## Anhang
 
 ### A. Messgrößen
@@ -840,6 +1028,13 @@ Abschnitt 9 (Bilder 8–12, Kennzahlen neu rechnen ohne Steuerung):
 ```bat
 python tools/report_servo_stream.py
 python tools/check_servo_stream.py --auswerten Berichte/2026-10-14_10-59-58_Servo-Strom
+```
+
+Abschnitt 11 (Labortag 16.10., Bilder 13–15, alle Tabellen):
+
+```bat
+python tools/report_labortag_2026_10_16.py --handy-ordner "<Ordner der phyphox-Exporte>"
+python tools/report_handy.py "<datei>.xlsx" --fenster "online@12:45:25+15"
 ```
 
 ### F. Verwandte Dokumente

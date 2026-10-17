@@ -284,3 +284,18 @@ def test_halte_aus_zielen_findet_die_haltepunkte_des_planers():
     soll = execution.hold_blocks(plan.gripper, plan.dwell_mask)
     assert len(soll) == 2
     assert tool.halte_aus_zielen(plan.joints_noisy) == soll
+
+
+def test_halte_aus_zielen_mit_laengerem_dwell_als_heute():
+    """Test 3 am 2026-10-16 lief mit 1,5 s Dwell (23 Takte) -- der Haltepunkt
+    beginnt trotzdem im ersten Takt nach der Ankunft, nicht 8 Takte vor
+    dem Ende des Stillstands."""
+    from bc import config
+
+    ziele = np.cumsum(np.full((60, 6), 0.01), axis=0)
+    ankunft = 20
+    ziele[ankunft:ankunft + 24] = ziele[ankunft]      # Ankunft + 23 Dwell-Takte
+    ziele[ankunft + 24:] += 0.0
+    halte = tool.halte_aus_zielen(ziele)
+    assert config.GRIPPER_DWELL_STEPS < 23
+    assert halte == [(ankunft + 1, ankunft + 23)]

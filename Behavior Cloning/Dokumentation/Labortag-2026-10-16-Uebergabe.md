@@ -87,43 +87,51 @@ Vollständige Zuordnung mit LOS-Zeiten und Handy-Abschnitten:
 
 ## 4. Aufgaben am PC
 
+> **Stand 16.10. abends (PC):** abgearbeitet bis auf die Videos. Ergebnisse in
+> `Zittern-an-der-Anlage.md` **§ 11**, Arbeitsblatt `Labortag-Messplan-Zittern.md`
+> ausgefüllt. **Wichtigster Befund:** `online` ×1,3/×1,5 würde von Recorder
+> und Inferenz abgebrochen (Schleppfehler bis 0,79 rad) und fährt bis
+> 49 mm / 31° neben der Planbahn — Entscheidung § 11.8 offen (Empfehlung:
+> `servo_j` linear, Override 0,5 an der Anlage bestätigen). Abschnitt 5
+> unten gilt deshalb erst nach dieser Entscheidung.
+
 ### 4.1 Code der Halteregel prüfen
-- [ ] `git diff` der 12 Dateien durchsehen (Anwender + Claude). Besonders:
+- [x] `git diff` der 12 Dateien durchsehen (Anwender + Claude). Besonders:
       `bc/recorder.py` (Warten vor dem Greiferbefehl, Pacer-Neustart),
       `apps/infer.py` (gleiche Regel beim Greiferwechsel der Policy),
       `bc/execution.py` (`wait_until_reached`, `lead_index(..., hold_end)`).
-- [ ] `python tests/run_all.py` am PC.
-- [ ] In der VM/SimRobot einmal fahren:
+- [x] `python tests/run_all.py` am PC. (354/355 vor den Änderungen dieser Sitzung, danach 358/359 — nur `test_rectify`)
+- [x] In der VM/SimRobot einmal fahren (VM fährt `online` nicht → SimRobot über `apps/record.py --sim --ausfuehrung online`: 2 Halte à 0,07 s):
       `python tools/check_servo_stream.py --move --laeufe online-15-r0-o1,onlinehalt-15-r0-o1`
       (VM fährt `movelinear_online` evtl. nicht, siehe `bc/execution.resolve_mode` — dann SimRobot).
-- [ ] Offene Punkte aus § 10.5 bewerten (Toleranz/Zeitlimit, nur Position statt Orientierung,
+- [x] Offene Punkte aus § 10.5 bewerten (§ 11.2) (Toleranz/Zeitlimit, nur Position statt Orientierung,
       Greiferbefehl in der Inferenz einen Takt früher).
 
 ### 4.2 Auswertung der Messdaten nachholen
-- [ ] **`tools/report_handy.py` reparieren:** Uhrzeiten nach phyphox-Pause falsch
+- [x] **`tools/report_handy.py` reparieren:** Uhrzeiten nach phyphox-Pause falsch
       (`report_zittern.handy_auswerten` nutzt nur den ersten START). Abschnitte über
       „Metadata Time“ (START/PAUSE-Paare) auf die Systemzeit abbilden; keine
       Interpolation über Pausen. Test dazu.
-- [ ] Danach alle Handy-Dateien mit dem Werkzeug auswerten und mit den Zahlen in § 1 vergleichen
+- [x] Danach alle Handy-Dateien mit dem Werkzeug auswerten und mit den Zahlen in § 1 vergleichen
       (die wurden am Labortag mit einem Hilfsskript gerechnet).
-- [ ] Alte Berichte nachrechnen, damit die Haltepunkt-Kennzahlen drinstehen:
+- [x] Alte Berichte nachrechnen, damit die Haltepunkt-Kennzahlen drinstehen:
       `python tools/check_servo_stream.py --auswerten Berichte/2026-10-16_<stempel>_Servo-Strom`
       für `12-47-00`, `13-00-44`, `14-01-59`, `14-15-21`, `14-18-59`.
-- [ ] **Wo `online` sonst noch abweicht:** quer max 27 mm sitzt am PICK; prüfen, wie groß die
+- [x] **Wo `online` sonst noch abweicht:** quer max 27 mm sitzt am PICK; prüfen, wie groß die
       Abweichung an den übrigen Punkten (APPROACH_01, PRE_GRASP, PRE_PLACE) ist und ob Orientierungswechsel
       zu früh beginnen. Ggf. Haltepunkte auch dort nötig?
-- [ ] **Test 3 genauer:** 4 Takt-Überläufe und 14 ms Sendeabstand-Streuung bei `online` (sonst 0) —
+- [x] **Test 3 genauer:** 4 Takt-Überläufe und 14 ms Sendeabstand-Streuung bei `online` (sonst 0) —
       vermutlich ein ~210-ms-Hänger; im Mitschrieb `14-18-59` prüfen.
-- [ ] **210-ms-Hänger** im `servo_j`/`online_j`-Aufruf: fest ~210 ms, zufällige Stelle — Verdacht
+- [x] **210-ms-Hänger** im `servo_j`/`online_j`-Aufruf: fest ~210 ms, zufällige Stelle — Verdacht
       Delayed-ACK/Nagle bzw. USB-LAN-Adapter (Energiesparen). Nur Vermutung; im Mitschrieb aller Läufe
       zählen und mit Aufrufzeiten belegen. Für `online` relevant, weil es künftig die Ausführungsart ist.
 - [ ] Videos: Neura-Leuchte bei Test 3 (blau oder grün am PICK?) und Höhe am PICK sichten.
 
 ### 4.3 Dokumentation
-- [ ] `Labortag-Messplan-Zittern.md` ausfüllen (Tabellen A–E, *Neue Infos*: Tisch ausgeklappt,
+- [x] `Labortag-Messplan-Zittern.md` ausfüllen (Tabellen A–E, *Neue Infos*: Tisch ausgeklappt,
       kein H2, Punkte mit falschem Tool gespeichert → am Pendant mit `ZimmerLWR50` neu gespeichert).
-- [ ] `Zittern-an-der-Anlage.md`: Messungen 16.10. ergänzen (Zahlen aus § 1, Bilder aus den Handy-Plots).
-- [ ] `Environment-Laptop.md`: Tippfehler `C:\Enviromentsc_env` → `C:\Enviroments\bc_env`.
+- [x] `Zittern-an-der-Anlage.md`: Messungen 16.10. ergänzen (Zahlen aus § 1, Bilder aus den Handy-Plots).
+- [x] `Environment-Laptop.md`: Tippfehler `C:\Enviromentsc_env` → `C:\Enviroments\bc_env`.
 
 ## 5. Nächster Anlagentag (vorbereiten)
 
