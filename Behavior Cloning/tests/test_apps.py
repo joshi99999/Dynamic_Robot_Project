@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
 import numpy as np
 
 import _fixtures
+from bc import config
 from bc.adapters.teleop_script import ScriptedTeleop, teach_script
 from bc.ports import TeleopEvent
 
@@ -111,7 +112,8 @@ def test_infer_refuses_far_target():
     class FarPolicy(HoldPolicy):
         def predict(self, observation):
             chunk = super().predict(observation)
-            chunk[:, 1] += 0.5  # Ziel 0.5 rad neben der Ist-Stellung
+            # Ziel deutlich ueber der Grenze neben der Ist-Stellung
+            chunk[:, 1] += config.SERVO_MAX_TARGET_GAP_RAD + 0.15
             return chunk
 
     robot, captures, clock, workspace = _infer_setup()

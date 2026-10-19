@@ -293,7 +293,8 @@ def parse_args():
     run.add_argument(
         "--ausfuehrung", choices=(execution_module.AUTO,) + execution_module.MODES,
         default=config.EXECUTION_MODE,
-        help="auto = online an der realen Anlage, servo_j in VM und SimRobot; "
+        help="servo_j = Arbeitswert seit 2026-10-19 (mit Override 0.5); "
+             "auto = online an der realen Anlage, servo_j in VM und SimRobot; "
              "servo_j_pos = servo_j ohne Geschwindigkeit/Beschleunigung, die "
              "Steuerung glaettet selbst (VM 2026-10-14, an der Anlage ungeprueft) "
              "(Default %(default)s)")
@@ -450,15 +451,24 @@ def main():
         else:
             print("   FK ueber die Steuerung: %s"
                   % (robot.local_fk_check or {}).get("grund", "unbekannt"))
-        if args.override < 1.0:
+        if args.override < 0.5:
             # Gemessen VM 2026-09-14 (tools/check_sim_robot.py): Override 0.2
             # bremst den servo_j-Strom -- Nachlauf ~1 s statt 67 ms bei 1.0.
             # Die Observation liefe dann der gesendeten Bahn weit hinterher.
-            # Das Tempo begrenzt der Planer (TRANSIT_SPEED_MS), nicht der
-            # Override.
+            # Anlage 2026-10-19: 0.5 ist der Arbeitswert (config.
+            # DEFAULT_OVERRIDE) -- 0,15-0,43 s Nachlauf, Bahn auf ~1 mm, und
+            # erst dadurch glatt. Das Tempo begrenzt der Planer
+            # (TRANSIT_SPEED_MS), nicht der Override.
             print(
-                "   WARNUNG: Override %.2f < 1.0 -- der Arm folgt servo_j stark "
-                "verzoegert (VM: ~1 s Nachlauf bei 0.2)." % args.override
+                "   WARNUNG: Override %.2f < 0.5 -- der Arm folgt servo_j stark "
+                "verzoegert (VM: ~1 s Nachlauf bei 0.2; Arbeitswert 0.5)." % args.override
+            )
+        elif args.override > 0.5 and args.ausfuehrung == execution_module.SERVO_J:
+            # Anlage 2026-10-19: bei 1.0 faehrt der Arm die 60-Hz-Stufen als
+            # Treppe -- H1 1,6-1,7 m/s^2 statt 0,19-0,20 bei 0.5.
+            print(
+                "   WARNUNG: Override %.2f > 0.5 mit servo_j -- an der Anlage "
+                "zittert der Arm dann deutlich (Arbeitswert 0.5)." % args.override
             )
         if robot.gripper_mode == "logged":
             print("   Kein Greifer konfiguriert -- Greiferbefehle werden nur protokolliert.")

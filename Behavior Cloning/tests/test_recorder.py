@@ -257,7 +257,9 @@ def test_discard_when_arm_does_not_follow():
     """
     clock, robot, captures = _setup(robot_cls=DeafRobot)
     plan = _plan(robot, gripper=False)
-    recorder = EpisodeRecorder(robot, captures, clock)
+    # Ohne Anlaufzeit: die Bahn hier ist kuerzer als RECORDER_STALL_GRACE_S
+    # (siehe test_dead_channel_on_short_path_is_caught_at_the_end).
+    recorder = EpisodeRecorder(robot, captures, clock, stall_grace_s=0.0)
     episode = recorder.record(plan)
 
     assert episode.discarded
@@ -609,3 +611,59 @@ def test_servo_j_pos_sends_same_positions_without_velocity():
         assert not np.any(v) and not np.any(a)
     assert episode.metadata["execution"] == {"mode": "servo_j_pos"}
     assert not episode.discarded, episode.discard_reason
+
+
+def test_dead_channel_on_short_path_is_caught_at_the_end():
+    """Mit der Standard-Anlaufzeit (2,5 s) erreicht (b) eine kurze Bahn nie --
+    die Gesamtpruefung am Episodenende verwirft den stehenden Arm trotzdem."""
+    clock, robot, captures = _setup(robot_cls=DeafRobot)
+    plan = _plan(robot, gripper=False)
+    assert len(plan) / config.CONTROL_RATE_HZ < config.RECORDER_STALL_GRACE_S
+    episode = EpisodeRecorder(robot, captures, clock).record(plan)
+
+    assert episode.discarded
+    assert episode.discard_reason.startswith("arm folgt nicht")
+    assert "insgesamt" in episode.discard_reason
+
+
+class PausingRobot(SimRobot):
+    """Bleibt nach ``PAUSE_AFTER`` servo-Befehlen ``PAUSE_CALLS`` Befehle lang
+    stehen und faehrt dann normal weiter (Testhelfer).
+
+    Bildet die Anlage nach (2026-10-16/19): nach einem Stillstand pausiert
+    der Arm bei servo_j 0,3-1,8 s, obwohl die Sollwerte weiterlaufen."""
+
+    PAUSE_AFTER = 1 + 3 * _SUBSTEPS
+    PAUSE_CALLS = 6 * _SUBSTEPS  # 6 Regeltakte = 0,4 s
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._servo_count = 0
+
+    def servo_j(self, joint_angles, velocity=None, acceleration=None):
+        self._servo_count += 1
+        gehalten = self._joints.copy()
+        super().servo_j(joint_angles, velocity, acceleration)
+        if self.PAUSE_AFTER < self._servo_count <= self.PAUSE_AFTER + self.PAUSE_CALLS:
+            self._joints = gehalten
+
+
+def test_pause_shorter_than_grace_is_not_discarded():
+    """Kriterium (b) toleriert eine Pause unter der Anlaufzeit ..."""
+    clock, robot, captures = _setup(robot_cls=PausingRobot)
+    plan = _plan(robot, gripper=False)
+    episode = EpisodeRecorder(robot, captures, clock, stall_grace_s=0.8).record(plan)
+
+    assert not episode.discarded, episode.discard_reason
+    assert len(episode) == len(plan)
+
+
+def test_pause_longer_than_grace_is_discarded():
+    """... und bricht ab, wenn sie laenger anliegt."""
+    clock, robot, captures = _setup(robot_cls=PausingRobot)
+    plan = _plan(robot, gripper=False)
+    episode = EpisodeRecorder(robot, captures, clock, stall_grace_s=0.1).record(plan)
+
+    assert episode.discarded
+    assert "Sollwert wanderte" in episode.discard_reason
+    assert "seit" in episode.discard_reason

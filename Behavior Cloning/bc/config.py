@@ -54,7 +54,14 @@ SERVO_RATE_HZ = 60.0
 #:   auto     -- online an der realen Anlage, sonst servo_j: die VM
 #:               (v5.0.0-alpha.102) nimmt movelinear_online an, faehrt aber
 #:               nicht (2026-10-12).
-EXECUTION_MODE = "auto"
+#:
+#: Entscheidung 2026-10-19 (Anlage, drei Serien, Berichte/2026-10-19_*):
+#: ``servo_j`` mit Override 0,5 (DEFAULT_OVERRIDE). Am Arm so ruhig wie
+#: online (H1 0,19-0,20 m/s^2, Neura-Standard 0,16-0,18), aber bahntreu
+#: (quer max 1,2 mm statt 27-49 mm), PICK exakt, kein 15-Hz-Pulsieren, und
+#: es laeuft auch in der VM. Das Zittern von servo_j kam vom Override 1,0
+#: (1,6-1,7 m/s^2), nicht von servo_j selbst. online bleibt waehlbar.
+EXECUTION_MODE = "servo_j"
 
 #: Startwerte fuer ``online`` (Anlage 2026-10-13, Serie mit Handy-Messung,
 #: Freigabe Anwender 13.10.): die ruhigste gemessene Einstellung. Vorlauf in
@@ -174,6 +181,12 @@ POLICY_MAX_JOINT_SPEED_RADS = 0.8
 #: Sollwert und der GEMESSENEN Stellung. Gemessen VM 2026-09-16: Action vs.
 #: Ist-Stellung max 0.20 rad (Rauschen + Nachlauf). Groesser = Ziel liegt
 #: nicht mehr "vor dem Arm", sondern woanders -- Abbruch.
+#:
+#: Geprueft 2026-10-19 (Anlage, servo_j Override 0,5, 6 Recorder-Episoden
+#: mit Rauschen 0-1, data_vm/2026-10-19): Ziel-Ist max 0,10 rad -- 0,35
+#: laesst gut dreifache Reserve. Eine kurzzeitige Lockerung auf 0,60 (nach
+#: einer Mitschrieb-Rechnung, die den Nachlauf ueberschaetzte) wurde
+#: zurueckgenommen: strenger schuetzt in der Inferenz vor Fehlvorhersagen.
 SERVO_MAX_TARGET_GAP_RAD = 0.35
 
 #: Schleppfehler-Abbruch des Recorders (AP 2.4/4.2): groesster zulaessiger
@@ -195,6 +208,9 @@ SERVO_MAX_TARGET_GAP_RAD = 0.35
 #: VORLAEUFIG -- an der Anlage ist der echte Nachlauf neu zu messen
 #: (schnellere Fahrt = groesserer Nachlauf), siehe
 #: Dokumentation/Taktzeit-und-RPC-Latenz.md.
+#:
+#: Anlage 2026-10-19 (servo_j Override 0,5, 6 Recorder-Episoden mit
+#: Rauschen 0-1): Schleppfehler max 0,10 rad -- 0,30 bleibt mit Reserve.
 RECORDER_MAX_FOLLOW_ERROR_RAD = 0.30
 RECORDER_FOLLOW_ERROR_STEPS = 4
 
@@ -209,6 +225,21 @@ RECORDER_FOLLOW_ERROR_STEPS = 4
 #: ist damit unabhaengig von Bahnlaenge und Geschwindigkeit. Waehrend des
 #: Greifer-Dwells wandert der Sollwert nicht, es loest dort also nicht aus.
 RECORDER_MIN_FOLLOW_RATIO = 0.10
+
+#: Wie lange Kriterium (b) ununterbrochen anliegen muss, bevor es abbricht.
+#:
+#: Anlage 2026-10-16/19: Nach einem Stillstand (Greifer-Dwell, Anfahrt)
+#: bleibt der Arm bei servo_j 0,3-1,8 s stehen, obwohl die Sollwerte schon
+#: weiterlaufen (Neura-Leuchte "kurz blau"; einmal blockierte ein
+#: servo_j-Aufruf 1014 ms). Danach faehrt er normal weiter. Nachgerechnet
+#: aus den Mitschrieben von tools/check_servo_stream.py haette (b) dort mit
+#: nur RECORDER_FOLLOW_ERROR_STEPS Takten angeschlagen; in den 6 echten
+#: Recorder-Episoden vom 19.10. tat es das nicht -- die Anlaufzeit ist eine
+#: Absicherung gegen diesen Fehlalarm, kein beobachteter Abbruch. 2,5 s liegen ueber der
+#: laengsten gemessenen Pause; der tote Steuerkanal (Arm bewegt sich gar
+#: nicht) wird weiterhin erkannt, nur so viel spaeter -- der Arm steht in
+#: dem Fall ohnehin. Kriterium (a) bleibt davon unberuehrt.
+RECORDER_STALL_GRACE_S = 2.5
 
 #: Ab welchem Verhaeltnis Ist- zu Soll-Dauer der Recorder nach einer
 #: Episode warnt (bc.recorder.timing_findings). Gesunde Laeufe lagen am
@@ -569,8 +600,16 @@ SIM_CAMERAS = (
 # --------------------------------------------------------------------------
 
 #: Globaler Geschwindigkeits-Override beim Verbinden (0.0 - 1.0).
-#: Bewusst gedrosselt; fuer die finale Aufzeichnung anzupassen (AP 2.6).
-DEFAULT_OVERRIDE = 0.2
+#:
+#: 0,5 seit 2026-10-19 (Anlage, mit EXECUTION_MODE = "servo_j"): der
+#: Override deckelt das Nachfuehren der Steuerung, nicht die Bahnzeit
+#: (Fahrt 11,6 s wie bei 1,0). Bei 1,0 faehrt der Arm die 60-Hz-Stufen als
+#: Treppe (H1 1,6-1,7 m/s^2), bei 0,5 glatt (0,19-0,20) mit 0,15-0,43 s
+#: Nachlauf und Bahn auf ~1 mm. Das Tempo begrenzt weiterhin der Planer
+#: (TRANSIT_SPEED_MS, PTP), nicht der Override. Bisher 0,2: in der VM
+#: ~1 s Nachlauf (2026-09-14) -- fuer Messungen in der VM ggf. ausdruecklich
+#: setzen. Die Inferenz uebernimmt den Override der Aufzeichnung.
+DEFAULT_OVERRIDE = 0.5
 
 #: Ungefaehre Reichweite der LARA 5 -- nur zur Plausibilitaetspruefung
 #: gemeldeter Posen (Erkennung von Platzhalterwerten).

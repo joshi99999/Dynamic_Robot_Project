@@ -69,6 +69,7 @@ class EpisodeRecorder(object):
         max_follow_error_rad=config.RECORDER_MAX_FOLLOW_ERROR_RAD,
         follow_error_steps=config.RECORDER_FOLLOW_ERROR_STEPS,
         min_follow_ratio=config.RECORDER_MIN_FOLLOW_RATIO,
+        stall_grace_s=config.RECORDER_STALL_GRACE_S,
         execution=None,
     ):
         self.robot = robot
@@ -85,6 +86,9 @@ class EpisodeRecorder(object):
         self.max_follow_error_rad = max_follow_error_rad
         self.follow_error_steps = int(follow_error_steps)
         self.min_follow_ratio = float(min_follow_ratio)
+        #: Kriterium (b) erst nach so vielen Takten in Folge (mindestens 1):
+        #: der Arm pausiert an der Anlage nach Stillstaenden bis 1,8 s.
+        self.stall_grace_steps = max(1, int(round(float(stall_grace_s) * rate_hz)))
         #: Optionaler Rueckruf je Takt: ``monitor(i, n, frames, report)``,
         #: ``frames`` bereits auf Schemagroesse (wie gespeichert).
         #: Gedacht fuer Fortschritt und Livebild in der Bedienoberflaeche
@@ -136,6 +140,10 @@ class EpisodeRecorder(object):
         bad_frames = 0
         discard_reason = ""
         follow_bad = 0  # Takte in Folge mit zu grossem Schleppfehler
+        stall_steps = 0  # Takte in Folge, in denen (b) anliegt
+        cmd_path = None   # Weglaenge je Gelenk: Sollwert ...
+        meas_path = None  # ... und Messung (Gesamtpruefung am Ende)
+        prev_cmd = prev_meas = None
         worst_follow = 0.0
         cmd_hist = []   # Sollwerte der letzten Takte (Kriterium b)
         meas_hist = []  # zugehoerige Messungen
@@ -235,6 +243,13 @@ class EpisodeRecorder(object):
                     worst_follow = max(worst_follow, follow_err)
                     cmd_hist.append(cmd_now)
                     meas_hist.append(meas_now)
+                    if prev_cmd is None:
+                        cmd_path = np.zeros_like(cmd_now)
+                        meas_path = np.zeros_like(meas_now)
+                    else:
+                        cmd_path += np.abs(cmd_now - prev_cmd)
+                        meas_path += np.abs(meas_now - prev_meas)
+                    prev_cmd, prev_meas = cmd_now, meas_now
                     if len(cmd_hist) > self.follow_error_steps + 1:
                         cmd_hist.pop(0)
                         meas_hist.pop(0)
@@ -262,6 +277,13 @@ class EpisodeRecorder(object):
                         d_meas = float(np.max(np.abs(meas_hist[-1] - meas_hist[0])))
                         if (d_cmd > config.START_POSE_TOL_RAD
                                 and d_meas < self.min_follow_ratio * d_cmd):
+                            stall_steps += 1
+                        else:
+                            stall_steps = 0
+                        # Erst nach stall_grace_steps in Folge: nach einem
+                        # Stillstand pausiert der Arm an der Anlage bis
+                        # 1,8 s und faehrt dann weiter (config).
+                        if stall_steps >= self.stall_grace_steps:
                             # Sollgeschwindigkeit mitnennen: sie unterscheidet
                             # die beiden Ursachen, die hier zusammenlaufen
                             # (siehe unten). Ohne sie raet der Bedienende.
@@ -269,9 +291,9 @@ class EpisodeRecorder(object):
                             grund = (
                                 "Sollwert wanderte %.3f rad, der Arm nur "
                                 "%.3f rad ueber %d Takte (Gelenk %d, "
-                                "Sollgeschwindigkeit %.2f rad/s)"
+                                "Sollgeschwindigkeit %.2f rad/s), seit %.1f s"
                                 % (d_cmd, d_meas, self.follow_error_steps,
-                                   gelenk + 1, tempo)
+                                   gelenk + 1, tempo, stall_steps / self.rate_hz)
                             )
                     if grund:
                         # Zwei Ursachen fuehren hierher, und sie sehen gleich
@@ -363,6 +385,23 @@ class EpisodeRecorder(object):
                 steps["next.done"].append(np.array([False], dtype=bool))
             else:
                 completed = True
+                # Gesamtpruefung zu (b): Bahnen kuerzer als die Anlaufzeit
+                # (RECORDER_STALL_GRACE_S) erreicht (b) nie. Hat der Arm sich
+                # ueber die ganze Episode kaum bewegt, obwohl der Sollwert
+                # wanderte, ist der Steuerkanal tot (Befund 2026-10-01).
+                if (cmd_path is not None and self.min_follow_ratio > 0
+                        and not discard_reason):
+                    gelenk = int(np.argmax(cmd_path))
+                    d_cmd = float(cmd_path[gelenk])
+                    d_meas = float(np.max(meas_path))
+                    if (d_cmd > config.START_POSE_TOL_RAD
+                            and d_meas < self.min_follow_ratio * d_cmd):
+                        discard_reason = (
+                            "arm folgt nicht: Sollwert wanderte insgesamt "
+                            "%.3f rad (Gelenk %d), der Arm nur %.3f rad. "
+                            "Ist der PC-Steuerkanal weg (RCSC_102)?"
+                            % (d_cmd, gelenk + 1, d_meas)
+                        )
         finally:
             if online and not self.robot.stop_requested:
                 # Normales Ende: der Arm laeuft dem Vorlauf hinterher -- erst
