@@ -1171,3 +1171,99 @@ def test_execution_only_in_argv_when_it_differs():
     assert "--ausfuehrung" not in standard
     online = recording.record_argv("out", execution="online")
     assert online[online.index("--ausfuehrung") + 1] == "online"
+
+
+# -- Konsole (bc/gui/console.py, 2026-10-21) --------------------------------
+
+def test_console_runs_python_commands_from_the_docs():
+    from bc.gui import console
+
+    cmd = console.parse_command(
+        'python tools/report_labortag_2026_10_16.py --mitschriebe "Berichte/2026-10-1*_Mitschrieb.npz"')
+    assert cmd.ok and not cmd.moves
+    assert cmd.argv == ["tools/report_labortag_2026_10_16.py", "--mitschriebe",
+                        "Berichte/2026-10-1*_Mitschrieb.npz"]
+    # Prompt, Kommentar, Windows-Pfad mit Backslash, python.exe mit Pfad
+    cmd = console.parse_command("# Kommentar\n$ " + r"E:\Enviroments\bc_env\python.exe tools\check_sim_robot.py")
+    assert cmd.ok and cmd.argv == [r"tools\check_sim_robot.py"]
+    for label, text in console.EXAMPLES:
+        parsed = console.parse_command(text)
+        assert parsed.ok or "Platzhalter" in parsed.problems[0], label
+
+
+def test_console_names_motion_and_real_plant():
+    from bc.gui import console
+
+    cmd = console.parse_command("python tools/check_servo_stream.py --move --laeufe linear-60-r0-o0.5")
+    assert cmd.ok and cmd.moves and not cmd.real_robot and cmd.warnings
+    cmd = console.parse_command("python apps/record.py --robot neura --real-robot --episodes 1")
+    assert cmd.ok and cmd.moves and cmd.real_robot
+    assert any("REALE ANLAGE" in w for w in cmd.warnings)
+
+
+def test_console_rejects_what_it_cannot_do():
+    from bc.gui import console
+
+    for text in ("", "git status", "python", "python a.py | more", "python a.py > out.txt",
+                 'cd "E:/x"', "python a.py && python b.py", "python a.py\npython b.py",
+                 'python a.py "offen', "python tools/plot_episode.py data_vm/<datum>"):
+        assert not console.parse_command(text).ok, text
+
+
+# -- Tippbetrieb (bc/gui/jogging.py, 2026-10-21) ----------------------------
+
+def _jog_robot():
+    from bc.adapters.sim_robot import SimRobot
+    from bc.clock import SimClock
+
+    clock = SimClock()
+    return SimRobot(clock=clock).connect(), clock
+
+
+def test_jogger_moves_up_while_ticking_and_stops():
+    from bc.gui import jogging
+
+    robot, clock = _jog_robot()
+    z0 = robot.read_state().tcp_quat[2]
+    jog = jogging.Jogger(robot, jogging.z_up_velocity(), clock)
+    jog.start()
+    for _ in range(25):
+        assert jog.tick()
+        clock.advance(1.0 / config.JOG_TICK_HZ)
+    jog.stop()
+    pose = robot.read_state().tcp_quat
+    assert pose[2] - z0 > 0.005            # nach oben
+    assert not jog.tick() and jog.reason == ""
+
+
+def test_jogger_stops_on_time_limit_and_on_errors():
+    from bc.gui import jogging
+
+    robot, clock = _jog_robot()
+    jog = jogging.Jogger(robot, jogging.z_up_velocity(), clock, max_s=0.5)
+    jog.start()
+    clock.advance(0.6)
+    assert not jog.tick() and "Zeitlimit" in jog.reason and not jog.active
+
+    jog = jogging.Jogger(robot, jogging.z_up_velocity(), clock)
+    jog.start()
+
+    def kaputt():
+        raise RuntimeError("Verbindung weg")
+
+    robot.jog_tick = kaputt
+    assert not jog.tick() and "Verbindung weg" in jog.reason and not jog.active
+
+
+def test_jogger_refused_outside_teach_mode():
+    from bc.gui import jogging
+
+    robot, clock = _jog_robot()
+    robot.teach_mode = False
+    jog = jogging.Jogger(robot, jogging.z_up_velocity(), clock)
+    try:
+        jog.start()
+        raise AssertionError("Verweigerung erwartet")
+    except Exception as exc:
+        assert "Teach" in str(exc)
+    assert not jog.active

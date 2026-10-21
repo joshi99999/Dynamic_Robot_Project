@@ -86,8 +86,8 @@ class EpisodeRecorder(object):
         self.max_follow_error_rad = max_follow_error_rad
         self.follow_error_steps = int(follow_error_steps)
         self.min_follow_ratio = float(min_follow_ratio)
-        #: Kriterium (b) erst nach so vielen Takten in Folge (mindestens 1):
-        #: der Arm pausiert an der Anlage nach Stillstaenden bis 1,8 s.
+        #: Kriterium (b) erst nach so vielen Takten in Folge (mindestens 1),
+        #: Absicherung gegen Pausen des Arms (config.RECORDER_STALL_GRACE_S).
         self.stall_grace_steps = max(1, int(round(float(stall_grace_s) * rate_hz)))
         #: Optionaler Rueckruf je Takt: ``monitor(i, n, frames, report)``,
         #: ``frames`` bereits auf Schemagroesse (wie gespeichert).
@@ -280,9 +280,9 @@ class EpisodeRecorder(object):
                             stall_steps += 1
                         else:
                             stall_steps = 0
-                        # Erst nach stall_grace_steps in Folge: nach einem
-                        # Stillstand pausiert der Arm an der Anlage bis
-                        # 1,8 s und faehrt dann weiter (config).
+                        # Erst nach stall_grace_steps in Folge: eine kurze
+                        # Pause des Arms bricht nicht ab (Absicherung, siehe
+                        # config.RECORDER_STALL_GRACE_S).
                         if stall_steps >= self.stall_grace_steps:
                             # Sollgeschwindigkeit mitnennen: sie unterscheidet
                             # die beiden Ursachen, die hier zusammenlaufen

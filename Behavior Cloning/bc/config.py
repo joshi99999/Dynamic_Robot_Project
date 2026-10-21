@@ -187,6 +187,10 @@ POLICY_MAX_JOINT_SPEED_RADS = 0.8
 #: laesst gut dreifache Reserve. Eine kurzzeitige Lockerung auf 0,60 (nach
 #: einer Mitschrieb-Rechnung, die den Nachlauf ueberschaetzte) wurde
 #: zurueckgenommen: strenger schuetzt in der Inferenz vor Fehlvorhersagen.
+#: Ursache der Ueberschaetzung (PC 2026-10-19): die Rechnung nahm die Uhr
+#: statt der Sendezeit, jeder ~210-ms-Haenger verschob so den Rest der
+#: Bahn. Gegen die Sendezeit alle servo_j-Laeufe vom 16./19.10. 0,03-0,15
+#: rad (tools/report_labortag_2026_10_16.py --mitschriebe).
 SERVO_MAX_TARGET_GAP_RAD = 0.35
 
 #: Schleppfehler-Abbruch des Recorders (AP 2.4/4.2): groesster zulaessiger
@@ -228,17 +232,21 @@ RECORDER_MIN_FOLLOW_RATIO = 0.10
 
 #: Wie lange Kriterium (b) ununterbrochen anliegen muss, bevor es abbricht.
 #:
-#: Anlage 2026-10-16/19: Nach einem Stillstand (Greifer-Dwell, Anfahrt)
-#: bleibt der Arm bei servo_j 0,3-1,8 s stehen, obwohl die Sollwerte schon
-#: weiterlaufen (Neura-Leuchte "kurz blau"; einmal blockierte ein
-#: servo_j-Aufruf 1014 ms). Danach faehrt er normal weiter. Nachgerechnet
-#: aus den Mitschrieben von tools/check_servo_stream.py haette (b) dort mit
-#: nur RECORDER_FOLLOW_ERROR_STEPS Takten angeschlagen; in den 6 echten
-#: Recorder-Episoden vom 19.10. tat es das nicht -- die Anlaufzeit ist eine
-#: Absicherung gegen diesen Fehlalarm, kein beobachteter Abbruch. 2,5 s liegen ueber der
-#: laengsten gemessenen Pause; der tote Steuerkanal (Arm bewegt sich gar
-#: nicht) wird weiterhin erkannt, nur so viel spaeter -- der Arm steht in
-#: dem Fall ohnehin. Kriterium (a) bleibt davon unberuehrt.
+#: Anlass 2026-10-16/19: Aus den Mitschrieben von tools/check_servo_stream.py
+#: schien der Arm nach Stillstaenden 0,3-1,8 s stehen zu bleiben, waehrend
+#: die Sollwerte weiterliefen, und (b) haette dort angeschlagen. Am PC
+#: 2026-10-19 als Rechenfehler erkannt: die Nachrechnung nahm die Uhr statt
+#: der Sendezeit, und jeder Haenger eines servo_j-Aufrufs (~210 ms, einmal
+#: 1014 ms) verschob den Rest der Bahn. Gegen die Sendezeit schlaegt (b) in
+#: keinem servo_j-Lauf an, auch die 6 Recorder-Episoden vom 19.10. nicht.
+#: Echt ist nur der Haenger selbst: so lange kommt kein Sollwert, der Arm
+#: steht -- und der Recorder misst erst nach dem Aufruf, sieht ihn also nicht.
+#:
+#: Der Wert bleibt vorerst als Absicherung (Entscheidung Anwender
+#: 2026-10-19), ist aber durch keinen beobachteten Fehlalarm begruendet. Der
+#: tote Steuerkanal (Arm bewegt sich gar nicht) wird weiterhin erkannt, nur
+#: so viel spaeter -- der Arm steht in dem Fall ohnehin. Kriterium (a)
+#: bleibt davon unberuehrt.
 RECORDER_STALL_GRACE_S = 2.5
 
 #: Ab welchem Verhaeltnis Ist- zu Soll-Dauer der Recorder nach einer
@@ -351,6 +359,43 @@ RESET_JOINT_ACCELERATION = 20.0
 #: Tool/Frame geteacht worden -- dann stimmen Plan und Programm nicht.
 POINT_CROSSCHECK_TOL_POS_M = 2.0e-3
 POINT_CROSSCHECK_TOL_ROT_RAD = 2.0e-2
+
+#: Touch-up aus der Bedienoberflaeche (bc/touchup.py, Wunsch Anwender
+#: 2026-10-21). Ein Punkt speichert KEIN Tool -- die Pose rechnet die
+#: Steuerung mit dem gerade aktiven. An der realen Anlage muss deshalb das
+#: Tool der Aufnahme gewaehlt sein (Anlage 2026-10-16/19: ZimmerLWR50).
+#: In der Simulation wird der Name nicht verlangt (VM: "NoTool").
+#: PROVISORISCH -- Tool-Daten am Pendant noch zu pruefen (Uebergabe Abschnitt 7.6).
+TOUCHUP_TOOL_NAME = "ZimmerLWR50"
+
+#: Sicherungen der Punkte vor jedem Touch-up (gitignored wie die
+#: Arbeitskopien: sie gehoeren zum Arbeitsplatz, nicht ins Repository).
+TOUCHUP_BACKUP_ROOT = "sequences/arbeitskopien/punkt_sicherungen"
+
+#: Der Arm muss beim Touch-up stillstehen: zwei Lesungen im Abstand
+#: TOUCHUP_STILL_WAIT_S duerfen sich je Gelenk hoechstens so weit
+#: unterscheiden. Sonst wuerde eine Zwischenstellung gespeichert.
+TOUCHUP_STILL_TOL_RAD = 1.0e-3
+TOUCHUP_STILL_WAIT_S = 0.2
+
+#: Ab welcher Verschiebung die Rueckfrage ausdruecklich warnt -- ein
+#: Touch-up korrigiert Millimeter, eine grosse Strecke deutet auf die
+#: falsche Zeile oder einen anderen Punkt.
+TOUCHUP_WARN_MM = 50.0
+TOUCHUP_WARN_DEG = 15.0
+
+#: Tippbetrieb "Z hoch" in der Bedienoberflaeche (ports.JogPort, Wunsch
+#: Anwender 2026-10-21: PRE_GRASP senkrecht ueber PICK teachen). Die
+#: Steuerung faehrt je ``jog``-Aufruf ein Stueck; das Tempo haengt an
+#: Anteil, Aufrufrate UND Override. Gemessen VM 2026-10-21, Override 0,5:
+#: Anteil 0,3 bei 50 Hz = 14 mm/s (Override 1: 27 mm/s), Auslauf nach dem
+#: letzten Aufruf 1-3 mm, Bewegung rein in z (Basis). An der Anlage
+#: begrenzt der Teach-Modus zusaetzlich.
+JOG_Z_FRACTION = 0.3
+JOG_TICK_HZ = 50.0
+#: Laengstes Tippen am Stueck, dann haelt die Oberflaeche von selbst an
+#: (Absicherung, falls ein Loslassen verloren geht).
+JOG_MAX_S = 10.0
 
 #: Soll ``NeuraRobot.read_state()`` die TCP-Pose LOKAL aus der URDF-Kette
 #: rechnen statt per ``compute_forward_kinematics``?
@@ -604,8 +649,10 @@ SIM_CAMERAS = (
 #: 0,5 seit 2026-10-19 (Anlage, mit EXECUTION_MODE = "servo_j"): der
 #: Override deckelt das Nachfuehren der Steuerung, nicht die Bahnzeit
 #: (Fahrt 11,6 s wie bei 1,0). Bei 1,0 faehrt der Arm die 60-Hz-Stufen als
-#: Treppe (H1 1,6-1,7 m/s^2), bei 0,5 glatt (0,19-0,20) mit 0,15-0,43 s
-#: Nachlauf und Bahn auf ~1 mm. Das Tempo begrenzt weiterhin der Planer
+#: Treppe (H1 1,6-1,7 m/s^2), bei 0,5 glatt (0,19-0,20) mit konstant
+#: ~0,09 s Nachlauf (1,0: ~0,02 s; gegen die Sendezeit, PC 2026-10-19 --
+#: die frueher genannten 0,15-0,43 s enthielten Haenger der Aufrufe) und
+#: Bahn auf ~1 mm. Das Tempo begrenzt weiterhin der Planer
 #: (TRANSIT_SPEED_MS, PTP), nicht der Override. Bisher 0,2: in der VM
 #: ~1 s Nachlauf (2026-09-14) -- fuer Messungen in der VM ggf. ausdruecklich
 #: setzen. Die Inferenz uebernimmt den Override der Aufzeichnung.

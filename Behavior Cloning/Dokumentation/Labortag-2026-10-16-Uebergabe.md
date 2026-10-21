@@ -178,6 +178,11 @@ als Standard.
 
 ## 7. Umsetzung `servo_j` linear Override 0,5 (Aufgaben)
 
+> **Überholt (PC 19.10., § 7.7):** Die folgenden Befunde stammten aus einer
+> Nachrechnung mit falscher Zeitbasis. Gegen die Sendezeit liegt Ziel–Ist bei
+> 0,06–0,15 rad, und weder Kriterium a noch b schlägt an. Stehen gelassen zur
+> Nachvollziehbarkeit.
+
 Befunde aus den nachgestellten Recorder-Prüfungen (19.10., siehe Übersicht):
 ohne Rauschen läuft Kriterium a nie an (max Ziel–Ist 0,10–0,20 rad), aber
 **Kriterium b schlägt in allen drei Serien an** (Anlauf nach Stillstand,
@@ -188,29 +193,29 @@ nach PICK-Dwell). **Mit Rauschen** erreicht Ziel–Ist 0,23–0,46 rad
 fast jede Aufnahme verworfen.
 
 ### 7.1 Konfiguration
-- [ ] `config.EXECUTION_MODE = "servo_j"` (heute `"auto"` → an der realen Anlage `online`!).
-- [ ] Override 0,5 als Standard für Aufnahme: `config.DEFAULT_OVERRIDE` (heute 0,2) bzw.
+- [x] `config.EXECUTION_MODE = "servo_j"` (heute `"auto"` → an der realen Anlage `online`!).
+- [x] Override 0,5 als Standard für Aufnahme: `config.DEFAULT_OVERRIDE` (heute 0,2) bzw.
       eigener Wert für die Aufnahme; GUI-Vorgabe prüfen (`bc/gui/app.py` übernimmt `session.override`).
       Die Inferenz übernimmt den Override aus der Aufzeichnung und verweigert Abweichungen (`apps/infer.py`) — passt.
-- [ ] Warnung in `apps/record.py` („Override < 1.0 … VM: ~1 s Nachlauf bei 0.2“) an den Anlagenbefund anpassen
-      (0,5: Nachlauf 0,15–0,43 s, Bahn auf ~1 mm).
+- [x] Warnung in `apps/record.py` („Override < 1.0 … VM: ~1 s Nachlauf bei 0.2“) an den Anlagenbefund anpassen
+      (0,5: Nachlauf ~0,09 s — die zuerst genannten 0,15–0,43 s waren der Rechenfehler aus § 7.7, Bahn auf ~1 mm).
 - [ ] `ONLINE_VERIFIED` bleibt `False`; Kommentare in `config.py`/`bc/execution.py` auf den neuen Stand.
 
 ### 7.2 Abbruchprüfungen (Verzug) — Recorder und Inferenz
-- [ ] **Kriterium b** (`bc/recorder.py`, „Sollwert wandert, Arm nicht“): Fehlalarm nach Stillstand.
+- [x] **Kriterium b** (`bc/recorder.py`, „Sollwert wandert, Arm nicht“): Fehlalarm nach Stillstand.
       Der Arm bleibt nach dem Dwell 0,3–1,8 s stehen (§ 11.6). Vorschlag: b erst auslösen, wenn der Arm
       über ein längeres Fenster (≥ 2 s) nicht folgt, oder nach Stillstand/Dwell eine Anlaufzeit erlauben.
       Der tote Steuerkanal (Befund 01.10.: Arm bewegt sich gar nicht) wird so weiterhin erkannt, nur später.
-- [ ] **Kriterium a** (`RECORDER_MAX_FOLLOW_ERROR_RAD = 0,30`) und **Inferenz** (`SERVO_MAX_TARGET_GAP_RAD = 0,35`):
+- [x] ~~**Kriterium a**~~ entfällt (§ 7.7: höchstens 0,15 rad, Grenzen bleiben) — (`RECORDER_MAX_FOLLOW_ERROR_RAD = 0,30`) und **Inferenz** (`SERVO_MAX_TARGET_GAP_RAD = 0,35`):
       mit Rauschen bis 0,46 rad durch reinen Nachlauf. Optionen abwägen und entscheiden:
       (1) Vergleich gegen den um den gemessenen Nachlauf verzögerten Sollwert statt gegen den aktuellen,
       (2) Grenzen anheben (toter Kanal lag bei 1,1 rad; z. B. 0,5–0,6 rad),
       (3) Rauschen so begrenzen, dass Gelenk 6 langsamer wird (Plan heute bis 0,69 rad/s).
       Empfehlung: (1), sonst (2) mit Begründung im Kommentar.
-- [ ] Mit den Mitschrieben vom 16.10. und 19.10. nachweisen, dass die neuen Regeln keinen gesunden
+- [x] Mit den Mitschrieben vom 16.10. und 19.10. nachweisen, dass die neuen Regeln keinen gesunden
       `linear o0.5`-Lauf mehr abbrechen und den toten Kanal (Daten 01.10. bzw. Test mit stehendem Arm im SimRobot)
       weiterhin erkennen. Werkzeug: `tools/report_labortag_2026_10_16.schleppfehler` als Vorlage.
-- [ ] Tests (`tests/test_recorder.py`, `tests/test_apps.py`) für beide Fälle.
+- [x] Tests (`tests/test_recorder.py`, `tests/test_apps.py`) für beide Fälle.
 
 ### 7.3 Sicherheit
 - [ ] **Override absprechen** (Betreuer/Sicherheitsverantwortliche): Override 0,5 ist **kleiner** als der
@@ -222,6 +227,8 @@ fast jede Aufnahme verworfen.
 - [ ] Die Hänger von ~210 ms (und einmal 1014 ms) bleiben bestehen (0,1–0,2 % der Aufrufe). Klären, ob der
       Servo-Filter bei einem Hänger einen Sprung erzeugen kann (nach dem Hänger springt der Sollwert um
       ~0,2 s Bahn) — bei 0,69 rad/s ≈ 0,14 rad, unter dem Filter, aber dokumentieren.
+      *PC 19.10.:* Im Recorder springt nichts — nach dem Hänger geht der NÄCHSTE Zwischenschritt raus,
+      der Rest der Bahn kommt nur später (§ 7.7). In `apps/infer.py` noch zu prüfen.
 
 ### 7.4 VM / offline
 - [ ] `servo_j` läuft in der VM (anders als `online`). Einmal in der VM mit Override 0,5 messen
@@ -234,7 +241,7 @@ fast jede Aufnahme verworfen.
       mit Rauschen (ohne Greifer `--no-gripper`), Handy H1 → Episode darf nicht verworfen werden,
       H1 ≈ 0,20–0,26 m/s².
 - [ ] Danach eine Inferenz-Probefahrt mit einem kleinen Testmodell (oder Replay), Override aus der Aufzeichnung.
-- [ ] `Zittern-an-der-Anlage.md`: neuer Abschnitt 19.10. + Entscheidung (§ 11.8 schließen).
+- [x] `Zittern-an-der-Anlage.md`: neuer Abschnitt 19.10. + Entscheidung (§ 11.8 geschlossen, § 12 neu).
 
 ### 7.6 Stand 19.10. nachmittags (an der Anlage umgesetzt, nicht committet)
 
@@ -258,13 +265,160 @@ Handy-Dateien: `… 2026-10-19 13-08-00.xlsx` (ep1), `… 13-21-28.xlsx` (ep2–
 Ziel–Ist bis 0,46 rad, Kriterium a/b schlagen an) **überschätzt den Nachlauf** um Faktor 3–6 gegenüber dem
 Recorder. Vermutlich zeitlicher Versatz zwischen Plan und Messung in `tools/report_labortag_2026_10_16.schleppfehler`.
 Am PC prüfen, bevor diese Zahlen weiter verwendet werden (auch § 11.3/11.6 in `Zittern-an-der-Anlage.md`).
+→ **Geklärt am PC, § 7.7.**
 
 **Offen für den PC:**
-- [ ] Zeitbasis in `report_labortag_2026_10_16.schleppfehler` prüfen (s. o.), Doku § 11 ggf. korrigieren.
-- [ ] Ist Kriterium b mit Anlaufzeit noch nötig? (in echten Episoden kein Fehlalarm) — behalten als Absicherung oder zurück.
-- [ ] 3b (nachlaufbereinigte Prüfung) entfällt vorerst — kein Bedarf bei 0,10 rad.
+- [x] Zeitbasis in `report_labortag_2026_10_16.schleppfehler` prüfen (s. o.), Doku § 11 ggf. korrigieren. → § 7.7
+- [x] Ist Kriterium b mit Anlaufzeit noch nötig? → bleibt vorerst als Absicherung (Anwender 19.10.), begründet ist sie nicht mehr.
+- [x] 3b (nachlaufbereinigte Prüfung) entfällt vorerst — kein Bedarf bei 0,10 rad.
 - [ ] VM-Messung mit Override 0,5 (§ 7.4).
 - [ ] TCP/Tool-Daten `ZimmerLWR50` am Pendant prüfen (Orientierung im Tool-KS ändern, Fingerspitze muss stehen bleiben);
       Punkte sind noch Testpunkte → finales Teachen.
 - [ ] Override 0,5 mit dem Betreuer abgestimmt (Anwender übernimmt) — Ergebnis hier vermerken.
 - [ ] Hinweis aus `apps/record.py`: „FK über die Steuerung: Tool hinterlegt“ → ein RPC je Takt mehr; Takt wurde gehalten.
+
+### 7.7 PC 19.10. abends: Zeitbasis geklärt
+
+**Ursache der Überschätzung:** `check_servo_stream.fahre_lauf` sendet nach einem Hänger (~210 ms) das
+nächste Profilstück. Der Rest der Bahn geht also später raus. `schleppfehler` und der Verzug in
+`auswerten_lauf` verglichen mit der Uhrzeit (Ziel *i* ↔ Messung bei *i*/15 s), und jeder Hänger
+zählte so als bleibender Nachlauf (je Lauf 0,1–1,2 s aufsummiert). Der Recorder misst direkt
+nach dem Senden und war nie betroffen.
+
+**Korrigiert** (`Zittern-an-der-Anlage.md` § 12): `check_servo_stream.profilzeit`/`hostzeit` (gegen das
+Ende jedes Aufrufs), beide Werkzeuge stellen darauf um. `report_labortag_2026_10_16.py --mitschriebe <glob>`
+rechnet Teil 2 für beliebige Tage. 2 neue Tests. Berichte 16./19.10. mit `--auswerten` neu gerechnet
+(nur Verzug/Folgefehler geändert), Bild 14 neu. Kommentare in `bc/config.py`, `bc/recorder.py`,
+`apps/record.py` und die Übersichten 16./19.10. sind angepasst.
+
+| `servo_j` 16./19.10. | Uhrzeit (alt) | Sendezeit (neu) |
+|---|---|---|
+| Ziel–Ist max o0.5 r0 / r1 | 0,09–0,20 / 0,23–0,46 rad | **0,06–0,10 / 0,09–0,15 rad** |
+| Kriterium a / b | a 3×, b fast immer | **nie** |
+| Verzug o0.5 / o1 | 150–430 / 80–250 ms | **82–100 / 20–24 ms** |
+
+Das deckt sich mit den Recorder-Episoden (0,057–0,097 rad). Die „Pause nach Stillstand“ (§ 11.6) ist
+widerrufen. `RECORDER_STALL_GRACE_S = 2,5` bleibt als Absicherung.
+
+**Nicht am PC:** `data_vm/2026-10-19/` (6 Episoden) und die Handy-Dateien vom 19.10. liegen nur auf dem
+Laptop (gitignored bzw. OneDrive nicht synchron). Für einen Episodenbericht
+(`tools/plot_episode.py`) und die H1-Nachrechnung herüberkopieren.
+
+**Noch offen:**
+- [x] VM-Messung mit Override 0,5 (§ 7.4) → § 7.8.
+- [x] `apps/infer.py`: Verhalten nach einem Hänger (springt das Ziel?) → § 7.8, kein Sprung.
+- [x] Anhang C in `Zittern-an-der-Anlage.md` (13.10., `check_trajectory_buffer`): `referenz_90/120` (88/246
+      Überläufe, Verzug 396/600 ms) gleich betroffen → § 7.8.
+- [ ] Tool-Daten `ZimmerLWR50`, finales Teachen, Override-Absprache (s. o.).
+
+### 7.8 PC 21.10.: VM-Messung, Inferenz nach Hängern, 13.10.-Werte, Punkte über die API
+
+**VM mit Override 0,5** (`is_robot_in_simulation() = True`, v5.0.0-alpha.102, `NoTool`, Ablauf-Arbeitskopie
+des PCs mit 172 Zielen — am Laptop 206):
+
+| Lauf | Bericht | Verzug | Ziel–Ist max | Kriterium a / b | Überläufe |
+|---|---|---|---|---|---|
+| `check_servo_stream` linear o0.5 r0 / r1 | `2026-10-21_09-28-53_Servo-Strom` | 64 / 70 ms | 0,036 / 0,053 rad | nie | 0 |
+| `check_servo_stream` linear o1 r0 | dto. | 10 ms | 0,013 rad | nie | 0 |
+| `apps/record.py`, Standardwerte (servo_j, 0,5), 3 Episoden, Rauschen 0,45–0,99 | `data_vm/2026-10-21/1_servo_j_o05`, PDF `2026-10-21_VM_servo_j_o05_Episoden.pdf` | – | 0,040–0,045 rad | nie, alle verwendbar | 0 |
+
+Die VM läuft also etwas schneller nach als die Anlage (Override 0,5: 64–70 statt 82–100 ms), die Pipeline
+mit den neuen Standardwerten ist in sich stimmig.
+
+**Inferenz nach einem Hänger:** `apps/infer.py` zählt Takte, nicht die Uhr. Nach einem hängenden Aufruf geht
+der nächste Zwischenschritt raus, wie im Recorder. Das Ziel springt nicht, der Rest der Fahrt kommt nur später.
+Neuer Test `test_apps.test_infer_hang_delays_but_does_not_jump` (Hänger 1014 ms im SimRobot). Dafür braucht es
+weder VM noch Anlage.
+
+**13.10. (`check_trajectory_buffer`, Anhang C):** Das Werkzeug hat dasselbe Muster (Ziel *k* nach Takt
+gezählt, Verzug gegen die Uhr). Die Mitschriebe vom 13.10. enthalten noch keine Sendezeiten, exakt
+korrigieren lässt es sich also nicht. Rechnet man die gemessene Streckung (Dauer-Faktor 1,25 / 1,51) heraus,
+fällt der Folgefehler von 6,1 / 14,6 auf 1,8 / 0,4 mrad. Die 396 / 600 ms für `referenz_90/120` sind also
+Streckung durch die Überläufe, kein Nachlauf des Arms. An der damaligen Aussage („90/120 Hz schafft der
+Laptop nicht“) ändert das nichts.
+
+**Punkte über die API (für eine GUI-Funktion „Touch-up“), in der VM geprüft:**
+- `create_point(name, target_joint_angles=q)` legt einen Punkt aus Gelenkwinkeln an — Rückprobe exakt
+  (0,0 rad). Am 24.09. war die Gelenkliste positional als *Pose* übergeben worden; daher der IK-Fehler.
+  Optional `tool_name=…`, sonst das aktive Tool.
+- `update_pose_in_DB(datensatz)` ändert einen Punkt **in place** (gleiche ID, `createdAt` bleibt). Es müssen
+  `jointAngles`, `position`, `euler` und `quaternion` zusammen gesetzt werden. Nur `jointAngles` zu ändern,
+  wird stillschweigend ignoriert.
+- Jeder Punkt trägt `createdAt`/`updatedAt` → „zuletzt gespeicherte Punkte in Reihenfolge“ ist lesbar.
+- Der Punkt speichert **kein Tool**. Touch-up nur mit dem Aufnahme-Tool (`get_selected_tool_name`).
+- Freedrive/Teach-Modus und IOs sind abfragbar (`is_robot_in_teach_mode`, `is_free_drive_mode_enabled`,
+  `get_io_status`). In der VM gibt es keine IOs. Ob der Speichern-Knopf am Arm ein IO-Signal liefert oder
+  nur in der Neura-Oberfläche einen Punkt anlegt, ist an der Anlage zu prüfen.
+
+### 7.9 Touch-up-Knopf in der GUI (gebaut 21.10.)
+
+**Bedienung:** Reiter „Aufnahme“ → Ablauf-Tabelle, neue Spalte **Touch-up** je Zeile. Mit der Steuerung
+verbunden: Arm (z. B. per Freedrive am Pendant) an den Punkt bringen → **Touch-up** → Rückfrage zeigt Punkt,
+Ziel (Simulation / **REALE ANLAGE**), Werkzeug, neue Gelenkstellung und die Änderung in mm/Grad → **Ja**.
+Fehlt der Punkt in der Datenbank, wird er angelegt. Die Zeilen der Reihe nach angeklickt, entstehen so auch
+die Punkte eines neuen Ablaufs. **Touch-up rückgängig** spielt die letzte Sicherung zurück; ein neu
+angelegter Punkt wird dabei wieder gelöscht.
+
+**Sperren** (`bc/touchup.py`, Werte in `bc/config.py`):
+- Arm muss stillstehen (zwei Lesungen im Abstand von 0,2 s, ≤ 1 mrad).
+- An der realen Anlage muss das Werkzeug `TOUCHUP_TOOL_NAME = "ZimmerLWR50"` aktiv sein (der Punkt speichert
+  kein Tool). In der Simulation ist das nur ein Hinweis.
+- Ab 50 mm / 15° Änderung fragt die Rückfrage, ob die Zeile stimmt.
+- Während einer Aufnahme ist die Tabelle gesperrt. Namen mit `_` am Anfang sind reserviert (Hilfspunkt).
+
+**Technik:** `NeuraRobot.store_point` ändert einen bestehenden Punkt **in place** (gleiche ID, gleicher Frame,
+`createdAt` bleibt erhalten), über einen Hilfspunkt `_BC_TOUCHUP_HILFE`, der sofort wieder gelöscht wird.
+Vor jedem Schreiben sichert die GUI den alten Datensatz nach `sequences/arbeitskopien/punkt_sicherungen/`
+(gitignored).
+
+**In der VM geprüft (21.10.):**
+- GUI offscreen gegen die VM: anlegen, ändern (ID und `createdAt` bleiben), beide Rücknahmen, kein Hilfspunkt
+  bleibt übrig.
+- Arm um 0,05 rad verfahren und Touch-up: Datensatz um 22,0 mm verschoben (Plan 22,0 mm), Gelenke exakt.
+  Die Rücknahme ist exakt.
+- **`PICK` hängt am Frame `Base`, nicht an `World`.** Ein Testpunkt in `Base` behält beim Touch-up seinen Frame,
+  und die Gegenprobe in `get_point` (Cartesian ↔ FK) bleibt bei 0,00 mm.
+- Ein Befund beim Testen: Zwei Touch-ups in derselben Sekunde überschrieben dieselbe Sicherung. Behoben,
+  mit Test.
+
+**Noch an der Anlage:** Werkzeug `ZimmerLWR50` wählen, einmal Touch-up an einem Testpunkt mit Rücknahme. Danach
+klären, was der Speichern-Knopf am Arm liefert (IO über `get_io_status`, oder nur ein Punkt in der Neura-Oberfläche).
+Davon hängt ab, ob sich „Knopf am Arm → nächste Zeile“ bauen lässt.
+
+### 7.10 GUI 21.10.: Punkte-Tabelle, „Z hoch“, Konsole
+
+**Punkte-Tabelle** (Aufnahme): Sie hat keinen eigenen Bildlauf mehr, ihre Höhe folgt der Zeilenzahl. Gescrollt
+wird nur noch der Reiter.
+
+**▲ Z hoch (halten)** (Aufnahme, neben „Teachen …“): Der Arm fährt senkrecht nach oben (Basis-z), solange der
+Knopf gedrückt ist. Gedacht für PRE_GRASP genau über PICK: PICK per Touch-up setzen, hochfahren, PRE_GRASP per
+Touch-up setzen.
+- API: `turn_on_jog(jog_velocity, jog_type="Cartesian")` → `jog(set_jogging_external_flag=1)` je Schritt
+  (50 Hz) → `turn_off_jog()`. Die Steuerung fährt nur, solange `jog` kommt.
+- Gemessen in der VM (21.10.): direkt am Adapter mit Anteil 0,3 und 50 Hz 14 mm/s bei Override 0,5 (27 mm/s bei 1,0),
+  rein in z. Über die GUI 6,3 mm in 1 s plus 1,9 mm Auslauf. Hängt die Oberfläche, steht der Arm nach 1–3 mm.
+- Sperren: nur im **Teach-Modus** (`is_robot_in_teach_mode`), nur mit Bewegungsfreigabe (VM bestätigt oder
+  „Reale Anlage freigeben“). Hält an bei Loslassen, Maus außerhalb des Knopfs, Reiterwechsel, Fehler eines
+  Aufrufs und nach 10 s am Stück. Während einer Aufnahme gesperrt. Tempo: `config.JOG_Z_FRACTION`.
+- Software-Tippbetrieb, kein Zustimmtaster, kein Not-Aus.
+
+**Konsole** (neuer Reiter): Eine Zeile `python …` aus Doku oder Chat einfügen und **Ausführen**. Sie läuft im
+Ordner „Behavior Cloning“ mit dem Python der Oberfläche (`bc_env`). Dazu gibt es einen Verlauf und eine
+Beispielliste. Über **Eingabe an das laufende Programm** gehen Antworten an das Programm, z. B. das
+Freigabewort `ANLAGE`. **Stopp** beendet den Prozess.
+- Nur Python-Befehle, eine Zeile je Start, keine Shell (`|`, `>`, `&&`, `cd` werden abgelehnt). Platzhalter
+  `<…>` müssen vorher ersetzt werden.
+- `--move`, Apps, die fahren, und `--real-robot` lösen eine Rückfrage aus. Die Sperren der Werkzeuge selbst
+  bleiben bestehen.
+
+Geprüft: Tests (381, nur ArUco rot), Offscreen-GUI gegen SimRobot und VM.
+
+**Start per Doppelklick:** `BC-Oberflaeche.bat` im Ordner „Behavior Cloning“. Sie sucht das Python in dieser
+Reihenfolge: `BC_PYTHON` → `E:\Enviroments\bc_env` (PC) → `C:\Enviroments\bc_env312` → `C:\Enviroments\bc_env`
+(Laptop). Das Log-Fenster startet minimiert und bleibt bei einem Fehler offen. Argumente werden durchgereicht
+(`--mode recording`). Für den Desktop: Rechtsklick → Senden an → Desktop (Verknüpfung erstellen).
+Eine `.exe` (PyInstaller) wäre wegen torch/lerobot mehrere GB groß und müsste nach jeder Codeänderung neu
+gebaut werden — die `.bat` nimmt immer den aktuellen Code.
+
+**Offen an der Anlage:** „Z hoch“ im Teach-Modus testen. Dabei klären, ob die Steuerung für externes Tippen den
+Zustimmtaster am Pendant verlangt und wie schnell es dort mit Anteil 0,3 fährt.

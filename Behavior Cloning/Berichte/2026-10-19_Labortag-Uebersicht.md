@@ -36,12 +36,12 @@ Neura-Standard (16.10.): 0,16–0,18.
 
 | Lauf | H1 S1 / S2 / S3 | p99 | Bahn quer max | Folgefehler RMS | PICK | Fahrt |
 |---|---|---|---|---|---|---|
-| **linear o0.5** | **0,19 / 0,19 / 0,20** | 0,46 | **1,2 mm** | 4–21 mrad | exakt | **11,6 s** |
-| linear o1 | 1,74 / 1,55 / 1,66 | ~4,2 | 1,8–2,3 mm | 3–13 mrad | exakt | 11,9 s |
-| online | 0,20 / 0,20 / 0,20 | 0,60 | 27 mm | ~105 mrad | **+27 mm** | 13,4 s |
-| onlinehalt | 0,21 / 0,21 / 0,22 | 0,82 | 27 mm (Ecken) | ~105 mrad | **+0,2 mm**, 1,56–1,62 s gewartet | 14,1 s |
-| linear r1 o0.5 | 0,24 / 0,25 / 0,26 | 0,59 | 5 mm | 17–47 mrad | – | 12,3 s |
-| onlinehalt r1 | 0,27 / 0,27 / 0,29 | 1,05 | 39 mm | ~113 mrad | +0,2 mm | 15,4 s |
+| **linear o0.5** | **0,19 / 0,19 / 0,20** | 0,46 | **1,2 mm** | 2–4 mrad | exakt | **11,6 s** |
+| linear o1 | 1,74 / 1,55 / 1,66 | ~4,2 | 1,8–2,3 mm | 2–3 mrad | exakt | 11,9 s |
+| online | 0,20 / 0,20 / 0,20 | 0,60 | 27 mm | ~106 mrad | **+27 mm** | 13,4 s |
+| onlinehalt | 0,21 / 0,21 / 0,22 | 0,82 | 27 mm (Ecken) | ~107 mrad | **+0,2 mm**, 1,56–1,62 s gewartet | 14,1 s |
+| linear r1 o0.5 | 0,24 / 0,25 / 0,26 | 0,59 | 5 mm | 4–9 mrad | – | 12,3 s |
+| onlinehalt r1 | 0,27 / 0,27 / 0,29 | 1,05 | 39 mm | ~116 mrad | +0,2 mm | 15,4 s |
 
 * **Override 0,5 halbiert das Tempo nicht** (Fahrt 11,6 s wie Override 1). Er wirkt
   auf das Nachführen in der Steuerung, nicht auf die Bahnzeit.
@@ -56,17 +56,23 @@ Neura-Standard (16.10.): 0,16–0,18.
 
 ## Nachgestellte Abbruchprüfungen (Recorder-Logik, `tools/report_labortag_2026_10_16.schleppfehler`)
 
+> **Korrigiert am PC 19.10.** (`Zittern-an-der-Anlage.md` § 12): Die erste Fassung
+> verglich gegen die Uhrzeit statt gegen die Sendezeit. Nach jedem ~210-ms-Hänger
+> lag der Rest der Bahn dann scheinbar zurück. Sie meldete deshalb 0,10–0,46 rad,
+> Kriterium a bei `linear r1 o0.5` (S1, S2) und Kriterium b in allen
+> `linear`-Läufen. Folgefehler RMS oben ist ebenfalls neu gerechnet.
+
 | Lauf | max Ziel–Ist (rad) | Kriterium a (> 0,30 rad, 4 Takte) | Kriterium b (Soll wandert, Arm nicht) |
 |---|---|---|---|
-| linear o0.5 | 0,10–0,20 | nie | **ja**, Takt 53 / 61 / 157 (Anlauf nach Stillstand, nach PICK-Dwell) |
-| linear r1 o0.5 | **0,23–0,46** | **Takt 112/113 in S1 und S2** | ja, Takt 97 / 157 |
-| online / onlinehalt | 0,78–0,84 | Takt 22–25 | meist Takt 4 |
+| linear o0.5 | **0,06–0,10** | nie | nie |
+| linear o1 | 0,03 | nie | nie |
+| linear r1 o0.5 | **0,09–0,15** | nie | nie |
+| online / onlinehalt | 0,78–0,83 | Takt 22–25 | nie (einmal Takt 4, S2 onlinehalt) |
 
-* Kriterium a bei `linear r1 o0.5`: Gelenk 6 (Plan bis 0,69 rad/s mit Rauschen) bei
-  Takt 108–119; der Arm erreicht das Tempo (Ist bis 0,79 rad/s), der Fehler ist der
-  zeitliche Nachlauf (~0,3 s × 0,7 rad/s), in S2 zusätzlich länger (bis Takt 203, Gelenk 1 und 6).
-  Die Inferenz-Grenze `SERVO_MAX_TARGET_GAP_RAD = 0,35` wird dort ebenfalls überschritten.
-* Kriterium b ist der Fehlalarm aus § 11.6 (Pause nach Stillstand).
+* Das passt zu den echten Recorder-Episoden des Nachmittags (Ziel–Ist max
+  0,057–0,097 rad, Übergabe § 7.6). Verzug gegen die Sendezeit: Override 0,5
+  82–100 ms, Override 1 20–24 ms, konstant über die Fahrt.
+* Neu rechnen: `python tools/report_labortag_2026_10_16.py --mitschriebe "Berichte/2026-10-19_*_Mitschrieb.npz"`.
 
 ## Entscheidung
 

@@ -479,3 +479,147 @@ def test_init_failure_names_the_real_cause():
 
     text = scheitern(ModeClient(teach=True))
     assert "TEACH-MODUS" in text
+
+
+class FakePointDB(FakeNeuraClient):
+    """Punkte-Datenbank wie in der VM gemessen (2026-10-21, Uebergabe 7.8):
+    Datensaetze mit ``_id``; ``update_pose_in_DB`` uebernimmt neue
+    ``jointAngles`` nur zusammen mit einer neuen Pose; ``create_point``
+    deutet ein drittes POSITIONALES Argument als Pose."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.records = {}
+        self._next = 1
+        for name, joints in list(self.points.items()):
+            self._create(name, joints, "2026-09-10T09:00:21.284Z")
+
+    def _create(self, name, joints, stamp="2026-10-21T07:00:00.000Z"):
+        pid = "id%03d" % self._next
+        self._next += 1
+        pose = self.compute_forward_kinematics(joints, "tool", "rpy")
+        self.records[name] = {"_id": pid, "name": name, "type": "point",
+                              "referenceFrame": "world-id", "jointAngles": list(joints),
+                              "position": {"x": pose[0], "y": pose[1], "z": pose[2]},
+                              "euler": {"a": pose[3], "b": pose[4], "c": pose[5]},
+                              "quaternion": {"w": 1.0}, "createdAt": stamp, "updatedAt": stamp}
+        self.points[name] = list(joints)
+
+    def create_point(self, name, reference_frame_name="World", target_end_effector_pose=None,
+                     target_joint_angles=None, tool_name=None):
+        self._log("create_point", name, target_joint_angles=target_joint_angles)
+        if target_joint_angles is None:
+            raise RuntimeError("Exception: Inverse Kinematics failed")
+        self._create(name, target_joint_angles)
+        return True
+
+    def get_pose_id_from_name(self, name):
+        return self.records[name]["_id"]
+
+    def get_pose_in_reference_frame_from_DB(self, pose_id, reference_frame_id=None):
+        for rec in self.records.values():
+            if rec["_id"] == pose_id:
+                return dict(rec)
+        return {}
+
+    def update_pose_in_DB(self, record):
+        self._log("update_pose_in_DB", record["name"])
+        old = self.records[record["name"]]
+        new = dict(record)
+        if new["position"] == old["position"]:
+            new["jointAngles"] = old["jointAngles"]   # VM: still ignoriert
+        new["updatedAt"] = "2026-10-21T08:00:00.000Z"
+        self.records[record["name"]] = new
+        self.points[record["name"]] = list(new["jointAngles"])
+        return True
+
+    def delete_pose_in_DB(self, name):
+        self._log("delete_pose_in_DB", name)
+        self.records.pop(name)
+        self.points.pop(name)
+        return True
+
+
+def test_store_point_changes_existing_point_in_place():
+    client = FakePointDB()
+    robot = NeuraRobot(robot=client).connect()
+    before = robot.point_record("PICK")
+    neu = [0.1, 0.3, 1.9, 0.0, 0.9, 0.0]
+    after = robot.store_point("PICK", neu)
+    assert after["_id"] == before["_id"] and after["createdAt"] == before["createdAt"]
+    assert np.allclose(robot.get_point("PICK")[0], neu)
+    # Hilfspunkt wieder weg, der Zielpunkt nie geloescht
+    assert set(client.records) == {"PICK"}
+    assert ("delete_pose_in_DB", ("PICK",), {}) not in client.calls
+
+
+def test_store_point_creates_missing_point_from_joints():
+    client = FakePointDB()
+    robot = NeuraRobot(robot=client).connect()
+    neu = [0.2, 0.1, 1.7, 0.0, 1.0, 0.1]
+    record = robot.store_point("APPROACH_01", neu)
+    assert record["jointAngles"] == neu
+    create = [c for c in client.calls if c[0] == "create_point"][-1]
+    assert create[2]["target_joint_angles"] == neu   # als Keyword, nicht als Pose
+
+
+def test_restore_point_returns_to_the_backup():
+    client = FakePointDB()
+    robot = NeuraRobot(robot=client).connect()
+    backup = robot.point_record("PICK")
+    robot.store_point("PICK", [0.1, 0.3, 1.9, 0.0, 0.9, 0.0])
+    robot.restore_point(backup)
+    assert np.allclose(robot.get_point("PICK")[0], backup["jointAngles"])
+    assert robot.point_record("PICK")["_id"] == backup["_id"]
+    robot.delete_point("PICK")
+    assert "PICK" not in robot.point_names()
+
+
+class JogClient(FakeNeuraClient):
+    def __init__(self, teach=True, **kwargs):
+        super().__init__(**kwargs)
+        self.teach = teach
+
+    def is_robot_in_teach_mode(self):
+        return self.teach
+
+    def turn_on_jog(self, jog_velocity, jog_type):
+        self._log("turn_on_jog", jog_velocity=jog_velocity, jog_type=jog_type)
+
+    def jog(self, set_jogging_external_flag):
+        self._log("jog", set_jogging_external_flag)
+
+    def turn_off_jog(self):
+        self._log("turn_off_jog")
+
+
+def test_jog_only_in_teach_mode_and_with_motion_permission():
+    client = JogClient(teach=True)
+    robot = NeuraRobot(robot=client).connect()
+    robot.jog_start([0, 0, 0.3, 0, 0, 0])
+    robot.jog_tick()
+    robot.jog_stop()
+    assert _names(client)[-3:] == ["turn_on_jog", "jog", "turn_off_jog"]
+
+    robot = NeuraRobot(robot=JogClient(teach=False)).connect()
+    try:
+        robot.jog_start([0, 0, 0.3, 0, 0, 0])
+        raise AssertionError("MotionRefused erwartet (Automatikmodus)")
+    except MotionRefused as exc:
+        assert "Teach" in str(exc)
+
+    # Reale Anlage ohne Freigabe: verweigert, bevor gefragt wird
+    real = JogClient(teach=True, in_simulation=False)
+    robot = NeuraRobot(robot=real).connect()
+    try:
+        robot.jog_start([0, 0, 0.3, 0, 0, 0])
+        raise AssertionError("MotionRefused erwartet (keine Freigabe)")
+    except MotionRefused:
+        pass
+    assert "turn_on_jog" not in _names(real)
+    for falsch in ([0, 0, 1.5, 0, 0, 0], [0, 0, 0.3]):
+        try:
+            NeuraRobot(robot=JogClient()).connect().jog_start(falsch)
+            raise AssertionError("ValueError erwartet")
+        except ValueError:
+            pass

@@ -97,14 +97,18 @@ Config: online 1.3 / 1.5, `GRIPPER_DWELL_S` 0.5.
 Handy: `… 13-00-57.xlsx` (Abschnitte 12:44:13–12:47:09 = D1, 12:58:06–13:00:54 = D2).
 `… 12-49-01.xlsx` = Neura-Lauf + D1, **Duplikat** (steckt komplett in `13-00-57`).
 
-| Lauf | H1 RMS D1 / D2 | quer RMS / max (mm) | Verzug (ms) |
+| Lauf | H1 RMS D1 / D2 | quer RMS / max (mm) | Verzug (ms)¹ |
 |---|---|---|---|
-| linear-60-r0-o1 | 1,98 / 2,05 | 0,4 / 1,2–2,1 | ~240 |
-| pos-60-r0-o1 | 0,89 / 0,84 | 0,5 / 1,4–1,5 | 140–330 |
+| linear-60-r0-o1 | 1,98 / 2,05 | 0,4 / 1,2–2,1 | ~20 |
+| pos-60-r0-o1 | 0,89 / 0,84 | 0,5 / 1,4–1,5 | ~90 |
 | online-15-r0-o1 | 0,20 / 0,20 | 11,6 / 27 | ~1300 |
-| linear-60-r0-o0.5 | 0,22 / 0,21 | 0,5 / 1,3–1,7 | 150–250 |
-| pos-60-r1-o1 | 0,86 / 0,85 | 0,5 / 1,4–1,7 | 200–340 |
-| online-15-r1-o1 | 0,20 / 0,20 | 13,7 / 39 | ~1250 |
+| linear-60-r0-o0.5 | 0,22 / 0,21 | 0,5 / 1,3–1,7 | ~85 |
+| pos-60-r1-o1 | 0,86 / 0,85 | 0,5 / 1,4–1,7 | ~95 |
+| online-15-r1-o1 | 0,20 / 0,20 | 13,7 / 39 | 1200–1240 |
+
+¹ Gegen die Sendezeit, neu gerechnet am PC 19.10. (`Zittern-an-der-Anlage.md` § 12).
+Vorher gegen die Uhrzeit: linear o1 ~240, pos 140–340, linear o0.5 150–250 ms. Die
+Hänger der Aufrufe zählten dabei als Nachlauf.
 
 ## Nachmittag: PICK-Höhe bei online (Tests 1–3)
 

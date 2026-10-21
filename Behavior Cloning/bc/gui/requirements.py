@@ -291,12 +291,23 @@ def operation_requirements():
     ]
 
 
+def console_requirements():
+    """Die Konsole startet Werkzeuge des Projekts -- was die brauchen, sagen
+    sie selbst. Hier nur der Hinweis auf neurapy fuer Befehle gegen die
+    Steuerung."""
+    return [
+        _req("neurapy", "neurapy", OPTIONAL, module_probe("neurapy"),
+             _NEURAPY_HINT + " -- nur fuer Befehle gegen die Neura-Steuerung"),
+    ]
+
+
 #: Modusname -> Zusammenstellung. Neue Modi hier eintragen.
 BY_MODE = {
     "systemcheck": systemcheck_requirements,
     "recording": recording_requirements,
     "training": training_requirements,
     "operation": operation_requirements,
+    "console": console_requirements,
 }
 
 

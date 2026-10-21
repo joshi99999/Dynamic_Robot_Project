@@ -65,6 +65,9 @@ Bedienerführung, kein Not-Aus.
 | [ ] | ArUco / Rektifizierung | *ArUco / Rektifizierung* | Wörterbuch und IDs bekannt (mit dem CV-Team); Erkennung im vollen Bild **und** in 240 × 320 | in 240 × 320 verloren → Homographie im vollen Bild rechnen, erst danach verkleinern |
 | [ ] | Roboter-Contract | *Roboter-Contract* (schaltet den Greifer) | 12/12 wie in der VM | — |
 | [ ] | Punkte teachen und sichern | Pendant, dann *Punkte sichern* | `CLEAR_FOV`, `APPROACH_01`, `PRE_GRASP`, `PICK`, `PRE_PLACE` (optional `APPROACH_02`); `PRE_GRASP` **senkrecht über** `PICK`, besser 5–10 cm | sonst kappt der Planer das 10-mm-Überschleifen |
+| [ ] | Touch-up aus der GUI (neu 21.10.) | Aufnahme-Reiter, Spalte *Touch-up* an einer **Testzeile**, dann *Touch-up rückgängig* | Werkzeug `ZimmerLWR50` aktiv; Rückfrage zeigt „REALE ANLAGE“; Punkt angelegt und wieder gelöscht; danach Punkte per Touch-up setzen (Übergabe 7.9) | Werkzeug am Pendant wählen, neu verbinden |
+| [ ] | „Z hoch“ im Teach-Modus (neu 21.10.) | Aufnahme-Reiter, *▲ Z hoch (halten)*, kurz drücken | fährt nur während des Drückens senkrecht hoch, steht nach dem Loslassen; Tempo notieren | Zustimmtaster nötig? → notieren; Tempo über `config.JOG_Z_FRACTION` |
+| [ ] | Speichern-Knopf am Arm | Knopf drücken, *Steuerung prüfen* bzw. `get_io_status()` und Punktliste vergleichen | klar ist: liefert er ein IO-Signal, legt er einen Punkt an, oder nur in der Neura-Oberfläche? | Grundlage für „Knopf am Arm → nächste Zeile“ |
 
 ## 2. An der Anlage — mit Bewegung
 

@@ -125,6 +125,43 @@ def test_infer_refuses_far_target():
     assert np.allclose(robot.read_state().joints, start)
 
 
+def test_infer_hang_delays_but_does_not_jump():
+    """Ein haengender servo_j-Aufruf (Anlage: ~210 ms, einmal 1014 ms,
+    0,1-0,2 % der Aufrufe) verschiebt nur den Rest der Fahrt: danach geht der
+    NAECHSTE Zwischenschritt raus, kein Sprung um die verlorene Zeit
+    (Uebergabe 19.10., Abschnitt 7.3). Die Schleife zaehlt Schritte, nicht die Uhr."""
+    from infer import run_episode
+
+    from bc.policy import ChunkEnsembler, HoldPolicy
+
+    schritt = 0.01  # rad je 15-Hz-Takt auf Gelenk 2 (0,15 rad/s)
+
+    class FahrPolicy(HoldPolicy):
+        def predict(self, observation):
+            chunk = super().predict(observation)
+            chunk[:, 1] += schritt * np.arange(1, len(chunk) + 1)
+            return chunk
+
+    robot, captures, clock, workspace = _infer_setup()
+    gesendet = []
+    original = robot.servo_j
+
+    def servo_j(q, v=None, a=None):
+        gesendet.append(np.asarray(q, dtype=float).copy())
+        if len(gesendet) == 40:
+            clock.advance(1.014)   # der laengste gemessene Haenger
+        return original(q, v, a)
+
+    robot.servo_j = servo_j
+    log = run_episode(robot, captures, ChunkEnsembler(FahrPolicy(), replan_steps=1), clock,
+                      max_steps=30, workspace=workspace, threaded_watchdog=False, progress=None)
+    assert log["stop_reason"] == "max_steps", log["stop_reason"]
+    assert log["pacer_overruns"] > 0          # die Uhr hat den Haenger gesehen
+    sprung = np.max(np.abs(np.diff(np.asarray(gesendet)[:, 1])))
+    # ein 60-Hz-Zwischenschritt (float32 im State: 1e-6 Toleranz)
+    assert sprung <= schritt / (config.SERVO_RATE_HZ / config.CONTROL_RATE_HZ) + 1e-6, sprung
+
+
 def _greif_fahrt(reach_tol_mm, max_steps=25):
     """Inferenz online: Policy faehrt ein Ziel in 0.01-rad-Schritten bis 0.06
     rad weiter (sanft genug fuer den ServoGuard) und greift dort ab der 8.

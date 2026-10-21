@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDockWidget,
 from . import MODES, _bootstrap  # noqa: F401  (_bootstrap setzt sys.path)
 from . import session as session_module
 from .runner import TaskRunner
+from .tab_console import ConsoleTab
 from .tab_operation import OperationTab
 from .tab_recording import RecordingTab
 from .tab_systemcheck import SystemcheckTab
@@ -35,6 +36,7 @@ TAB_CLASSES = {
     "recording": RecordingTab,
     "training": TrainingTab,
     "operation": OperationTab,
+    "console": ConsoleTab,
 }
 
 

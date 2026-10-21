@@ -7,6 +7,7 @@ Vier Modi, benannt am 2026-09-29:
     Aufnahme      Teachen und Aufzeichnen von Episoden
     Training      Datensatz exportieren, Policy trainieren
     Betrieb       Modell laden, Inferenz aktivieren
+    Konsole       Befehle aus der Doku einfuegen und starten (2026-10-21)
 
 Zwei Ebenen, wie mit dem Anwender festgelegt:
 
@@ -29,13 +30,14 @@ uebrigen Bestand.
 """
 
 #: Reihenfolge der Reiter. Neue Modi hier und in requirements.BY_MODE eintragen.
-MODES = ("systemcheck", "recording", "training", "operation")
+MODES = ("systemcheck", "recording", "training", "operation", "console")
 
 MODE_LABELS = {
     "systemcheck": "Systemcheck",
     "recording": "Aufnahme",
     "training": "Training",
     "operation": "Betrieb",
+    "console": "Konsole",
 }
 
 __all__ = ["MODES", "MODE_LABELS", "checks", "requirements", "session"]

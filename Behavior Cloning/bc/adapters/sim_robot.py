@@ -25,8 +25,10 @@ from .. import config, geometry
 from ..clock import RealClock
 from ..ports import (
     IKError,
+    JogPort,
     NotConnectedError,
     PointSourcePort,
+    PointStorePort,
     RobotError,
     RobotPort,
     RobotState,
@@ -69,7 +71,7 @@ _FRAME_AFTER_JOINT = {
 }
 
 
-class SimRobot(RobotPort, PointSourcePort):
+class SimRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
     """Simulierter LARA 5 auf Basis der URDF-Kette.
 
     ``points``: optionale "Punkte-Datenbank" als dict Name -> Gelenkstellung
@@ -374,6 +376,60 @@ class SimRobot(RobotPort, PointSourcePort):
             raise KeyError(name)
         joints = self._points[name].copy()
         return joints, self.fk(joints, frame="tool")
+
+    # -- Punkte schreiben (PointStorePort) ---------------------------------
+
+    def point_record(self, name):
+        if name not in self._points:
+            raise KeyError(name)
+        return {"name": name, "type": "point",
+                "jointAngles": [float(v) for v in self._points[name]]}
+
+    def store_point(self, name, joints):
+        joints = np.asarray(joints, dtype=float)
+        if len(joints) != self.dof:
+            raise ValueError("store_point erwartet %d Gelenkwinkel" % self.dof)
+        self._points[str(name)] = joints.copy()
+        return self.point_record(name)
+
+    def restore_point(self, record):
+        self._points[str(record["name"])] = np.asarray(record["jointAngles"], dtype=float)
+        return self.point_record(record["name"])
+
+    def delete_point(self, name):
+        self._points.pop(str(name), None)
+
+    # -- Tippbetrieb (JogPort) ---------------------------------------------
+
+    #: Weg je Tippschritt bei Anteil 1 (m) -- grob wie die VM (Anteil 0,3,
+    #: Override 0,5: ~0,28 mm je Aufruf, 2026-10-21).
+    JOG_STEP_M = 1.0e-3
+
+    #: Der SimRobot kennt keine Betriebsarten; Tests setzen das auf False.
+    teach_mode = True
+
+    def in_teach_mode(self):
+        return self.teach_mode
+
+    def jog_start(self, velocity, jog_type="Cartesian"):
+        if not self.teach_mode:
+            raise RobotError("Tippbetrieb nur im Teach-Modus")
+        if jog_type != "Cartesian":
+            raise ValueError("SimRobot tippt nur kartesisch")
+        self._jog_velocity = np.asarray(velocity, dtype=float)
+        if len(self._jog_velocity) != 6 or np.max(np.abs(self._jog_velocity)) > 1.0:
+            raise ValueError("jog: 6 Anteile in [-1, 1] erwartet")
+
+    def jog_tick(self):
+        velocity = getattr(self, "_jog_velocity", None)
+        if velocity is None:
+            raise RobotError("jog_tick ohne jog_start")
+        pose = self.fk(self._joints, frame="tool").copy()
+        pose[:3] += self.JOG_STEP_M * velocity[:3]
+        self._joints = np.asarray(self.ik(pose, self._joints), dtype=float)
+
+    def jog_stop(self):
+        self._jog_velocity = None
 
     # -- Greifer -----------------------------------------------------------
 

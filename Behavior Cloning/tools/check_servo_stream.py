@@ -46,9 +46,11 @@ Gemessen (Mitschrieb in eigenem Thread, nur NEUE Werte der Steuerung):
   vom Plan, also auch bei Override < 1 vergleichbar.
 * Spektrum dieser Tempo-Abweichung: staerkste Frequenz, Anteil bei 15 Hz
   (Zieltakt) und 10 Hz (60-Hz-Strom gegen 50-Hz-Zustand der Steuerung).
-* Verzug und Folgefehler im Gelenkraum (bei Override < 1 nur grob: dort
-  waechst der Verzug unterwegs; bei ``onlinehalt`` verfaelscht die
-  Wartezeit Verzug und Fahrzeit-Faktor).
+* Verzug und Folgefehler im Gelenkraum, gegen den tatsaechlich
+  GESENDETEN Strom (``profilzeit``): Haenger der Aufrufe verschieben den
+  Rest der Bahn und zaehlen nicht als Nachlauf (bis 2026-10-19 gegen die
+  Uhr gerechnet -- der Verzug schien dann unterwegs zu wachsen). Bei
+  ``onlinehalt`` verfaelscht die Wartezeit den Fahrzeit-Faktor.
 * Haltepunkte (``online``/``onlinehalt``, je Greiferwechsel der Bahn, z. B.
   PICK): tiefster Punkt gegenueber dem Haltepunkt in mm (+ = darueber),
   kleinster Abstand, Verweilzeit innerhalb ONLINE_REACH_TOL_MM und am
@@ -443,12 +445,64 @@ def verzug_gelenke(tn, qn, profil, suche=(-0.3, 3.0), grob=0.02, fein=0.002):
     return best[1], best[0]
 
 
+def _sende_tabelle(sendungen, profil, rate):
+    """(Ende jedes Aufrufs, Profilzeit der Sendung) -- wie fahre_lauf sendet.
+
+    fahre_lauf schickt die Sendung k mit dem Profil zur Zeit
+    ``profil.sendezeiten(rate)[k]`` (online: Ziel k, dieselben Zeiten bei
+    15 Hz). Massgeblich ist das ENDE des Aufrufs: erst dann hat die
+    Steuerung den Sollwert, und erst dann liest der Recorder den Zustand.
+    """
+    s = np.asarray(sendungen, dtype=float).reshape(-1, 3)
+    zeiten = profil.sendezeiten(rate)[:len(s)]
+    return s[:len(zeiten), 2], zeiten
+
+
+def profilzeit(t, sendungen, profil, rate):
+    """Host-Zeit -> Profilzeit des zuletzt gesendeten Sollwerts.
+
+    Haengt ein Aufruf (~210 ms an der Anlage, Zittern-an-der-Anlage.md
+    Abschnitt 11.7), ueberspringt der Pacer Rasterpunkte, fahre_lauf sendet aber
+    das NAECHSTE Profilstueck -- der ganze Rest der Bahn geht spaeter raus.
+    Gegen ``t`` gerechnet erscheint das als Nachlauf des Arms, der sich mit
+    jedem Haenger aufaddiert (Befund PC 2026-10-19: scheinbar 0,15-0,9 s
+    statt ~0,1 s bei Override 0,5). Zwischen zwei Sendungen linear,
+    vor der ersten und nach der letzten mit Steigung 1.
+    """
+    t = np.asarray(t, dtype=float)
+    ende, zeiten = _sende_tabelle(sendungen, profil, rate)
+    if len(ende) < 2:
+        return t.copy()
+    tp = np.interp(t, ende, zeiten)
+    vor, nach = t < ende[0], t > ende[-1]
+    tp[vor] = zeiten[0] + (t[vor] - ende[0])
+    tp[nach] = zeiten[-1] + (t[nach] - ende[-1])
+    return tp
+
+
+def hostzeit(tp, sendungen, profil, rate):
+    """Profilzeit -> Host-Zeit, zu der dieser Sollwert gesendet war.
+
+    Umkehrung von :func:`profilzeit`; so liest der Recorder: Ziel des
+    Takts i gegen die Messung direkt nach dessen Senden.
+    """
+    tp = np.asarray(tp, dtype=float)
+    ende, zeiten = _sende_tabelle(sendungen, profil, rate)
+    if len(ende) < 2:
+        return tp.copy()
+    t = np.interp(tp, zeiten, ende)
+    nach = tp > zeiten[-1]
+    t[nach] = ende[-1] + (tp[nach] - zeiten[-1])
+    return t
+
+
 def auswerten_lauf(sendungen, t, q, profil, rate, fk_pos, t_start):
     """Alle Kennzahlen eines Laufs. ``t_start``: Host-Zeit von Profil-t = 0.
 
     ``fk_pos``: Funktion Gelenkwinkel (N,6) -> TCP-Positionen (N,3).
     """
     k = {"sendetakt": sendetakt(sendungen, rate, profil.dauer)}
+    sendungen_rel = np.asarray(sendungen, dtype=float).reshape(-1, 3) - t_start
     t = np.asarray(t, dtype=float) - t_start
     tn, qn = neue_werte(t, q)
     if len(tn) < 20:
@@ -479,7 +533,8 @@ def auswerten_lauf(sendungen, t, q, profil, rate, fk_pos, t_start):
             "welligkeit_rms_mm": float(np.sqrt(np.mean(schnell ** 2))),
             "welligkeit_max_mm": float(np.max(schnell)),
         }
-    tau, fehler = verzug_gelenke(tr, qn, profil)
+    # Verzug gegen den GESENDETEN Strom, nicht gegen die Uhr (profilzeit)
+    tau, fehler = verzug_gelenke(profilzeit(tr, sendungen_rel, profil, rate), qn, profil)
     k["verzug_ms"] = 1e3 * tau
     k["folgefehler_rms_mrad"] = 1e3 * fehler
     # Ende der Bewegung: letzter neuer Wert mit Aenderung > RUHE_RAD gegen das Ende

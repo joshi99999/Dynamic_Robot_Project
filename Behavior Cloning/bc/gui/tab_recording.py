@@ -39,11 +39,14 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
 
 from . import _bootstrap
 from . import cameras as cameras_module
+from . import jogging as jogging_module
 from . import recording as recording_module
 from . import session as session_module
 from . import training as training_module
 from .. import config
+from .. import touchup as touchup_module
 from .. import trajectory as trajectory_module
+from ..clock import RealClock
 from .runner import ProcessRunner
 from .tab_base import ModeTab
 from .widgets import (BAD, GOOD, ImageView, LogView, NEUTRAL, WARN,
@@ -81,6 +84,15 @@ class RecordingTab(ModeTab):
         self._gripper_start = "open"
         self._steps_dirty = False
         self._loading_steps = False
+        #: Sicherungsdatei des letzten Touch-ups (bc/touchup.py), fuer
+        #: "Touch-up rueckgaengig".
+        self._last_touchup = None
+
+        #: Tippbetrieb "Z hoch": laufender Vorgang und sein Zeitgeber.
+        self._jogger = None
+        self.jog_timer = QTimer(self)
+        self.jog_timer.setInterval(int(round(1000.0 / config.JOG_TICK_HZ)))
+        self.jog_timer.timeout.connect(self._jog_tick)
 
         self.preview_timer = QTimer(self)
         self.preview_timer.setInterval(PREVIEW_INTERVAL_MS)
@@ -179,17 +191,30 @@ class RecordingTab(ModeTab):
             "ablegen. Bewegt den Roboter.")
         self.btn_teach.clicked.connect(self.start_teaching)
         row.addWidget(self.btn_teach)
+        # Tippbetrieb: faehrt nur, solange gedrueckt (bc/gui/jogging.py)
+        self.btn_jog_up = QPushButton("▲ Z hoch (halten)")
+        self.btn_jog_up.setToolTip(
+            "Fährt den Arm senkrecht nach oben, solange der Knopf gedrückt ist — "
+            "nur im Teach-Modus und mit Bewegungsfreigabe. Gedacht für PRE_GRASP "
+            "genau über PICK: PICK per Touch-up setzen, hochfahren, PRE_GRASP per "
+            "Touch-up setzen. Software-Tippbetrieb, kein Zustimmtaster.")
+        self.btn_jog_up.pressed.connect(self._jog_pressed)
+        self.btn_jog_up.released.connect(self._jog_released)
+        row.addWidget(self.btn_jog_up)
         layout.addLayout(row)
 
-        self.steps = QTableWidget(0, 6)
+        self.steps = QTableWidget(0, 7)
         self.steps.setHorizontalHeaderLabels(
-            ["Punkt", "Bewegung", "Überschleifen (mm)", "optional", "Anflug", "Greifer"])
+            ["Punkt", "Bewegung", "Überschleifen (mm)", "optional", "Anflug", "Greifer",
+             "Touch-up"])
         self.steps.verticalHeader().setVisible(False)
         self.steps.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows)
         self.steps.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection)
-        self.steps.setMinimumHeight(170)
+        # Alle Zeilen zeigen statt eines zweiten Bildlaufs im Bildlauf
+        # (Wunsch Anwender 2026-10-21) -- Hoehe folgt der Zeilenzahl.
+        self.steps.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         header = self.steps.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.steps.itemChanged.connect(self._on_steps_edited)
@@ -216,6 +241,14 @@ class RecordingTab(ModeTab):
         self.btn_reset_sequence = QPushButton("Aus Original zurücksetzen")
         self.btn_reset_sequence.clicked.connect(self.reset_sequence)
         buttons.addWidget(self.btn_reset_sequence)
+        buttons.addSpacing(12)
+        self.btn_undo_touchup = QPushButton("Touch-up rückgängig")
+        self.btn_undo_touchup.setToolTip(
+            "Setzt den zuletzt per Touch-up geänderten Punkt auf den gesicherten "
+            "Stand zurück (bzw. löscht ihn, wenn er neu angelegt wurde).")
+        self.btn_undo_touchup.setEnabled(False)
+        self.btn_undo_touchup.clicked.connect(self.undo_touch_up)
+        buttons.addWidget(self.btn_undo_touchup)
         buttons.addStretch(1)
         layout.addLayout(buttons)
 
@@ -295,12 +328,35 @@ class RecordingTab(ModeTab):
                 gripper.setCurrentIndex(index if index >= 0 else 0)
                 gripper.currentIndexChanged.connect(self._on_steps_edited)
                 self.steps.setCellWidget(row, 5, gripper)
+
+                touch = QPushButton("Touch-up")
+                touch.setToolTip(
+                    "Aktuelle Stellung des Arms (mit aktivem Werkzeug) als diesen "
+                    "Punkt speichern -- legt ihn an, wenn er fehlt. Bewegt nichts, "
+                    "fragt vorher nach.")
+                touch.clicked.connect(
+                    lambda _checked=False, button=touch: self.touch_up_row(self._row_of(button, 6)))
+                self.steps.setCellWidget(row, 6, touch)
             self.steps.resizeColumnsToContents()
             self.steps.horizontalHeader().setSectionResizeMode(
                 0, QHeaderView.ResizeMode.Stretch)
         finally:
             self._loading_steps = False
+        self._fit_steps_height()
         self._refresh_sequence_info()
+
+    def _fit_steps_height(self):
+        """Tabelle so hoch wie ihr Inhalt -- gescrollt wird nur der Reiter."""
+        table = self.steps
+        height = table.horizontalHeader().height() + 2 * table.frameWidth()
+        for row in range(table.rowCount()):
+            height += table.rowHeight(row)
+        if table.horizontalScrollBar().isVisible():
+            height += table.horizontalScrollBar().height()
+        # Leere Tabelle: Platz fuer eine Zeile, damit sie nicht verschwindet
+        if table.rowCount() == 0:
+            height += table.verticalHeader().defaultSectionSize()
+        table.setFixedHeight(height)
 
     def current_steps(self):
         """Tabelle -> Schritte als dicts."""
@@ -361,6 +417,151 @@ class RecordingTab(ModeTab):
         self.sequence_info.setText(summary)
         self.sequence_info.setStyleSheet(
             "color:%s" % (WARN if self._steps_dirty else NEUTRAL))
+
+    def _row_of(self, widget, column):
+        """Zeile, in der ``widget`` steht -- Zeilen wandern beim Verschieben."""
+        for row in range(self.steps.rowCount()):
+            if self.steps.cellWidget(row, column) is widget:
+                return row
+        return -1
+
+    # -- Touch-up (bc/touchup.py) -------------------------------------------
+
+    def touch_up_row(self, row):
+        """Punkt dieser Zeile auf die aktuelle Stellung setzen (Wunsch
+        Anwender 2026-10-21). Prueft, fragt, sichert, schreibt -- bewegt nichts."""
+        if row < 0:
+            return
+        name = self.steps.cellWidget(row, 0).currentText().strip()
+        robot = self.session.robot
+        if robot is None:
+            QMessageBox.information(
+                self, "Touch-up", "Erst mit der Steuerung verbinden (Leiste oben).")
+            return
+        if self.process.running:
+            QMessageBox.information(
+                self, "Touch-up", "Während einer Aufnahme nicht möglich.")
+            return
+        status = self.session.status()
+        in_simulation = (True if status.state == session_module.SIM_LOCAL
+                         else getattr(robot, "in_simulation", None))
+        try:
+            plan = touchup_module.plan_touch_up(
+                robot, name, RealClock(), in_simulation, status.tool_name)
+        except Exception as exc:
+            log.exception("Touch-up: Stellung nicht lesbar")
+            QMessageBox.warning(self, "Touch-up", "Stellung nicht lesbar:\n%s" % exc)
+            return
+        text = touchup_module.describe(plan)
+        if plan["problems"]:
+            QMessageBox.warning(self, "Touch-up nicht möglich", text)
+            return
+        if not self.confirm("Touch-up %s" % name,
+                            text + "\n\nAktuelle Stellung als Punkt %s speichern?" % name):
+            return
+        try:
+            backup, _record = touchup_module.apply_touch_up(
+                robot, plan, self.workdir / config.TOUCHUP_BACKUP_ROOT)
+        except Exception as exc:
+            log.exception("Touch-up gescheitert")
+            QMessageBox.warning(self, "Touch-up gescheitert", str(exc))
+            return
+        self._last_touchup = backup
+        self.btn_undo_touchup.setEnabled(True)
+        self.output.append_record(
+            "Touch-up %s: %s, Sicherung %s" % (
+                name, "geändert (%.1f mm, %.1f°)" % (plan["move_mm"], plan["turn_deg"])
+                if plan["exists"] else "neu angelegt", backup))
+        self._reload_point_lists()
+
+    def undo_touch_up(self):
+        robot = self.session.robot
+        if self._last_touchup is None or robot is None:
+            return
+        if not self.confirm("Touch-up rückgängig",
+                            "Sicherung zurückspielen?\n%s" % self._last_touchup):
+            return
+        force = False
+        while True:
+            try:
+                text = touchup_module.undo_touch_up(robot, self._last_touchup, force=force)
+                break
+            except Exception as exc:
+                # Am Pendant nach dem Touch-up erneut geaendert: nur auf
+                # ausdrueckliche Rueckfrage ueberschreiben.
+                if not force and "erneut geaendert" in str(exc):
+                    if not self.confirm("Touch-up rückgängig",
+                                        "%s\n\nTrotzdem zurücksetzen?" % exc):
+                        return
+                    force = True
+                    continue
+                log.exception("Ruecknahme gescheitert")
+                QMessageBox.warning(self, "Rücknahme gescheitert", str(exc))
+                return
+        self.output.append_record(text)
+        self._last_touchup = None
+        self.btn_undo_touchup.setEnabled(False)
+        self._reload_point_lists()
+
+    # -- Tippbetrieb "Z hoch" (bc/gui/jogging.py) ---------------------------
+
+    def _jog_pressed(self):
+        robot = self.session.robot
+        if robot is None:
+            self.output.append_record("Z hoch: erst mit der Steuerung verbinden.", logging.WARNING)
+            return
+        if self.process.running:
+            self.output.append_record("Z hoch: nicht während einer Aufnahme.", logging.WARNING)
+            return
+        jogger = jogging_module.Jogger(robot, jogging_module.z_up_velocity(), RealClock())
+        try:
+            jogger.start()
+        except Exception as exc:
+            # Keine Meldungsbox: sie erschiene, waehrend die Maus noch
+            # gedrueckt ist, und schluckte das Loslassen.
+            self.output.append_record("Z hoch verweigert: %s" % exc, logging.WARNING)
+            return
+        self._jogger = jogger
+        self.jog_timer.start()
+
+    def _jog_tick(self):
+        jogger = self._jogger
+        if jogger is None:
+            self.jog_timer.stop()
+            return
+        # Loslassen ausserhalb des Knopfs oder Fokuswechsel: nicht weiterfahren
+        if not self.btn_jog_up.isDown():
+            self._jog_released()
+            return
+        if not jogger.tick():
+            self._jog_released()
+
+    def _jog_released(self):
+        self.jog_timer.stop()
+        jogger, self._jogger = self._jogger, None
+        if jogger is None:
+            return
+        jogger.stop()
+        if jogger.reason:
+            self.output.append_record("Z hoch angehalten: %s" % jogger.reason, logging.WARNING)
+        else:
+            self.output.append_record(
+                "Z hoch: %d Schritte (%.1f s)" % (jogger.ticks, jogger.ticks / config.JOG_TICK_HZ))
+
+    def hideEvent(self, event):
+        # Reiterwechsel/Fenster versteckt: Tippbetrieb sicher beenden
+        self._jog_released()
+        super().hideEvent(event)
+
+    def _reload_point_lists(self):
+        """Punktauswahl neu fuellen (ein Touch-up kann einen Punkt anlegen),
+        ohne den Bearbeitungsstand der Tabelle zu verlieren."""
+        dirty, row = self._steps_dirty, self.steps.currentRow()
+        self._fill_steps(self.current_steps())
+        self._steps_dirty = dirty
+        if row >= 0:
+            self.steps.setCurrentCell(row, 0)
+        self._refresh_sequence_info()
 
     def add_step(self):
         steps = self.current_steps()
@@ -1361,16 +1562,21 @@ class RecordingTab(ModeTab):
                            "zugeordneten Kameras")
 
     def _set_running(self, running):
+        if running:
+            self._jog_released()
         for widget in (self.btn_record, self.btn_teach, self.btn_preview,
+                       self.steps, self.btn_jog_up,
                        self.cameras, self.sequence, self.episodes,
                        self.transit_speed, self.approach_speed, self.ptp_speed,
                        self.execution):
             widget.setEnabled(not running)
+        self.btn_undo_touchup.setEnabled(not running and self._last_touchup is not None)
         self.btn_stop.setEnabled(running)
 
     # -- Lebenszyklus -------------------------------------------------------
 
     def shutdown(self):
+        self._jog_released()
         self.preview_timer.stop()
         self.live_timer.stop()
         self.stop_preview()

@@ -303,6 +303,66 @@ class PointSourcePort(abc.ABC):
         """
 
 
+class PointStorePort(abc.ABC):
+    """Geteachte Punkte SCHREIBEN -- Touch-up aus der Bedienoberflaeche (AP 2.2).
+
+    Wunsch Anwender 2026-10-21: neben jedem Punkt der Ablauftabelle per
+    Klick die aktuelle Stellung uebernehmen, statt am Pendant zu suchen.
+    Geschrieben werden GELENKWINKEL -- die Steuerung rechnet die Pose mit
+    dem aktiven Tool, der IK-Zweig bleibt der des Arms. Ein bestehender
+    Punkt wird an Ort und Stelle geaendert (gleiche Datenbank-ID), damit
+    Programme am Pendant, die ihn verwenden, ihn weiter finden.
+
+    Schreibt nur in die Punkte-Datenbank, bewegt nichts.
+    """
+
+    @abc.abstractmethod
+    def point_record(self, name):
+        """Vollstaendiger Datensatz eines Punkts (dict, fuer Sicherung und
+        Ruecknahme). Wirft ``KeyError``, wenn er nicht existiert."""
+
+    @abc.abstractmethod
+    def store_point(self, name, joints):
+        """Punkt ``name`` auf die Gelenkstellung ``joints`` setzen; fehlt er,
+        wird er angelegt. Rueckgabe: neuer Datensatz."""
+
+    @abc.abstractmethod
+    def restore_point(self, record):
+        """Einen mit :meth:`point_record` gesicherten Datensatz zurueckspielen."""
+
+    @abc.abstractmethod
+    def delete_point(self, name):
+        """Punkt loeschen (Ruecknahme eines neu angelegten Punkts)."""
+
+
+class JogPort(abc.ABC):
+    """Tippbetrieb aus der Bedienoberflaeche: fahren, solange gedrueckt (AP 2.2).
+
+    Wunsch Anwender 2026-10-21: beim Teachen von PICK/PRE_GRASP den Arm
+    per Knopf senkrecht nach oben fahren. Die Steuerung faehrt nur, solange
+    :meth:`jog_tick` kommt -- bleibt der Aufruf aus (Knopf losgelassen,
+    Oberflaeche haengt), steht der Arm nach wenigen Millimetern (VM
+    2026-10-21: 1-3 mm Auslauf). Nur im Teach-Modus.
+    """
+
+    @abc.abstractmethod
+    def in_teach_mode(self):
+        """Steht die Steuerung im Teach-Modus? (True/False/None)"""
+
+    @abc.abstractmethod
+    def jog_start(self, velocity, jog_type="Cartesian"):
+        """Tippbetrieb einschalten. ``velocity``: 6 Anteile in [-1, 1]
+        (Cartesian: x, y, z, rx, ry, rz im Basis-KS)."""
+
+    @abc.abstractmethod
+    def jog_tick(self):
+        """Ein Tippschritt -- muss laufend wiederholt werden (~50 Hz)."""
+
+    @abc.abstractmethod
+    def jog_stop(self):
+        """Tippbetrieb ausschalten. Darf nie werfen."""
+
+
 class IKError(RobotError):
     """Keine IK-Loesung gefunden (entspricht NeuraPy ``IKNotFound``)."""
 

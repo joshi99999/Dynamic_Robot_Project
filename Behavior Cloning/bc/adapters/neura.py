@@ -37,9 +37,11 @@ from .. import config, geometry
 from ..clock import host_time
 from ..ports import (
     IKError,
+    JogPort,
     MotionRefused,
     NotConnectedError,
     PointSourcePort,
+    PointStorePort,
     RobotError,
     RobotPort,
     RobotState,
@@ -112,7 +114,7 @@ def _unwrap_neurapy_error(exc, function_name):
     return None
 
 
-class NeuraRobot(RobotPort, PointSourcePort):
+class NeuraRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
     """Schmale, robuste Huelle um ``neurapy.robot.Robot``.
 
     Thread-Sicherheit: NeuraPy oeffnet pro Aufruf einen eigenen Socket
@@ -697,6 +699,129 @@ class NeuraRobot(RobotPort, PointSourcePort):
                 "(%r)?" % (name, pos_err, rot_err, self.tool_name)
             )
         return joints, pose
+
+    # -- Punkte schreiben: Touch-up (PointStorePort) -----------------------
+
+    #: Hilfspunkt fuer :meth:`store_point` -- lebt nur fuer einen Aufruf.
+    TOUCHUP_HELPER_POINT = "_BC_TOUCHUP_HILFE"
+
+    def point_record(self, name):
+        """Datensatz des Punkts, wie die Datenbank ihn haelt (Pose im
+        Elternframe, ``jointAngles``, ``_id``, ``createdAt``/``updatedAt``).
+
+        Der Datensatz traegt KEIN Tool -- welches Tool beim Teachen aktiv
+        war, laesst sich nur ueber die Gegenprobe in :meth:`get_point`
+        erschliessen.
+        """
+        if name not in set(self.point_names()):
+            raise KeyError(name)
+        record = self._call("get_pose_in_reference_frame_from_DB",
+                            self._call("get_pose_id_from_name", name))
+        if not record:
+            raise RobotError("Punkt '%s': Datensatz nicht lesbar" % name)
+        return dict(record)
+
+    def store_point(self, name, joints):
+        """Punkt auf ``joints`` setzen -- an Ort und Stelle, gleiche ID.
+
+        Gemessen VM 2026-10-21 (Uebergabe Abschnitt 7.8):
+
+        * ``create_point(name, target_joint_angles=q)`` legt einen Punkt
+          exakt aus Gelenkwinkeln an. (Positional uebergeben deutet die
+          Steuerung die Liste als Pose -- daher der IK-Fehler vom 24.09.)
+        * ``update_pose_in_DB`` aendert einen bestehenden Punkt in place,
+          aber nur, wenn ``jointAngles``, ``position``, ``euler`` und
+          ``quaternion`` ZUSAMMEN gesetzt werden -- nur die Gelenke zu
+          aendern, ignoriert sie still.
+
+        Die Pose zur neuen Stellung rechnet deshalb die Steuerung selbst:
+        ein Hilfspunkt wird aus den Gelenken angelegt, im Frame des Ziels
+        gelesen und sofort wieder geloescht. Loeschen und neu anlegen
+        waere einfacher, gaebe dem Punkt aber eine neue ID -- Programme am
+        Pendant, die ihn verwenden, faenden ihn dann nicht mehr.
+        """
+        joints = [float(v) for v in joints]
+        if len(joints) != self.dof:
+            raise ValueError("store_point erwartet %d Gelenkwinkel" % self.dof)
+        names = set(self.point_names())
+        if name not in names:
+            self._call("create_point", name, target_joint_angles=joints)
+        else:
+            target = self.point_record(name)
+            if target.get("type", "point") != "point":
+                raise RobotError("'%s' ist kein Punkt, sondern %r -- nicht geaendert"
+                                 % (name, target.get("type")))
+            helper = self.TOUCHUP_HELPER_POINT
+            if helper in names:
+                self._call("delete_pose_in_DB", helper)  # Rest eines Abbruchs
+            self._call("create_point", helper, target_joint_angles=joints)
+            try:
+                fresh = self._call(
+                    "get_pose_in_reference_frame_from_DB",
+                    self._call("get_pose_id_from_name", helper),
+                    reference_frame_id=target.get("referenceFrame"))
+            finally:
+                self._call_safe("delete_pose_in_DB", helper)
+            updated = dict(target)
+            for key in ("jointAngles", "position", "euler", "quaternion"):
+                updated[key] = fresh[key]
+            if not self._call("update_pose_in_DB", updated):
+                raise RobotError("update_pose_in_DB('%s') meldete Misserfolg" % name)
+        stored = np.asarray(self._call("get_point", name, representation="Joint"), dtype=float)
+        delta = float(np.max(np.abs(stored - joints)))
+        if delta > 1e-6:
+            raise RobotError("Punkt '%s' nach dem Schreiben %.2e rad neben der "
+                             "Vorgabe -- Datenbank pruefen" % (name, delta))
+        return self.point_record(name)
+
+    def restore_point(self, record):
+        """Gesicherten Datensatz zurueckspielen (Ruecknahme eines Touch-ups)."""
+        name = record["name"]
+        if name in set(self.point_names()):
+            current = self.point_record(name)
+            restored = dict(current)
+            for key in ("jointAngles", "position", "euler", "quaternion"):
+                restored[key] = record[key]
+            if not self._call("update_pose_in_DB", restored):
+                raise RobotError("update_pose_in_DB('%s') meldete Misserfolg" % name)
+        else:
+            self._call("create_point", name,
+                       target_joint_angles=[float(v) for v in record["jointAngles"]])
+        return self.point_record(name)
+
+    def delete_point(self, name):
+        self._call("delete_pose_in_DB", name)
+
+    # -- Tippbetrieb (JogPort) ---------------------------------------------
+
+    def in_teach_mode(self):
+        result = self._call_safe("is_robot_in_teach_mode")
+        return None if result is None else bool(result)
+
+    def jog_start(self, velocity, jog_type="Cartesian"):
+        """``turn_on_jog`` -- nur mit Bewegungsfreigabe und im Teach-Modus.
+
+        Gemessen VM 2026-10-21: je ``jog``-Aufruf ein Schritt (Anteil 0,3,
+        50 Hz, Override 0,5: 14 mm/s), nach dem letzten Aufruf 1-3 mm
+        Auslauf, Cartesian = Basis-KS (z bleibt rein z). Im Automatikmodus
+        wird verweigert: dort laeuft das Programm des PCs, und die
+        Anforderung des Anwenders war "waehrend der Roboter in Teach steht".
+        """
+        self._require_motion("jog")
+        if self.in_teach_mode() is not True:
+            raise MotionRefused(
+                "Tippbetrieb nur im Teach-Modus -- die Steuerung meldet "
+                "is_robot_in_teach_mode() = %r." % (self.in_teach_mode(),))
+        velocity = [float(v) for v in velocity]
+        if len(velocity) != 6 or max(abs(v) for v in velocity) > 1.0:
+            raise ValueError("jog: 6 Anteile in [-1, 1] erwartet, nicht %r" % (velocity,))
+        self._call("turn_on_jog", jog_velocity=velocity, jog_type=jog_type)
+
+    def jog_tick(self):
+        self._call("jog", set_jogging_external_flag=1)
+
+    def jog_stop(self):
+        self._call_safe("turn_off_jog")
 
     # -- Bewegung ----------------------------------------------------------
 

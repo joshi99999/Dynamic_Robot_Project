@@ -630,8 +630,9 @@ class PausingRobot(SimRobot):
     """Bleibt nach ``PAUSE_AFTER`` servo-Befehlen ``PAUSE_CALLS`` Befehle lang
     stehen und faehrt dann normal weiter (Testhelfer).
 
-    Bildet die Anlage nach (2026-10-16/19): nach einem Stillstand pausiert
-    der Arm bei servo_j 0,3-1,8 s, obwohl die Sollwerte weiterlaufen."""
+    Die Pause, gegen die RECORDER_STALL_GRACE_S absichert: der Arm steht,
+    obwohl die Sollwerte weiterlaufen (2026-10-16/19 vermutet, am PC
+    2026-10-19 als Rechenfehler erkannt -- die Absicherung bleibt)."""
 
     PAUSE_AFTER = 1 + 3 * _SUBSTEPS
     PAUSE_CALLS = 6 * _SUBSTEPS  # 6 Regeltakte = 0,4 s

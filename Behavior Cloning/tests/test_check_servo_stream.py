@@ -166,6 +166,49 @@ def test_auswerten_lauf_findet_verzug():
     assert k["sendetakt"]["abstand_std_ms"] < 1e-6
 
 
+def _sendungen_mit_haenger(prof, haenger_s=0.2, bei=60):
+    """60-Hz-Sendungen (t_soll, Beginn, Ende), Aufruf ``bei`` haengt ``haenger_s``.
+
+    Wie check_servo_stream.fahre_lauf: danach geht das naechste
+    Profilstueck raus, der Rest der Bahn also ``haenger_s`` spaeter.
+    """
+    k = np.arange(len(prof.sendezeiten(60.0)))
+    beginn = k / 60.0 + haenger_s * (k > bei)
+    ende = k / 60.0 + haenger_s * (k >= bei)
+    return np.stack([beginn, beginn, ende], 1)
+
+
+def test_haenger_zaehlt_nicht_als_verzug():
+    """Befund PC 2026-10-19: gegen die Uhr gerechnet erschien jeder Haenger
+    als bleibender Nachlauf des Arms (Override 0,5: scheinbar bis 0,9 s)."""
+    q = _knoten(n=46)
+    prof = tool.Profil(q, "linear")
+    send = _sendungen_mit_haenger(prof)
+    t = np.arange(-0.3, prof.dauer + 0.8, 0.02)
+    # Profilzeit des gesendeten Stroms: bis Sendung 59 = Uhr, waehrend des
+    # Haengers fast stehend, danach Uhr - 0,2 s. Arm folgt mit 60 ms.
+    t59 = 59 / 60.0
+    tp = np.where(t < t59, t, np.where(t < 1.2, t59 + (t - t59) * (1 / 60.0) / (1.2 - t59), t - 0.2))
+    ist = prof.positionen(tp - 0.06)
+
+    def fk_pos(qs):
+        return np.asarray(qs)[:, :3]
+
+    k = tool.auswerten_lauf(send, t, ist, prof, 60.0, fk_pos, 0.0)
+    assert abs(k["verzug_ms"] - 60.0) <= 4.0
+    assert np.allclose(tool.profilzeit(t, send, prof, 60.0), tp, atol=1e-9)
+
+
+def test_hostzeit_ist_die_umkehrung_von_profilzeit():
+    prof = tool.Profil(_knoten(n=46), "linear")
+    send = _sendungen_mit_haenger(prof)
+    tp = np.arange(0, 46) / 15.0
+    t = tool.hostzeit(tp, send, prof, 60.0)
+    assert np.allclose(tool.profilzeit(t, send, prof, 60.0), tp, atol=1e-9)
+    assert np.allclose(t[tp < 59 / 60.0], tp[tp < 59 / 60.0])
+    assert np.allclose(t[tp >= 1.0], tp[tp >= 1.0] + 0.2)
+
+
 def test_sendetakt_sieht_jitter_ohne_ueberlauf():
     rng = np.random.default_rng(3)
     soll = np.arange(600) / 60.0

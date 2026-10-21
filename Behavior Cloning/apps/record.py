@@ -456,7 +456,7 @@ def main():
             # bremst den servo_j-Strom -- Nachlauf ~1 s statt 67 ms bei 1.0.
             # Die Observation liefe dann der gesendeten Bahn weit hinterher.
             # Anlage 2026-10-19: 0.5 ist der Arbeitswert (config.
-            # DEFAULT_OVERRIDE) -- 0,15-0,43 s Nachlauf, Bahn auf ~1 mm, und
+            # DEFAULT_OVERRIDE) -- ~0,09 s Nachlauf, Bahn auf ~1 mm, und
             # erst dadurch glatt. Das Tempo begrenzt der Planer
             # (TRANSIT_SPEED_MS), nicht der Override.
             print(

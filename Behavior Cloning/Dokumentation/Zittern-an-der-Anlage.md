@@ -57,6 +57,14 @@ aus den Rohdaten in `Berichte/` nachrechenbar (Anhang E).
 > **Override 0,5** ist gleich ruhig (H1 0,21 m/s²) und bleibt auf der Bahn
 > (≤ 2 mm) — Entscheidung offen (§ 11.7).
 
+> **Nachtrag 19.10. (§ 11.8, § 12):** Entschieden: `servo_j` linear mit
+> **Override 0,5** (Labortag 19.10., H1 0,19–0,20 m/s², Bahn ≤ 1,2 mm). Die
+> Nachrechnung am PC hatte den Nachlauf von `servo_j` überschätzt: Sie
+> verglich gegen die Uhrzeit statt gegen die Sendezeit, und Hänger der
+> Aufrufe verschoben den Rest der Bahn. Richtig sind ~0,09 s Verzug und
+> höchstens 0,15 rad Ziel–Ist. Kein Abbruchkriterium schlägt an, und die
+> „Pause nach Stillstand“ (§ 11.6) gibt es nicht.
+
 ---
 
 ## 1. Das Problem
@@ -595,13 +603,15 @@ Neura-Standardprogramm. Messungen an der Anlage am 16.10. (Mitschriebe
 | Lauf | Bericht | Tempo/Beschl. | Dwell | H1 RMS | Verzug | tiefster Punkt ggü. PICK | ≤ 1 mm | am tiefsten Punkt |
 |---|---|---|---|---|---|---|---|---|
 | Neura-Standard | – | – | – | 0,18 m/s² | – | – | – | – |
-| `online` | 12-47-00, 13-00-44, 14-01-59, 14-03-10, 14-05-06 | 1,3 / 1,5 | 0,5 s | 0,20 m/s² | 1,31 s | **+27,3 … +27,6 mm** | 0 s | 0,09–0,12 s |
-| `online`, Rauschen 1 | 12-47-00, 13-00-44 | 1,3 / 1,5 | 0,5 s | – | 1,21–1,25 s | +33,1 / +33,3 mm | 0 s | 0,11 s |
+| `online` | 12-47-00, 13-00-44, 14-01-59, 14-03-10, 14-05-06 | 1,3 / 1,5 | 0,5 s | 0,20 m/s² | 1,30 s | **+27,3 … +27,6 mm** | 0 s | 0,09–0,12 s |
+| `online`, Rauschen 1 | 12-47-00, 13-00-44 | 1,3 / 1,5 | 0,5 s | – | 1,20–1,24 s | +33,1 / +33,3 mm | 0 s | 0,11 s |
 | Test 2 | 14-15-21 | 2,0 / 3,0 | 0,5 s | 0,67 m/s², Spitze 15 Hz | 0,63 s | +0,1 mm | 0,61 s | 0,57 s |
-| Test 3 | 14-18-59 | 1,3 / 1,5 | **1,5 s** | 0,26 m/s² | 1,39 s | +0,2 mm | 0,25 s | 0,25 s |
-| zum Vergleich `servo_j_pos` | 12-47-00 … 14-05-06 | – | 0,5 s | 0,83 m/s² | 0,14–0,34 s | – | – | – |
+| Test 3 | 14-18-59 | 1,3 / 1,5 | **1,5 s** | 0,26 m/s² | 1,25 s | +0,2 mm | 0,25 s | 0,25 s |
+| zum Vergleich `servo_j_pos` | 12-47-00 … 14-05-06 | – | 0,5 s | 0,83 m/s² | ~0,09 s | – | – | – |
 | zum Vergleich `servo_j` linear | – | – | – | 2,0 m/s² | – | – | – | – |
 
+„Verzug“ gegen die Sendezeit (Stand 19.10., § 12; für `servo_j_pos` stand
+hier vorher 0,14–0,34 s, für `online` änderte sich wenig).
 Die Spalten „tiefster Punkt“, „≤ 1 mm“ und „am tiefsten Punkt“ sind
 nachträglich mit der neuen Auswertung aus den Mitschrieben gerechnet
 (§ 10.4; Haltepunkt aus den Zielen rekonstruiert, Flansch-FK). H1 und
@@ -812,15 +822,19 @@ Neura-Lauf (dort 0,18; Fensterlage) überein. Die 13.10.-Werte (Anhang B)
 ### 11.3 `online` ×1,3/×1,5 würde von Recorder und Inferenz abgebrochen
 
 Nachgestellt wie im Recorder: Gelenkziel des Takts *i* gegen die Messung
-zur Zeit *i*/15 s.
+direkt nach dessen Senden. *(Korrigiert am PC 19.10., § 12: bis dahin
+gegen die Messung zur Uhrzeit i/15 s — nach jedem Hänger lag der Rest der
+Bahn dann scheinbar zurück. `servo_j` stand hier vorher mit 0,09–0,20 rad,
+`servo_j_pos` mit 0,10–0,31 rad und einem Abbruch a; `online` ändert sich
+nicht.)*
 
 | Lauf | max. Schleppfehler | Recorder-Abbruch a (> 0,30 rad, 4 Takte) | Inferenz Ziel–Ist > 0,35 rad |
 |---|---|---|---|
 | `online` ×1,3/×1,5 (D1, D2, T3) | **0,79 rad** (Takt 46) | **Takt 23** | ja |
 | `online` Rauschen 1 | 0,83–0,84 rad | Takt 25 | ja |
 | `online` ×2/×3 (T2) | 0,53 rad | Takt 30 | ja |
-| `servo_j` Override 0,5 | 0,09–0,20 rad | – | nein |
-| `servo_j_pos` | 0,10–0,31 rad | – (einmal Takt 113 bei r1) | nein |
+| `servo_j` Override 0,5 | 0,06–0,07 rad | – | nein |
+| `servo_j_pos` | 0,06–0,09 rad | – | nein |
 
 Die Messwerkzeuge prüfen den Schleppfehler nicht — darum fiel das am
 16.10. nicht auf. `apps/record.py --ausfuehrung online` hätte **jede**
@@ -873,15 +887,25 @@ Nach den Daten vom 16.10. ja:
 | H1 RMS | 0,20 | 0,21 |
 | Bahn (Flansch) | bis 49 mm / 31° | ≤ 2 mm / 1° |
 | PICK | 27 mm darüber (ohne Halteregel) | 0,0–0,1 mm, 0,87 s ≤ 1 mm |
-| Verzug | 1,2–1,4 s, wachsend | 0,1–0,4 s |
-| Recorder / Inferenz | Abbruch | durch (bis auf 11.6) |
+| Verzug | 1,2–1,3 s | ~0,09 s, konstant |
+| Recorder / Inferenz | Abbruch | durch |
 | Neue Logik nötig | Halteregel + Lösung für 11.3 | keine |
 
 Der Einwand aus § 2.4 („Override verfälscht die Daten“) stammte aus der
 **VM** (Override 0,2: Verzug wachsend bis 2,3 s). An der Anlage bei 0,5:
-Verzug 0,1–0,4 s, Bahn auf 2 mm — der Arm fährt die Bahn, nur etwas später.
+Verzug ~0,09 s (Override 1: ~0,02 s), Bahn auf 2 mm — der Arm fährt die
+Bahn, nur etwas später. *(Hier stand bis 19.10. „0,1–0,4 s“ und „bis auf
+11.6“ — beides ein Rechenfehler, § 12.)*
 
-### 11.6 Neu entdeckt: Pause nach Stillstand bei `servo_j`
+### 11.6 ~~Neu entdeckt: Pause nach Stillstand bei `servo_j`~~ — Rechenfehler
+
+> **Widerrufen am PC 19.10. (§ 12).** Die Pause war ein Artefakt der
+> Nachrechnung: Sie verglich gegen die Uhrzeit statt gegen die Sendezeit,
+> und die Hänger aus 11.7 verschoben den Rest der Bahn. Gegen die
+> Sendezeit schlägt Kriterium b in **keinem** `servo_j`-Lauf vom 16./19.10.
+> an. Echt ist nur der Hänger selbst (~210 ms, einmal 1014 ms): so lange
+> kommt kein Sollwert, der Arm steht. Der Recorder misst erst nach dem
+> Aufruf und sieht das nicht als Schleppfehler. Ursprünglicher Text:
 
 Nach dem PICK-Dwell bleibt der Arm bei **allen** `servo_j`-Varianten
 0,3–1,8 s stehen, obwohl die Sollwerte schon weiterlaufen (Neura-Leuchte
@@ -906,15 +930,79 @@ in der Steuerung (Befehlsweg) oder ein Verzögerungs-Mechanismus nur auf
 dieser Verbindung. Test 3: die 4 Überläufe und 14 ms Sendeabstand-Streuung
 sind genau zwei solche Hänger (219, 216 ms).
 
-### 11.8 Entscheidung offen
+### 11.8 Entscheidung ~~offen~~ — 19.10.: A
+
+> **Entschieden 19.10. (Anwender):** Weg A, `servo_j` linear mit Override
+> 0,5, für Aufnahme, Inferenz und VM (`config.EXECUTION_MODE`,
+> `config.DEFAULT_OVERRIDE`). Messung dazu:
+> `Berichte/2026-10-19_Labortag-Uebersicht.md`. Das Lockern von
+> Kriterium b entfällt (11.6 widerrufen); `RECORDER_STALL_GRACE_S = 2,5`
+> bleibt vorerst als Absicherung.
 
 | Weg | Was zu tun wäre | Risiko |
 |---|---|---|
-| **A** `servo_j` linear, **Override 0,5** | Kriterium b nach Dwell lockern (11.6); `config.DEFAULT_OVERRIDE`/Override der Aufnahme 0,5; eine Aufnahme + Inferenz-Probefahrt an der Anlage | Override ist ein Sicherheitsthema (Absprache); Override bremst auch andere Bewegungen |
+| **A** `servo_j` linear, **Override 0,5** | ~~Kriterium b nach Dwell lockern (11.6);~~ `config.DEFAULT_OVERRIDE`/Override der Aufnahme 0,5; eine Aufnahme + Inferenz-Probefahrt an der Anlage | Override ist ein Sicherheitsthema (Absprache); Override bremst auch andere Bewegungen |
 | **B** `online` + Halteregel | Schleppfehler-Grenzen für `online` neu fassen (Recorder und Inferenz), Ursache der 30 % klären (Neura) | Bahn bleibt bis 49 mm / 31° daneben; Zustand hängt den Labels bis > 2 s hinterher — schlecht fürs Lernen |
 | **C** `online` mit höherer Drehgrenze | Tempo ×3–4 bei Beschl. ×1,5 an der Anlage messen | 13.10./16.10.: höhere Grenzen → 15-Hz-Pulsieren |
 
 Empfehlung nach den Daten: **A** zuerst an der Anlage bestätigen.
+
+---
+
+## 12. Korrektur 19.10. am PC: Zeitbasis der Nachrechnung
+
+**Anlass:** Am Labortag 19.10. zeigten sechs echte Recorder-Episoden
+(`servo_j` Override 0,5, Rauschen 0–1) Ziel–Ist von höchstens
+0,057–0,097 rad. Die Nachrechnung aus den `check_servo_stream`-Mitschrieben
+desselben Tages kam dagegen auf bis zu 0,46 rad, und dort schlugen die
+Kriterien a und b an (Übergabe § 7.6).
+
+**Ursache:** `check_servo_stream.fahre_lauf` sendet nach einem Hänger
+(§ 11.7, ~210 ms) das **nächste** Profilstück. Der Pacer überspringt nur
+Rasterpunkte. Der Rest der Bahn geht also so viel später raus, wie der
+Hänger dauerte. Die Nachrechnung (`report_labortag_2026_10_16.schleppfehler`)
+und der Verzug in `check_servo_stream.auswerten_lauf` verglichen aber mit
+der Uhrzeit (Ziel *i* ↔ Messung bei *i*/15 s). Jeder Hänger erschien so als
+bleibender Nachlauf des Arms, und mehrere Hänger summierten sich, je Lauf
+um 0,1–1,2 s. Gegen die Uhr gerechnet schien der Verzug deshalb unterwegs
+zu wachsen, und der Arm schien nach einem Stillstand zu pausieren (§ 11.6).
+
+**Korrektur:** Beide Werkzeuge rechnen jetzt gegen die tatsächliche
+Sendezeit (`check_servo_stream.profilzeit`/`hostzeit`, Ende des Aufrufs, so
+liest auch der Recorder). Die Berichte vom 16. und 19.10. sind mit
+`--auswerten` neu gerechnet, Bild 14 neu gezeichnet. Geändert haben sich
+nur Verzug und Folgefehler. Quer, Tempo, Haltepunkte und H1 sind
+zeitunabhängig bzw. kommen vom Handy und bleiben gleich.
+
+| `servo_j`-Läufe 16./19.10. | vorher (Uhrzeit) | jetzt (Sendezeit) |
+|---|---|---|
+| Ziel–Ist max, Override 0,5, Rauschen 0 | 0,09–0,20 rad | 0,06–0,10 rad |
+| Ziel–Ist max, Override 0,5, Rauschen 1 | 0,23–0,46 rad | 0,09–0,15 rad |
+| Ziel–Ist max, Override 1 / `pos` | bis 0,35 / 0,31 rad | 0,03–0,05 / 0,06–0,09 rad |
+| Kriterium a / b | a 3×, b in fast jedem Lauf | **nie** |
+| Verzug Override 0,5 | 150–430 ms, „wachsend“ | **82–100 ms, konstant** |
+| Verzug Override 1 | 80–250 ms | 20–24 ms |
+| Folgefehler RMS Override 0,5 | 4–47 mrad | 2–9 mrad |
+
+`online`/`onlinehalt` bleiben praktisch gleich (Verzug 1,2–1,3 s; bei
+`onlinehalt` zählte vorher die Wartezeit mit, 1,6 → 1,2 s). Die Abbrüche
+aus § 11.3 bleiben bestehen. Die VM-Berichte vom 14.10. ändern sich um
+≤ 6 ms und sind nicht neu geschrieben.
+
+**Folgen:**
+
+* § 11.6 widerrufen. Die Anlaufzeit `RECORDER_STALL_GRACE_S = 2,5` bleibt
+  vorerst als Absicherung (Anwender 19.10.), ist aber durch keinen
+  beobachteten Fehlalarm begründet.
+* Die Grenzen 0,30 rad (Recorder) und 0,35 rad (Inferenz) haben bei
+  `servo_j` Override 0,5 mehr als die doppelte Reserve. Mitschrieb und
+  Recorder stimmen jetzt überein.
+* Nicht nachgeprüft: der Verzug der 13.10.-Tabelle (Anhang C, Werkzeug
+  `check_trajectory_buffer`). `referenz_90`/`referenz_120` mit 88/246
+  Takt-Überläufen dürften gleich betroffen sein (396/600 ms).
+
+Neu rechnen: `python tools/report_labortag_2026_10_16.py --mitschriebe "Berichte/2026-10-1[69]_*_Mitschrieb.npz"`
+und `python tools/check_servo_stream.py --auswerten Berichte/<stempel>_Servo-Strom`.
 
 ---
 
@@ -928,7 +1016,7 @@ Empfehlung nach den Daten: **A** zuerst an der Anlage bestätigen.
 | Welligkeit | RMS(v_ist − v_plan) / v_max, aus den neuen Gelenkwerten | 50-Hz-Quelle: löst nur bis ~25 Hz auf |
 | Tempo-Einbruch | Anteil der Fahrzeit unter 50 % des Plantempos | zählt bei online auch Nachlaufen/Abkürzen |
 | Tempo p5 | 5-%-Quantil von v_ist / v_plan in Fahrt | dito |
-| Verzug | Zeitversatz, mit dem der Arm der Planung am besten folgt (J1) | positiv = hinterher |
+| Verzug | Zeitversatz, mit dem der Arm der Planung am besten folgt (J1) | positiv = hinterher; ab 19.10. gegen den gesendeten Strom (§ 12) |
 | Folgefehler RMS | Abstand zur um den Verzug versetzten Planung (J1) | |
 | max. Gelenkabweichung | größte Abweichung **eines** Gelenks von der Gelenkbahn (alle 6) | zeigt Abkürzen/Überschwingen, IK-Wechsel |
 | Takt-Überläufe | Sollwerte, die zu spät gesendet wurden | Laptop/Steuerung |
@@ -953,6 +1041,13 @@ m/s² (Spektralanteil ±1,5 Hz um 15/30/60 Hz).
 T = Tempo-Grenze, B = Beschleunigungsgrenze (je als Vielfaches der
 Bahnspitze), V = Vorlauf in 15-Hz-Takten. Die Stopp-Tests von 16:29 fehlen
 (überschrieben, § 4.4).
+
+> **Nachtrag 21.10. (§ 12):** „Verzug“ und „Folgefehler“ sind hier gegen
+> die Uhr gerechnet. Bei `referenz_90`/`referenz_120` (88/246
+> Takt-Überläufe, Bahn um 25/51 % gestreckt) ist das vor allem Streckung:
+> Herausgerechnet fällt der Folgefehler auf 1,8/0,4 mrad. Die 396/600 ms
+> sind kein Nachlauf des Arms. Exakt korrigieren lässt es sich nicht, die
+> Mitschriebe vom 13.10. haben keine Sendezeiten.
 
 | Zeit | Test | Bahn | Verfahren | Einstellung | Welligkeit | Einbruch | Tempo p5 | Verzug | Folgefehler RMS | max. Gelenkabw. | Takt-Überl. | Bericht |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|

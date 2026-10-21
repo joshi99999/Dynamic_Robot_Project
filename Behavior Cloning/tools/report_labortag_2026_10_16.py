@@ -6,9 +6,10 @@ Zahlen des Abschnitts nach und legt die Bilder 13-15 ab:
 1. Handy H1 je Lauf ueber Zeitfenster (LOS-Zeit + Bewegungsdauer aus dem
    Mitschrieb) -- die automatische Erkennung uebersieht ruhige Fahrten.
 2. Schleppfehler so, wie ihn der Recorder prueft (Gelenkziel des Takts i
-   gegen die Messung zur Zeit i/15 s), mit den Abbruchkriterien a und b
-   (config.RECORDER_*) und der Ziel-Ist-Grenze der Inferenz
-   (config.SERVO_MAX_TARGET_GAP_RAD).
+   gegen die Messung direkt nach dessen Senden), mit den Abbruchkriterien
+   a und b (config.RECORDER_*) und der Ziel-Ist-Grenze der Inferenz
+   (config.SERVO_MAX_TARGET_GAP_RAD). Mit ``--mitschriebe`` nur dieser
+   Teil, fuer beliebige Mitschriebe (z. B. Labortag 19.10.).
 3. Bahntreue zeitunabhaengig: naechster Punkt der Planbahn (Gelenkraum und
    Pose), je Abschnitt der Bahn.
 4. Effektives Tempo bei ``online`` gegen die uebergebenen Grenzen.
@@ -21,6 +22,7 @@ enthalten -- Abstaende gelten am Flansch).
 Ausfuehren (aus dem Ordner "Behavior Cloning"):
     python tools/report_labortag_2026_10_16.py --handy-ordner "D:/.../Zittern"
     python tools/report_labortag_2026_10_16.py --ohne-bilder
+    python tools/report_labortag_2026_10_16.py --mitschriebe "Berichte/2026-10-19_*_Mitschrieb.npz"
 """
 
 import argparse
@@ -108,10 +110,20 @@ def handy_tabelle(ordner):
 
 
 def schleppfehler(z, name):
-    """Recorder-Pruefung nachgestellt: Fehler je Takt, Abbruch a/b (erster Takt)."""
+    """Recorder-Pruefung nachgestellt: Fehler je Takt, Abbruch a/b (erster Takt).
+
+    Messung direkt nach dem Senden des Ziels i (``strom.hostzeit``), wie
+    der Recorder liest -- NICHT zur Uhrzeit i/15 s: nach jedem Haenger
+    sendet check_servo_stream den Rest der Bahn spaeter, gegen die Uhr
+    erschien das als wachsender Schleppfehler (bis 0,46 statt 0,15 rad,
+    Kriterium a/b schlugen scheinbar an; korrigiert PC 2026-10-19).
+    """
     q = plan_von(z, name)
     tt, qq = z[name + "_t"], z[name + "_q"]
-    mess = np.array([qq[max(np.searchsorted(tt, i * T, side="right") - 1, 0)] for i in range(len(q))])
+    lauf = strom.parse_lauf(name.split("#")[0])
+    t_ist = strom.hostzeit(np.arange(len(q)) * T, z[name + "_send"],
+                           strom.Profil(q, "linear"), lauf["rate"])
+    mess = np.array([qq[max(np.searchsorted(tt, t, side="right") - 1, 0)] for t in t_ist])
     fehler = np.max(np.abs(mess - q), axis=1)
     lim, n = config.RECORDER_MAX_FOLLOW_ERROR_RAD, config.RECORDER_FOLLOW_ERROR_STEPS
     a_at, schlecht = None, 0
@@ -127,6 +139,32 @@ def schleppfehler(z, name):
             b_at = i
             break
     return fehler, a_at, b_at
+
+
+def schleppfehler_tabelle(dateien):
+    """Teil 2 fuer eine Liste von Mitschrieben; liefert {(stempel, lauf): fehler}."""
+    print("\n== 2. Schleppfehler wie im Recorder (a: > %.2f rad ueber %d Takte; b: Arm < %.0f %% "
+          "des Sollwegs) und Inferenz-Grenze %.2f rad"
+          % (config.RECORDER_MAX_FOLLOW_ERROR_RAD, config.RECORDER_FOLLOW_ERROR_STEPS,
+             100 * config.RECORDER_MIN_FOLLOW_RATIO, config.SERVO_MAX_TARGET_GAP_RAD))
+    kurven = {}
+    for datei in dateien:
+        z = np.load(str(datei))
+        tag, stempel = Path(datei).name[:10], Path(datei).name[11:19]
+        for name in [k[:-2] for k in z.files if k.endswith("_t")]:
+            try:
+                plan = "plan_r%g" % strom.parse_lauf(name.split("#")[0])["rauschen"]
+            except ValueError:
+                continue   # kein Lauf von check_servo_stream (andere Werkzeuge)
+            if name + "_send" not in z.files or plan not in z.files:
+                continue
+            fehler, a_at, b_at = schleppfehler(z, name)
+            kurven[(stempel, name)] = fehler
+            print("  %s %s %-20s max %.3f rad (Takt %3d) | Abbruch a: %-5s b: %-5s | "
+                  "Inferenz-Grenze ueberschritten: %s"
+                  % (tag, stempel, name, fehler.max(), fehler.argmax(), a_at, b_at,
+                     "ja" if fehler.max() > config.SERVO_MAX_TARGET_GAP_RAD else "nein"))
+    return kurven
 
 
 def bahntreue(z, name, kette):
@@ -194,38 +232,40 @@ def bilder(handy, fehler_kurven, bahnen):
     rs.stil(plt)
     BILDER.mkdir(parents=True, exist_ok=True)
 
-    # 13: H1 je Art (Mittel der Wiederholungen)
-    gruppen = [("Neura-Standard", ["Neura-Standard"]),
-               ("online x1,3/x1,5", ["D1 online", "D2 online", "T1 online", "W online", "W2 online"]),
-               ("linear 60 Hz, Override 0,5", ["D1 linear o0,5", "D2 linear o0,5"]),
-               ("online x1,3/x1,5, Dwell 1,5 s (T3)", ["T3 online Dwell 1,5 s"]),
-               ("online x2/x3 (T2)", ["T2 online x2/x3"]),
-               ("pos 60 Hz (v = a = 0)", ["D1 pos", "D2 pos", "T1 pos", "W2 pos"]),
-               ("linear 60 Hz (bisher)", ["D1 linear", "D2 linear"])]
-    werte = {k: fa["rms"] for k, fa, _ in handy if fa}
-    namen, mittel, spann = [], [], []
-    for titel, glieder in gruppen:
-        v = [werte[g] for g in glieder if g in werte]
-        if v:
-            namen.append(titel)
-            mittel.append(float(np.mean(v)))
-            spann.append((min(v), max(v)))
-    fig, ax = plt.subplots(figsize=(10, 4.2))
-    y = np.arange(len(namen))[::-1]
-    farben = [rs.GRAU if "Neura" in n else (rs.ORANGE if "bisher" in n else rs.BLAU) for n in namen]
-    ax.barh(y, mittel, color=farben, height=0.6)
-    for yi, m, (lo, hi) in zip(y, mittel, spann):
-        ax.text(m + 0.03, yi, "%.2f" % m + ("" if lo == hi else "  (%.2f-%.2f)" % (lo, hi)),
-                va="center", fontsize=8, color=rs.TEXT2)
-    ax.set_yticks(y)
-    ax.set_yticklabels(namen)
-    ax.set_xlabel("Handy H1 (Unterarm, Achse 5): Beschleunigung ueber 5 Hz, RMS (m/s^2)")
-    ax.grid(axis="y", visible=False)
-    ax.set_title("Anlage 16.10., ganze Aufnahmebahn, Rauschen 0 -- grau = Pendant-Programm von Neura",
-                 fontsize=9.5, loc="left")
-    fig.tight_layout()
-    fig.savefig(BILDER / "13_labortag16_h1.png")
-    plt.close(fig)
+    # 13: H1 je Art (Mittel der Wiederholungen) -- nur mit Handy-Daten, sonst
+    # bliebe das vorhandene Bild nicht erhalten (leer ueberschrieben)
+    if handy:
+        gruppen = [("Neura-Standard", ["Neura-Standard"]),
+                   ("online x1,3/x1,5", ["D1 online", "D2 online", "T1 online", "W online", "W2 online"]),
+                   ("linear 60 Hz, Override 0,5", ["D1 linear o0,5", "D2 linear o0,5"]),
+                   ("online x1,3/x1,5, Dwell 1,5 s (T3)", ["T3 online Dwell 1,5 s"]),
+                   ("online x2/x3 (T2)", ["T2 online x2/x3"]),
+                   ("pos 60 Hz (v = a = 0)", ["D1 pos", "D2 pos", "T1 pos", "W2 pos"]),
+                   ("linear 60 Hz (bisher)", ["D1 linear", "D2 linear"])]
+        werte = {k: fa["rms"] for k, fa, _ in handy if fa}
+        namen, mittel, spann = [], [], []
+        for titel, glieder in gruppen:
+            v = [werte[g] for g in glieder if g in werte]
+            if v:
+                namen.append(titel)
+                mittel.append(float(np.mean(v)))
+                spann.append((min(v), max(v)))
+        fig, ax = plt.subplots(figsize=(10, 4.2))
+        y = np.arange(len(namen))[::-1]
+        farben = [rs.GRAU if "Neura" in n else (rs.ORANGE if "bisher" in n else rs.BLAU) for n in namen]
+        ax.barh(y, mittel, color=farben, height=0.6)
+        for yi, m, (lo, hi) in zip(y, mittel, spann):
+            ax.text(m + 0.03, yi, "%.2f" % m + ("" if lo == hi else "  (%.2f-%.2f)" % (lo, hi)),
+                    va="center", fontsize=8, color=rs.TEXT2)
+        ax.set_yticks(y)
+        ax.set_yticklabels(namen)
+        ax.set_xlabel("Handy H1 (Unterarm, Achse 5): Beschleunigung ueber 5 Hz, RMS (m/s^2)")
+        ax.grid(axis="y", visible=False)
+        ax.set_title("Anlage 16.10., ganze Aufnahmebahn, Rauschen 0 -- grau = Pendant-Programm von Neura",
+                     fontsize=9.5, loc="left")
+        fig.tight_layout()
+        fig.savefig(BILDER / "13_labortag16_h1.png")
+        plt.close(fig)
 
     # 14: Schleppfehler wie im Recorder
     fig, ax = plt.subplots(figsize=(10, 3.8))
@@ -271,7 +311,12 @@ def main():
     ap.add_argument("--handy-ordner", default=None,
                     help="Ordner mit den phyphox-Exporten des Tages (ohne: Handy-Teil entfaellt)")
     ap.add_argument("--ohne-bilder", action="store_true")
+    ap.add_argument("--mitschriebe", default=None,
+                    help="Glob auf *_Mitschrieb.npz: nur Teil 2 (Schleppfehler) fuer diese Dateien")
     args = ap.parse_args()
+    if args.mitschriebe:
+        schleppfehler_tabelle(sorted(glob.glob(args.mitschriebe)))
+        return
     kette = KinematicChain.from_urdf(config.URDF_PATH)
 
     handy = []
@@ -288,19 +333,9 @@ def main():
             print("  %-24s %s %5.1f s  RMS %.2f  p99 %.2f  Spitze %5.1f Hz  Anteil 5-8,5/8,5-11/14-17 Hz "
                   "%.2f/%.2f/%.2f" % (kurz, fa["beginn"], dauer, fa["rms"], fa["p99"], fa["spitze_hz"], *ant))
 
-    print("\n== 2. Schleppfehler wie im Recorder (a: > %.2f rad ueber %d Takte; b: Arm < %.0f %% "
-          "des Sollwegs) und Inferenz-Grenze %.2f rad"
-          % (config.RECORDER_MAX_FOLLOW_ERROR_RAD, config.RECORDER_FOLLOW_ERROR_STEPS,
-             100 * config.RECORDER_MIN_FOLLOW_RATIO, config.SERVO_MAX_TARGET_GAP_RAD))
-    kurven = {}
-    for stempel in ("12-47-00", "13-00-44", "14-15-21", "14-18-59"):
-        z = mitschrieb(stempel)
-        for name in [k[:-2] for k in z.files if k.endswith("_t")]:
-            fehler, a_at, b_at = schleppfehler(z, name)
-            kurven[(stempel, name)] = fehler
-            print("  %s %-18s max %.3f rad (Takt %3d) | Abbruch a: %-5s b: %-5s | Inferenz-Grenze ueberschritten: %s"
-                  % (stempel, name, fehler.max(), fehler.argmax(), a_at, b_at,
-                     "ja" if fehler.max() > config.SERVO_MAX_TARGET_GAP_RAD else "nein"))
+    kurven = schleppfehler_tabelle(
+        [BERICHTE / ("2026-10-16_%s_Servo-Strom_Mitschrieb.npz" % s)
+         for s in ("12-47-00", "13-00-44", "14-15-21", "14-18-59")])
 
     print("\n== 3. Bahntreue zeitunabhaengig (Flansch; max je Abschnitt: Position mm / Orientierung Grad / Gelenk rad)")
     bahnen = []
@@ -338,7 +373,7 @@ def main():
                        ("servo_j linear, Override 0,5", kurven[("12-47-00", "linear-60-r0-o0.5")]),
                        ("servo_j pos", kurven[("12-47-00", "pos-60-r0-o1")])]
         bilder(handy, kurven_bild, bahnen)
-        print("\nBilder: %s (13-15%s)" % (BILDER, "" if handy else "; 13 ohne Handy leer"))
+        print("\nBilder: %s (13-15%s)" % (BILDER, "" if handy else "; 13 ohne Handy unveraendert"))
 
 
 if __name__ == "__main__":

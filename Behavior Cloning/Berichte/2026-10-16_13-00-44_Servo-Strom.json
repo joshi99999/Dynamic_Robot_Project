@@ -61,8 +61,8 @@
           "welligkeit_rms_mm": 0.4152228573494325,
           "welligkeit_max_mm": 1.9356722425244326
         },
-        "verzug_ms": 246.0000000000005,
-        "folgefehler_rms_mrad": 19.49562605227788,
+        "verzug_ms": 20.000000000000295,
+        "folgefehler_rms_mrad": 2.18301557172314,
         "fahrzeit_faktor": 1.0296973542469303
       },
       "ueberlaeufe": 21,
@@ -116,8 +116,8 @@
           "welligkeit_rms_mm": 0.21244197294796802,
           "welligkeit_max_mm": 0.8677546793505222
         },
-        "verzug_ms": 138.0000000000004,
-        "folgefehler_rms_mrad": 10.50323853170897,
+        "verzug_ms": 88.00000000000037,
+        "folgefehler_rms_mrad": 2.8677669445650507,
         "fahrzeit_faktor": 1.0322472932862072
       },
       "ueberlaeufe": 27,
@@ -193,8 +193,8 @@
           "welligkeit_rms_mm": 1.2602997142953607,
           "welligkeit_max_mm": 8.759852640856323
         },
-        "verzug_ms": 1310.0000000000014,
-        "folgefehler_rms_mrad": 107.75980347965131,
+        "verzug_ms": 1298.0000000000014,
+        "folgefehler_rms_mrad": 107.76712111748596,
         "fahrzeit_faktor": 1.086871112265238,
         "halte": [
           {
@@ -261,8 +261,8 @@
           "welligkeit_rms_mm": 0.11389116657146099,
           "welligkeit_max_mm": 0.6861639925373307
         },
-        "verzug_ms": 148.0000000000004,
-        "folgefehler_rms_mrad": 3.5386417404303634,
+        "verzug_ms": 86.00000000000037,
+        "folgefehler_rms_mrad": 2.451015113773633,
         "fahrzeit_faktor": 0.9890394268966303
       },
       "ueberlaeufe": 5,
@@ -316,8 +316,8 @@
           "welligkeit_rms_mm": 0.24735393065101624,
           "welligkeit_max_mm": 1.07170313525281
         },
-        "verzug_ms": 340.00000000000057,
-        "folgefehler_rms_mrad": 21.8284022790521,
+        "verzug_ms": 92.00000000000037,
+        "folgefehler_rms_mrad": 4.279455920347309,
         "fahrzeit_faktor": 1.028237918528115
       },
       "ueberlaeufe": 22,
@@ -393,8 +393,8 @@
           "welligkeit_rms_mm": 2.2195407343360203,
           "welligkeit_max_mm": 18.528879894923374
         },
-        "verzug_ms": 1252.0000000000014,
-        "folgefehler_rms_mrad": 120.278388746815,
+        "verzug_ms": 1238.0000000000014,
+        "folgefehler_rms_mrad": 120.21936720916831,
         "fahrzeit_faktor": 1.1017963537355748,
         "halte": [
           {
