@@ -33,7 +33,14 @@ import _bootstrap  # noqa: F401
 import numpy as np
 
 from bc import capture, config
-from bc.adapters import apply_camera_specs, list_devices, open_camera
+from bc.adapters import (
+    apply_camera_specs,
+    describe_settings,
+    fps_label,
+    list_devices,
+    open_camera,
+)
+from bc.sync import camera_rate_findings
 
 
 #: Messdauer ohne Fenster, wenn nichts angegeben ist (Befund Laptop
@@ -143,7 +150,7 @@ def main():
         help="Geraet ueberschreiben (UVC: Index, Daheng: Seriennummer)",
     )
     parser.add_argument(
-        "--camera", action="append", default=None, metavar="NAME=BACKEND[:GERAET]",
+        "--camera", action="append", default=None, metavar="NAME=BACKEND[:GERAET][@FPS]",
         help="Kameraplatz frei besetzen, z. B. 'scene=uvc:1' (wie apps/record.py); "
              "mehrfach angebbar",
     )
@@ -181,7 +188,14 @@ def main():
         )
     for cam in cams:
         cam.wait_for_frame(timeout=10.0)
-    print("Alle Kameras liefern Bilder.\n")
+    print("Alle Kameras liefern Bilder.")
+    # Zurueckgelesen, nicht angenommen (Befund 2026-10-26: gespeicherte
+    # Bildratenbegrenzung, Hub mit 23 statt 61 fps)
+    settings = {cam.name: cam.camera.settings() for cam in cams}
+    for cam in cams:
+        if settings[cam.name]:
+            print("  %s" % describe_settings(cam.name, settings[cam.name]))
+    print()
 
     if not args.no_display:
         import cv2
@@ -189,7 +203,11 @@ def main():
     last_report = time.time()
     last_counts = {cam.name: 0 for cam in cams}
     stats = {"fps": {cam.name: [] for cam in cams},
-             "age_ms": {cam.name: [] for cam in cams}, "skew_ms": []}
+             "age_ms": {cam.name: [] for cam in cams}, "skew_ms": [],
+             "requested": {c.name: fps_label(c) for c in configs},
+             "possible": {n: (s or {}).get("rate_possible_fps") for n, s in settings.items()},
+             "sample_age_ms": {cam.name: [] for cam in cams}}
+    last_sample = 0.0
     start = time.time()
     snapshot_no = 0
 
@@ -199,6 +217,14 @@ def main():
             frames = [f for f in frames if f is not None]
 
             now = time.time()
+            # Bildalter im Takt der Aufzeichnung abtasten -- einmal je
+            # Sekunde (unten) ist zu selten, um das Muster zu sehen.
+            if now - last_sample >= 1.0 / config.CONTROL_RATE_HZ:
+                last_sample = now
+                for cam in cams:
+                    frame = cam.latest()
+                    if frame is not None:
+                        stats["sample_age_ms"][cam.name].append((now - frame.timestamp) * 1e3)
             if now - last_report >= 1.0:
                 parts = []
                 for cam in cams:
@@ -274,6 +300,18 @@ def assess(stats):
         else:
             print("  [FEHLER] %s liefert nur %.1f fps, der Takt braucht %g -- "
                   "der Recorder saehe Bilder doppelt." % (name, fps, need))
+        for line in camera_rate_findings(name, fps, stats.get("requested", {}).get(name),
+                                  stats.get("possible", {}).get(name)):
+            print("  " + line)
+        samples = (stats.get("sample_age_ms", {}).get(name) or [])[int(config.CONTROL_RATE_HZ):]
+        if samples:
+            share = float(np.mean(np.asarray(samples) > budget))
+            limit = config.SYNC_MAX_BAD_FRAME_RATIO
+            verdict = ("[OK]" if share <= limit / 2
+                       else "[WARNUNG]" if share <= limit else "[FEHLER]")
+            print("  %s %s: %.0f %% der 15-Hz-Abtastungen mit Bild aelter als %.0f ms "
+                  "(die Aufnahme verwirft ab %.0f %%)."
+                  % (verdict, name, 100 * share, budget, 100 * limit))
         ages = stats["age_ms"][name][1:]
         if ages:
             p95 = float(np.percentile(ages, 95))

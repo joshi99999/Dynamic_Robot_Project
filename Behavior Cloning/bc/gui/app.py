@@ -12,13 +12,14 @@ import argparse
 import logging
 import sys
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QProcess, Qt, QTimer
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDockWidget,
                                QDoubleSpinBox, QGroupBox, QHBoxLayout, QLabel,
                                QMainWindow, QMessageBox, QPushButton, QTabWidget,
                                QVBoxLayout, QWidget)
 
 from . import MODES, _bootstrap  # noqa: F401  (_bootstrap setzt sys.path)
+from . import reload as reload_module
 from . import session as session_module
 from .runner import TaskRunner
 from .tab_console import ConsoleTab
@@ -173,6 +174,11 @@ class MainWindow(QMainWindow):
         self.tabs.currentChanged.connect(self._tab_changed)
         if start_mode in MODES:
             self.tabs.setCurrentIndex(MODES.index(start_mode))
+        # Neustart-Knopf im Systemcheck: nur im eigenen Fenster (plugin.py
+        # setzt ihn nicht -- dort gehoert das Programm der anderen Gruppe)
+        for tab in self.mode_tabs:
+            if hasattr(tab, "set_restart_handler"):
+                tab.set_restart_handler(self.restart_gui)
 
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -208,6 +214,37 @@ class MainWindow(QMainWindow):
         widget = self.tabs.widget(index)
         if hasattr(widget, "refresh"):
             widget.refresh()
+
+    def restart_gui(self):
+        """Oberflaeche sauber schliessen und neu starten (bc/gui/reload.py).
+
+        Nur, wenn nichts laeuft -- ein Neustart beendete sonst eine Aufnahme,
+        eine Vorschau oder eine Teach-Serie mittendrin. Erst aufraeumen
+        (closeEvent: Reiter, Verbindung), dann den neuen Prozess starten.
+        """
+        blockers = reload_module.busy_reasons(self.mode_tabs)
+        if blockers:
+            QMessageBox.information(
+                self, "Neustart nicht möglich",
+                "Erst beenden:\n\n" + "\n".join("• " + b for b in blockers))
+            return
+        mode = self.tabs.currentWidget().mode or "systemcheck"
+        if QMessageBox.question(
+                self, "Oberfläche neu starten",
+                "Die Oberfläche wird geschlossen und neu gestartet. Die Verbindung "
+                "zur Steuerung wird dabei getrennt; ungespeicherte Änderungen am "
+                "Ablauf gehen verloren.\n\nNeu starten?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        program, args = reload_module.restart_command(mode)
+        if not self.close():
+            return
+        ok, _pid = QProcess.startDetached(program, args, str(_bootstrap.WORKDIR))
+        if not ok:
+            # Fenster ist schon zu -- wenigstens im Konsolenfenster sagen, warum
+            print("Neustart gescheitert: %s %s" % (program, " ".join(args)))
+        QApplication.quit()
 
     def closeEvent(self, event):                     # noqa: N802 (Qt-API)
         for tab in self.mode_tabs:

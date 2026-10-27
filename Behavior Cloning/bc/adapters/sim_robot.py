@@ -411,6 +411,13 @@ class SimRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
     def in_teach_mode(self):
         return self.teach_mode
 
+    #: Zero-G kennt der SimRobot nicht (None = nicht abfragbar); Tests
+    #: setzen True/False.
+    free_drive = None
+
+    def free_drive_enabled(self):
+        return self.free_drive
+
     def jog_start(self, velocity, jog_type="Cartesian"):
         if not self.teach_mode:
             raise RobotError("Tippbetrieb nur im Teach-Modus")

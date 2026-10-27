@@ -31,7 +31,9 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
                                QPushButton, QSpinBox, QSplitter, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout)
 
+from . import _bootstrap
 from . import checks as checks_module
+from . import reload as reload_module
 from . import session as session_module
 from . import training as training_module
 from .runner import ProcessRunner
@@ -161,10 +163,66 @@ class SystemcheckTab(ModeTab):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.requirement_view)
+        layout.addWidget(self._build_code_box())
         layout.addWidget(splitter, 1)
 
         session.add_listener(self._on_session_status)
         self._update_real_hint()
+
+    # -- Code-Stand und Neustart (bc/gui/reload.py) --------------------------
+
+    def _build_code_box(self):
+        """Wunsch Anwender 2026-10-26: nach Aenderungen nicht von Hand neu
+        starten. Kein Neuladen im laufenden Prozess -- Begruendung in
+        bc/gui/reload.py -- sondern Anzeige plus Neustart-Knopf."""
+        self._code_watch = reload_module.CodeWatch(_bootstrap.WORKDIR)
+        #: Wird vom eigenen Fenster gesetzt (MainWindow.restart_gui). Als
+        #: Reiter in der Gruppen-GUI bleibt es None: ein Neustart beendete
+        #: deren Programm mit.
+        self._restart_handler = None
+        box = QGroupBox("Code-Stand")
+        row = QHBoxLayout(box)
+        self.code_status = QLabel("")
+        self.code_status.setWordWrap(True)
+        row.addWidget(self.code_status, 1)
+        self.btn_code_check = QPushButton("Auf Änderungen prüfen")
+        self.btn_code_check.setToolTip(
+            "Vergleicht bc/, apps/ und tools/ mit dem Stand beim Start. Änderungen in "
+            "apps/ und tools/ wirken ohne Neustart (eigener Prozess), in bc/ braucht "
+            "die Oberfläche einen Neustart.")
+        self.btn_code_check.clicked.connect(self.refresh_code_status)
+        row.addWidget(self.btn_code_check)
+        self.btn_restart = QPushButton("Oberfläche neu starten")
+        self.btn_restart.setToolTip(
+            "Schließt die Oberfläche sauber (Verbindung, Kameras) und startet sie mit "
+            "demselben Python neu. Gesperrt, solange eine Aufnahme, Vorschau, "
+            "Teach-Serie oder Prüfung läuft.")
+        self.btn_restart.clicked.connect(self._restart_clicked)
+        self.btn_restart.setEnabled(False)
+        row.addWidget(self.btn_restart)
+        self.refresh_code_status()
+        return box
+
+    def set_restart_handler(self, handler):
+        self._restart_handler = handler
+        self.btn_restart.setEnabled(handler is not None)
+        self.refresh_code_status()
+
+    def refresh_code_status(self):
+        restart, immediate = self._code_watch.status()
+        text = reload_module.describe(restart, immediate)
+        if restart and self._restart_handler is None:
+            text += ("\nAls Reiter in der Gruppen-GUI: deren Programm neu starten.")
+        self.code_status.setText(text)
+        self.code_status.setStyleSheet("color:%s" % (WARN if restart else NEUTRAL))
+
+    def _restart_clicked(self):
+        if self._restart_handler is not None:
+            self._restart_handler()
+
+    def refresh(self):
+        super().refresh()
+        self.refresh_code_status()
 
     # -- Aufbau -------------------------------------------------------------
 

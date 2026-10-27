@@ -237,17 +237,55 @@ def parse_device(backend, text):
     return str(text)
 
 
+#: Bildrate "nativ" in einer Kamerazuordnung (``wrist=daheng:SN@nativ``):
+#: die Kamera laeuft ohne Begrenzung (Daheng VEN-161: 61 fps).
+FPS_NATIVE = "nativ"
+#: Zulaessiger Bereich einer angegebenen Bildrate.
+FPS_RANGE = (1.0, 120.0)
+
+
+def split_camera_fps(text):
+    """``"wrist=daheng:SN@30"`` -> ``("wrist=daheng:SN", 30.0)``.
+
+    Ohne ``@``: ``(text, None)`` -- die Rate des Platzes bleibt. ``@nativ``
+    liefert :data:`FPS_NATIVE` (Kamera ohne Begrenzung).
+    """
+    head, sep, rate = text.partition("@")
+    if not sep:
+        return text, None
+    rate = rate.strip().lower()
+    if rate == FPS_NATIVE:
+        return head, FPS_NATIVE
+    try:
+        fps = float(rate)
+    except ValueError:
+        raise ValueError("Bildrate '%s' in '%s' ist keine Zahl und nicht '%s'"
+                         % (rate, text, FPS_NATIVE))
+    if not FPS_RANGE[0] <= fps <= FPS_RANGE[1]:
+        raise ValueError("Bildrate %g ausserhalb %g-%g fps" % ((fps,) + FPS_RANGE))
+    return head, fps
+
+
+def with_fps(cfg, fps):
+    """Konfiguration mit Bildrate aus :func:`split_camera_fps` (None = unveraendert)."""
+    if fps is None or cfg.backend == "sim":
+        return cfg
+    return replace(cfg, fps=None if fps == FPS_NATIVE else float(fps))
+
+
 def parse_camera_spec(text):
     """``"wrist=uvc:1"`` -> ``("wrist", "uvc", 1)``.
 
     Schreibweise der Option ``--camera`` in record.py und infer.py, und
     zugleich die, die die Oberflaeche anzeigt -- eine Zuordnung, die man
-    liest, soll sich auch eintippen lassen.
+    liest, soll sich auch eintippen lassen. Eine angehaengte Bildrate
+    (``@30``, ``@nativ``) wird hier uebergangen, siehe :func:`split_camera_fps`.
     """
+    text = split_camera_fps(text)[0]
     if "=" not in text:
         raise ValueError(
-            "Kamerazuordnung '%s' erwartet NAME=BACKEND[:GERAET], z. B. "
-            "wrist=uvc:1 oder scene=sim" % text)
+            "Kamerazuordnung '%s' erwartet NAME=BACKEND[:GERAET][@FPS], z. B. "
+            "wrist=uvc:1, scene=sim oder wrist=daheng@nativ" % text)
     name, _, source = text.partition("=")
     name = name.strip()
     backend, _, device = source.strip().partition(":")
@@ -292,11 +330,44 @@ def camera_config_for(name, backend, device=None):
         return prepared if device is None else replace(prepared, device=device)
 
     if backend == "daheng":
-        # Wie die Wrist-Kamera: voller Sensor, feste Belichtung. Rate
-        # begrenzt, weil zwei USB3-Kameras sonst die Bandbreite ausreizen.
-        return replace(config.WRIST_CAMERA, name=name, device=device, fps=30.0)
+        # Wie die Wrist-Kamera: voller Sensor, feste Belichtung, 60 fps.
+        return replace(config.WRIST_CAMERA, name=name, device=device)
     return config.CameraConfig(name=name, backend="uvc", device=device or 0,
                                width=640, height=480, fps=30.0)
+
+
+def fps_label(cfg):
+    """Bildrate einer Konfiguration fuer Anzeige und Metadaten."""
+    if cfg.backend == "sim":
+        return None
+    return FPS_NATIVE if not cfg.fps else float(cfg.fps)
+
+
+def describe_settings(name, settings):
+    """Eine Zeile aus :meth:`CameraPort.settings` -- fuer Terminal und Oberflaeche."""
+    if not settings:
+        return "%s: keine Einstellungen lesbar" % name
+    bits = []
+    if settings.get("exposure_us") is not None:
+        bits.append("Belichtung %s %.0f us" % (
+            "AUTO" if str(settings.get("exposure_auto", "")).lower() not in ("off", "0", "none")
+            else "fest", settings["exposure_us"]))
+    if settings.get("gain_db") is not None:
+        bits.append("Gain %s %.1f dB" % (
+            "auto" if str(settings.get("gain_auto", "")).lower() not in ("off", "0", "none")
+            else "fest", settings["gain_db"]))
+    limit = str(settings.get("rate_limit", "")).lower()
+    if limit in ("on", "1"):
+        bits.append("Bildrate begrenzt auf %s fps" % settings.get("rate_set_fps"))
+    elif limit:
+        bits.append("Bildrate frei")
+    if settings.get("rate_possible_fps") is not None:
+        bits.append("moeglich %.1f fps" % settings["rate_possible_fps"])
+    if settings.get("link_throughput_bps"):
+        bits.append("USB %.0f MB/s" % (settings["link_throughput_bps"] / 1e6))
+    if str(settings.get("link_limit_mode", "")).lower() in ("on", "1"):
+        bits.append("USB-Limit %.0f MB/s" % ((settings.get("link_limit_bps") or 0) / 1e6))
+    return "%s: %s" % (name, ", ".join(bits) or "keine Einstellungen lesbar")
 
 
 def apply_camera_specs(cfgs, specs):
@@ -310,9 +381,12 @@ def apply_camera_specs(cfgs, specs):
         return list(cfgs)
     overrides = {}
     for spec in specs:
-        name, backend, device = (parse_camera_spec(spec)
-                                 if isinstance(spec, str) else spec)
-        overrides[name] = camera_config_for(name, backend, device)
+        fps = None
+        if isinstance(spec, str):
+            fps = split_camera_fps(spec)[1]
+            spec = parse_camera_spec(spec)
+        name, backend, device = spec
+        overrides[name] = with_fps(camera_config_for(name, backend, device), fps)
     return [overrides.pop(c.name, c) for c in cfgs] + list(overrides.values())
 
 

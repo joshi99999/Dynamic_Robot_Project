@@ -122,15 +122,30 @@ def latest_checkpoint(out):
     return ckpts[-1] if ckpts else None
 
 
-def split_episodes(n_episodes, fraction, seed):
-    """Episodenweise Aufteilung (nie Frames einer Episode auf beide Seiten)."""
+def split_episodes(n_episodes, fraction, seed, groups=None):
+    """Episodenweise Aufteilung (nie Frames einer Episode auf beide Seiten).
+
+    ``groups``: je Episode eine Kennung oder None. Episoden mit derselben
+    Kennung -- Wiederholungen derselben Objektlage (``record.py`` mit
+    Zuruecklegen, Metadatum ``repeat_group``) -- landen immer auf
+    DERSELBEN Seite. Sonst laege dieselbe Lage mit derselben Idealbahn in
+    Training und Validierung, und der Validierungsfehler sagte nichts ueber
+    neue Lagen. ``fraction`` gilt dann fuer die Gruppen. None = eigene Gruppe.
+    """
+    if groups is None:
+        groups = [None] * n_episodes
+    keys = [("ep", k) if g is None else ("grp", g) for k, g in enumerate(groups)]
+    units = list(dict.fromkeys(keys))
     rng = np.random.default_rng(seed)
-    order = rng.permutation(n_episodes).tolist()
-    n_val = int(round(n_episodes * fraction)) if fraction > 0 else 0
-    if fraction > 0 and n_episodes >= 5:
+    order = rng.permutation(len(units)).tolist()
+    n_val = int(round(len(units) * fraction)) if fraction > 0 else 0
+    if fraction > 0 and len(units) >= 5:
         n_val = max(1, n_val)
-    n_val = min(n_val, n_episodes - 1)
-    return sorted(order[n_val:]), sorted(order[:n_val])
+    n_val = min(n_val, len(units) - 1)
+    val_units = {units[i] for i in order[:n_val]}
+    train = [k for k in range(n_episodes) if keys[k] not in val_units]
+    val = [k for k in range(n_episodes) if keys[k] in val_units]
+    return train, val
 
 
 def single_value(consistency, key):
@@ -216,7 +231,12 @@ def main(argv=None):
         use_amp=amp_dtype is not None,
         prediction_type=args.prediction_type,
     )
-    train_eps, val_eps = split_episodes(meta.total_episodes, args.val_fraction, args.seed)
+    repeat_groups = [(ep.get("metadata") or {}).get("repeat_group")
+                     for ep in export_info["episodes"]]
+    if len(repeat_groups) != meta.total_episodes:
+        repeat_groups = None
+    train_eps, val_eps = split_episodes(meta.total_episodes, args.val_fraction, args.seed,
+                                        groups=repeat_groups)
     deltas = diffusion.delta_timestamps(policy_cfg, cameras)
     train_ds = LeRobotDataset(repo_id, root=dataset_root, episodes=train_eps, delta_timestamps=deltas)
     val_ds = (

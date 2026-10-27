@@ -21,10 +21,13 @@ haelt das Ergebnis in :class:`Inventory`.
 from .. import config
 from ..adapters import (
     CAMERA_BACKENDS,
+    FPS_NATIVE,
     camera_config_for,
     list_devices,
     parse_camera_spec,
     sim_device,
+    split_camera_fps,
+    with_fps,
 )
 
 #: Reihenfolge der Plaetze -- dieselbe wie im Datensatz.
@@ -114,24 +117,53 @@ def default_assignment(inventory, backend_is_sim_robot=True):
     return assignment
 
 
-def to_specs(assignment):
-    """Zuordnung -> ``["wrist=sim", "scene=uvc:1"]`` fuer die Kommandozeile.
+#: Auswahl der Bildrate je Platz (Wunsch Anwender 2026-10-26). None =
+#: Vorgabe des Platzes (config), FPS_NATIVE = ohne Begrenzung. Massstab ist
+#: das Latenzbudget: das neueste Bild ist bis 1/fps alt -- bei 30 fps also
+#: schon 33 ms, mehr als SYNC_MAX_SKEW_S (tools/check_cameras.py).
+FPS_CHOICES = (None, FPS_NATIVE, 60.0, 45.0, 30.0, 20.0, 15.0)
+
+
+def fps_choice_label(slot, value):
+    if value is None:
+        default = [c for c in config.CAMERAS if c.name == slot]
+        rate = default[0].fps if default else None
+        return "Vorgabe (%s)" % ("nativ" if not rate else "%g fps" % rate)
+    if value == FPS_NATIVE:
+        return "nativ (Maximum der Kamera)"
+    return "%g fps" % value
+
+
+def _with_rate(slot, key, fps):
+    """``"daheng:SN"`` -> ``"daheng:SN@30"``; Platzhalter haben keine Rate."""
+    rate = (fps or {}).get(slot)
+    if rate is None or str(key).startswith("sim"):
+        return key
+    return "%s@%s" % (key, rate if rate == FPS_NATIVE else "%g" % rate)
+
+
+def to_specs(assignment, fps=None):
+    """Zuordnung -> ``["wrist=sim", "scene=uvc:1@30"]`` fuer die Kommandozeile.
 
     Immer BEIDE Plaetze ausschreiben, auch wenn einer dem Modus entspricht:
     Eine Kommandozeile, die im Bericht landet, soll ohne Kenntnis der
-    Vorgaben lesbar sein.
+    Vorgaben lesbar sein. ``fps``: ``{Platz: Rate}`` aus der Oberflaeche,
+    nur abweichende Raten werden angehaengt.
     """
-    return ["%s=%s" % (slot, assignment[slot]) for slot in SLOTS if slot in assignment]
+    return ["%s=%s" % (slot, _with_rate(slot, assignment[slot], fps))
+            for slot in SLOTS if slot in assignment]
 
 
-def to_configs(assignment):
+def to_configs(assignment, fps=None):
     """Zuordnung -> CameraConfig je Platz, in der Reihenfolge des Datensatzes."""
     configs = []
     for slot in SLOTS:
         if slot not in assignment:
             continue
-        name, backend, device = parse_camera_spec("%s=%s" % (slot, assignment[slot]))
-        configs.append(camera_config_for(name, backend, device))
+        spec = "%s=%s" % (slot, _with_rate(slot, assignment[slot], fps))
+        name, backend, device = parse_camera_spec(spec)
+        configs.append(with_fps(camera_config_for(name, backend, device),
+                                split_camera_fps(spec)[1]))
     return configs
 
 

@@ -115,11 +115,72 @@ GRIPPER_DWELL_VERIFIED = False
 #: Dwell in ganzen Trajektorienschritten bei CONTROL_RATE_HZ.
 GRIPPER_DWELL_STEPS = int(math.ceil(GRIPPER_DWELL_S * CONTROL_RATE_HZ))
 
+#: Ablegen beim Zuruecklegen (bc/put_back.py, Anwender 2026-10-26): Das
+#: Objekt muss so liegen bleiben, wie es gegriffen wurde -- nicht mit dem
+#: Objekt in den Tisch druecken, nicht zu hoch loslassen. Abgelegt wird
+#: deshalb exakt auf der Greifpose (PICK), der letzte Abstieg langsamer als
+#: der Endanflug der Aufnahme (wird nicht aufgezeichnet, Tempo frei) ...
+PUT_BACK_APPROACH_SPEED_MS = 0.02
+#: ... und nach dem Oeffnen einmal "zu, auf" (Nachgreifen): der
+#: Parallelgreifer schiebt das Objekt dabei mittig zwischen die Backen --
+#: die Lage ist danach durch den Greifer bestimmt, nicht durch ein Rutschen
+#: beim Loslassen.
+PUT_BACK_REGRIP = True
+#: Wann nachgegriffen wird (``record.py --nachgreifen``, Anwender 2026-10-27):
+#: "lagenwechsel" = nur beim Ablegen an einer NEUEN Lage (automatische Lagen,
+#: Rueckkehr an den geteachten PICK) -- bei Wiederholungen derselben Lage
+#: liegt das Objekt schon zentriert; "immer"; "nie".
+PUT_BACK_REGRIP_MODES = ("lagenwechsel", "immer", "nie")
+PUT_BACK_REGRIP_DEFAULT = "lagenwechsel"
+
+#: Grobe Dauer eines Laufs (Anzeige in der Oberflaeche, gui/recording.
+#: estimate_duration_s). Gemessen Anlage 2026-10-26: eine Fahrt samt
+#: Zuruecklegen und Nebenzeiten ~25 s (Episode 8,5 s, Abstand 23-24 s),
+#: Planung je Lage ~12 s (3 Fahrten + Rueckfahrt), Probefahrt ~50 s, Start
+#: (Verbinden, Kameras, Referenzbilder) ~20 s, Umlegen an eine neue Lage
+#: einige s mehr (Nachgreifen, laengerer Weg). Wartezeit fuer Bewertungen
+#: ist NICHT enthalten.
+ESTIMATE_CYCLE_S = 25.0
+ESTIMATE_PLAN_LAGE_S = 12.0
+ESTIMATE_PROBE_S = 50.0
+ESTIMATE_START_S = 20.0
+ESTIMATE_TRANSFER_S = 5.0
+#: record.py nach der Planung: Nebenzeit je Fahrt zusaetzlich zu den
+#: geplanten Bahnen (Servo an/aus, Anfahren an den Start, Ablegen der Datei)
+ESTIMATE_OVERHEAD_S = 4.0
+
 #: Kodierung des binaeren Greifers in State- und Action-Vektor (AP 0.10).
 GRIPPER_OPEN = 0.0
 GRIPPER_CLOSED = 1.0
 #: Schwelle bei der Inferenz: Werte darueber gelten als "geschlossen".
 GRIPPER_THRESHOLD = 0.5
+
+#: Greifer an der realen Anlage ueber Digitalausgaenge der Control-Box
+#: schalten (NeuraPy ``io("set", io_name=..., target_value=...)``) statt
+#: ueber grasp()/release(). Namen wie in der Steuerung ("DO_0" ... "DO_7",
+#: ab 0 gezaehlt -- Sicherung caboutputdigitals.json); ``None`` = aus.
+#: Ueber den Namen statt set_digital_output(int), damit keine Frage nach
+#: 0- oder 1-basierter Nummer offen bleibt.
+#:
+#: Grund (Anlage 2026-10-23): Pinbelegung steht, der Zimmer-Greifer laesst
+#: sich ueber die Ausgaenge schalten und ist als Tool "ZimmerLWR50"
+#: hinterlegt -- am Pendant aber nicht als Greifer spezifizierbar.
+#: grasp()/release() laufen auf der Steuerung und brauchen dort den
+#: Greifereintrag; ohne ihn werfen sie "'Robot' object has no attribute
+#: 'gripper_name'" (VM 2026-09-09, Anlage 2026-10-23, erster Greiferbefehl
+#: der Aufnahme).
+#:
+#: Belegung Zimmer LWR50 (Anlage 2026-10-23): DO_0 auf, DO_1 zu, DO_2
+#: Reset, DO_3 Enable (muss dauerhaft 1 sein). Vor dem ersten Befehl je
+#: Verbindung geht Enable an; Reset wird nie geschaltet.
+#:
+#: Schliessen: AUF-Pin aus, dann ZU-Pin an; Oeffnen umgekehrt. Nie beide
+#: gleichzeitig an. Gilt NUR an der realen Anlage: In der Simulation bleibt
+#: es beim Protokollieren, und --no-gripper (Trockenlauf) geht vor. Vor der
+#: ersten Aufnahme tools/check_gripper.py --real-robot laufen lassen.
+NEURA_GRIPPER_DO_OPEN = "DO_0"
+NEURA_GRIPPER_DO_CLOSE = "DO_1"
+NEURA_GRIPPER_DO_ENABLE = "DO_3"
 
 # --------------------------------------------------------------------------
 # Datensatz-Schema (AP 0.9 Punkt 1/2 -- Festlegung)
@@ -167,6 +228,16 @@ QUAT_HEMISPHERE_REF = (0.0, 0.0, 1.0, 0.0)
 #: Policy-Korrekturen und haelt einen Sprung pro Aufruf trotzdem klein
 #: (60 Hz: 0.017 rad). PROVISORISCH wie das Planer-Tempo (AP 2.6).
 SERVO_MAX_JOINT_SPEED_RADS = 1.0
+
+#: Hoechste Gelenkgeschwindigkeit, die der PLANER einer Bahn erlaubt
+#: (ideal und verrauscht, ``noise.joint_speed``) -- mit Abstand unter
+#: SERVO_MAX_JOINT_SPEED_RADS, weil der Takt um einige ms schwankt und der
+#: ServoGuard mit der gemessenen Zeit rechnet. Anlage 2026-10-26: eine
+#: verrauschte Bahn mit 1,47 rad/s an Gelenk 1 kam durch die Planung (dort
+#: galt nur IK_MAX_DELTA_Q_RAD, 0,2 rad je 15-Hz-Schritt = 3 rad/s) und wurde
+#: erst beim Fahren vom ServoGuard gestoppt -- Episode verloren, Lauf zu Ende.
+#: Jetzt wird so ein Rauschsample verworfen und neu gezogen.
+PLAN_MAX_JOINT_SPEED_RADS = 0.85
 
 #: Weiche Stufe davor, nur in der Inferenz (servo.TargetLimiter): die
 #: Aenderung des Policy-Ziels je 15-Hz-Takt wird auf diese Geschwindigkeit
@@ -346,6 +417,66 @@ SEGMENT_RAMP_S = 0.5
 #: servo_j-Sollwert ein Sprung.
 START_POSE_TOL_RAD = 0.01
 
+#: Plausibilitaet des Endanflugs (``bc/sequence.approach_problems``), vor
+#: jeder Bewegung geprueft. Anlage 2026-10-23: PICK und PRE_GRASP vertauscht
+#: geteacht (PRE_GRASP 49 mm UNTER PICK) -- der Arm kam von unten und
+#: stiess an; das Kollisionsmodell (Tisch 15 cm unter dem tiefsten Punkt)
+#: sah nichts. Der Punkt vor einem ``approach``-Punkt muss mindestens so
+#: weit darueber liegen ...
+APPROACH_MIN_DROP_M = 0.010
+#: ... und darf seitlich hoechstens so weit versetzt sein (PRE_GRASP wird
+#: senkrecht ueber PICK geteacht, "Z hoch" laeuft 1-3 mm nach).
+APPROACH_MAX_LATERAL_M = 0.015
+
+#: Tischreferenz (bc/table.py, Anwender 2026-10-26): Punkte werden so weit
+#: UEBER dem Tisch geteacht (mittig ueber den ArUco-Markern) ...
+TABLE_POINT_OFFSET_M = 0.001
+#: ... kein Wegpunkt und keine Werkzeugspitze darf naeher an die Ebene
+#: (PICK liegt ueblich 6-10 mm darueber) ...
+TABLE_MIN_CLEARANCE_M = 0.003
+#: ... die Punkte duerfen hoechstens so weit von einer Ebene abweichen
+#: (sonst ist einer falsch geteacht) ...
+TABLE_MAX_RESIDUAL_M = 0.003
+#: Sperrzone um einen geteachten Punkt (``"table": {"keepout": [...]}``,
+#: Anwender 2026-10-26: Schraube im Tisch an Punkt IGNORE): Quadrat mit
+#: dieser halben Kantenlaenge um den Punkt (+-5 cm) ...
+KEEPOUT_HALF_SIZE_M = 0.05
+#: ... darin muss die Werkzeugspitze mindestens so hoch ueber dem Tisch
+#: bleiben -- kein Greifen dort, und keine verrauschte Bahn taucht hinein.
+KEEPOUT_MIN_HEIGHT_M = 0.05
+#: ... "Anfahren" eines Tischpunkts kommt von so weit senkrecht darueber.
+TABLE_APPROACH_ABOVE_M = 0.05
+#: Greifhoehe ueber dem Tisch fuer "PICK ausrichten", solange die
+#: Ablaufdatei keine eigene nennt (``"table": {"pick_height": ...}``).
+PICK_HEIGHT_DEFAULT_M = 0.008
+
+#: Automatische Lagen (bc/auto_layout.py, Anwender 2026-10-26): gezogen wird
+#: so weit innerhalb der Tischpunkte (Objekt + Backen) ...
+AUTO_EDGE_MARGIN_M = 0.04
+#: ... mit so viel Abstand zu allen Lagen davor ...
+AUTO_MIN_DIST_M = 0.03
+#: ... gedreht um bis zu so viel gegen die geteachte Lage (Grad) ...
+AUTO_YAW_RANGE_DEG = 45.0
+#: ... und hoechstens so oft gezogen (Bereich) bzw. geplant (Erreichbarkeit,
+#: Tempo, Kollision), bevor der Lauf aufhoert.
+AUTO_SAMPLE_TRIES = 500
+AUTO_PLAN_TRIES = 8
+
+#: Berechnete Punkte (``"above"``/``"dz"`` in der Ablaufdatei, Festlegung
+#: Anwender 2026-10-26: je Lage nur PICK teachen): die IK fuer den Punkt
+#: ueber dem Bezugspunkt darf sich je Gelenk hoechstens so weit von dessen
+#: Gelenken entfernen. 10 cm senkrecht sind an der LARA 5 wenige Zehntel
+#: rad; ein groesserer Sprung heisst anderer Gelenkzweig.
+COMPUTED_POINT_MAX_JUMP_RAD = 0.8
+
+#: Probefahrt nach dem Teachen (``record.py``, Wunsch Anwender 2026-10-23):
+#: die ideale Bahn ohne Rauschen, Greifer bleibt offen, nicht aufgezeichnet
+#: -- so viel langsamer als geplant (0.4 = 40 % Tempo). Bewusst NICHT ueber
+#: den Override: der bremst servo_j zeitlich (VM 0.2: Nachlauf bis 2,3 s,
+#: dann greift "arm folgt nicht"), die Bahn saehe anders aus als bei der
+#: Aufnahme. Hier wird dieselbe Bahn nur zeitlich gestreckt.
+PROBE_SPEED_FACTOR = 0.4
+
 #: Parameter der blockierenden PTP-Fahrt (NeuraPy move_joint) fuer die
 #: Rueckfahrt an den Start. Einheit laut Doku "% of maximum" bei einem
 #: Default von 0.25 -- widerspruechlich. Diese Werte wurden am 2026-09-09
@@ -383,6 +514,19 @@ TOUCHUP_STILL_WAIT_S = 0.2
 #: falsche Zeile oder einen anderen Punkt.
 TOUCHUP_WARN_MM = 50.0
 TOUCHUP_WARN_DEG = 15.0
+
+#: Teach-Serie (bc/teach_series.py, Wunsch Anwender 2026-10-21): der
+#: POINT-Knopf am Arm legt -- am Pendant auf "Save Point" gestellt -- einen
+#: Punkt an; die Oberflaeche uebernimmt dessen Gelenke per Touch-up in die
+#: markierte Zeile, loescht ihn und springt weiter. So oft wird nach neuen
+#: Punkten gesehen (ms):
+TEACH_SERIES_POLL_MS = 300
+#: Nur Punkte, deren Name auf dieses Muster passt (re.fullmatch), gelten
+#: als Knopfdruck -- None = jeder neue Name ausser Hilfspunkten ("_...")
+#: und Namen aus der Ablauftabelle. Anlage 2026-10-21: POINT ("Save Point")
+#: legte "GP35" an -- die Steuerung zaehlt "GP<n>" hoch. Ein am Pendant
+#: von Hand angelegter Punkt mit anderem Namen wird so nie verbraucht.
+TEACH_SERIES_POINT_PATTERN = r"GP\d+"
 
 #: Tippbetrieb "Z hoch" in der Bedienoberflaeche (ports.JogPort, Wunsch
 #: Anwender 2026-10-21: PRE_GRASP senkrecht ueber PICK teachen). Die
@@ -540,8 +684,10 @@ class CameraConfig:
 #: bleibt es beim vollen Frame: 1440x1080 Bayer8 @ 15 Hz ~ 23 MB/s, fuer
 #: USB3 unkritisch. Skalierung auf die Schemagroesse 240x320 in Software,
 #: Seitenverhaeltnis durchgehend 4:3.
-#: fps=None -> native Rate (~61 fps): frischere Frames im Latenzbudget
-#: (gemessen: 4-9 ms Alter), dafuer mehr CPU-Last durchs Debayering.
+#: 60 fps (Anlage 2026-10-26: beide Daheng direkt am Laptop schaffen 60,
+#: am USB-Hub nur 23). Das neueste Bild ist dann hoechstens ~17 ms alt --
+#: Reserve im 30-ms-Latenzbudget; 30 fps lagen mit bis 33 ms schon darueber.
+#: Fest statt nativ (61,3), damit beide Kameras dieselbe Rate haben.
 WRIST_CAMERA = CameraConfig(
     name="wrist",
     backend="daheng",
@@ -549,7 +695,7 @@ WRIST_CAMERA = CameraConfig(
     width=None,
     height=None,
     exposure_us=8000.0,
-    fps=None,
+    fps=60.0,
 )
 
 #: Szenen-/Top-View-Kamera -- MODELL NOCH NICHT ENTSCHIEDEN.
@@ -585,10 +731,10 @@ SCENE_CAMERA_DAHENG = CameraConfig(
     width=None,
     height=None,
     exposure_us=8000.0,
-    #: Bei zwei USB3-Kameras an einem Controller die Rate begrenzen, statt
-    #: beide mit 61 fps frei laufen zu lassen (2 x 95 MB/s waeren knapp).
-    #: 30 fps reichen fuer 15-Hz-Sampling mit Reserve im Latenzbudget.
-    fps=30.0,
+    #: 60 fps wie die Wrist-Kamera (Anlage 2026-10-26, beide direkt am
+    #: Laptop). 30 fps reichten NICHT: Bild bis 33 ms alt, ueber dem Budget.
+    #: Zusammen ~190 MB/s -- nur an getrennten USB-3-Ports, nicht am Hub.
+    fps=60.0,
 )
 
 CAMERAS = (WRIST_CAMERA, SCENE_CAMERA)
@@ -615,11 +761,15 @@ WRIST_CAMERA_UVC_STANDIN = CameraConfig(
 def check_cameras_configured(cameras=CAMERAS):
     """Warnt vor Aufzeichnungen mit noch nicht bestaetigter Kamera.
 
+    Unbestaetigt ist nur der UVC-Platzhalter (OpenCV-Index); eine Daheng
+    mit Seriennummer ist eine bewusste Zuordnung -- gleiche Regel wie in
+    der Bedienoberflaeche (bc/gui/cameras.py).
+
     Rueckgabe: Liste von Warnungen (leer = alles bestaetigt).
     """
     warnings = []
     for cfg in cameras:
-        if cfg.name == "scene" and cfg.backend != "sim" and not SCENE_CAMERA_CONFIRMED:
+        if cfg.name == "scene" and cfg.backend == "uvc" and not SCENE_CAMERA_CONFIRMED:
             warnings.append(
                 "Szenenkamera ist noch ein Platzhalter (backend=%s, device=%s). "
                 "Auf einem Laptop ist OpenCV-Index 0 die eingebaute Webcam!"

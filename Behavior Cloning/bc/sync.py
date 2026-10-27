@@ -94,3 +94,33 @@ def evaluate(t_target, timestamps, max_skew=config.SYNC_MAX_SKEW_S):
         max_age=max_age,
         ok=spread <= max_skew,
     )
+
+
+def camera_rate_findings(name, measured, requested, possible):
+    """Erreicht die Kamera die Rate, die sie haben soll? (Befund 2026-10-26)
+
+    ``requested``: angeforderte Rate (Zahl) oder "nativ"; ``possible``: was
+    die Kamera mit ihren Einstellungen selbst fuer erreichbar haelt (Daheng
+    ``CurrentAcquisitionFrameRate``). Liefert Zeilen im Format der
+    Systemcheck-Oberflaeche.
+    """
+    if requested in (None, "nativ"):
+        target = possible
+    elif possible:
+        target = min(float(requested), float(possible))
+    else:
+        target = requested
+    out = []
+    if target and measured < 0.9 * float(target):
+        out.append(
+            "[WARNUNG] %s erreicht nur %.1f von %.1f fps -- die Kamera koennte, die "
+            "Kette dahinter nicht: USB-Port, Hub, Rechnerlast? (Anlage 2026-10-26: "
+            "USB3-Hub 23 statt 61 fps, USB2-Port 12-14 fps, direkt am Laptop 61.)"
+            % (name, measured, float(target)))
+    budget_ms = config.SYNC_MAX_SKEW_S * 1000.0
+    if measured < 1000.0 / budget_ms:
+        out.append(
+            "[WARNUNG] %s: bei %.1f fps ist das neueste Bild bis %.0f ms alt -- mehr als "
+            "das Latenzbudget von %.0f ms. Ab etwa 45 fps ist Reserve."
+            % (name, measured, 1000.0 / max(measured, 1e-6), budget_ms))
+    return out

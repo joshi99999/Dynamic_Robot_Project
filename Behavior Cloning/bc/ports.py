@@ -397,6 +397,14 @@ class CameraPort(abc.ABC):
     def is_open(self):
         return self._open
 
+    def settings(self):
+        """Tatsaechlich wirksame Kameraeinstellungen (dict), soweit lesbar.
+
+        Fuer Diagnose und Metadaten (Belichtung, Bildrate, ...). Standard:
+        leer -- nur Kameras, die etwas zuruecklesen koennen, ueberschreiben das.
+        """
+        return {}
+
     def __enter__(self):
         self.open()
         return self

@@ -123,7 +123,21 @@ def main():
         if robot.gripper_mode != "hardware":
             robot.close()
             raise SystemExit("Kein Greifer konfiguriert (Modus %s) -- nichts zu messen. "
-                             "Tool/Greifer am Pendant waehlen." % robot.gripper_mode)
+                             "Greifer am Pendant waehlen oder die Ausgaenge in "
+                             "config.NEURA_GRIPPER_DO_* eintragen." % robot.gripper_mode)
+        if robot.gripper_via_outputs:
+            # Nur lesen: Belegung und Ist-Zustand, bevor irgendetwas schaltet.
+            out_close, out_open, out_enable = robot.gripper_outputs
+            print("Greifer ueber Digitalausgaenge: zu=%s, auf=%s, enable=%s"
+                  % (out_close, out_open, out_enable))
+            for name in (out_open, out_close, out_enable):
+                if name is None:
+                    continue
+                try:
+                    value = robot.robot.io("get", io_name=name)
+                except Exception as exc:  # noqa: BLE001 -- nur Anzeige
+                    value = "nicht lesbar (%s)" % exc
+                print("   %s = %s" % (name, value))
         if args.real_robot:
             print("\n!! Greifer schaltet %d x zu/auf. Greiferbereich frei? Not-Aus in Reichweite?"
                   % args.cycles)

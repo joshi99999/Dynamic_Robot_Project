@@ -269,6 +269,59 @@ class PlanRejected(RuntimeError):
         self.reasons = reasons
 
 
+def joint_speed(joints, rate_hz):
+    """Hoechste Gelenkgeschwindigkeit einer Bahn -> (rad/s, Gelenk 0.., Schritt).
+
+    Zwischen zwei 15-Hz-Schritten interpoliert servo_j linear
+    (bc/servo.py), die Geschwindigkeit ist dort also konstant
+    |q[i+1] - q[i]| * rate. Genau das prueft der ServoGuard im Adapter.
+    """
+    joints = np.asarray(joints, dtype=float)
+    if len(joints) < 2:
+        return 0.0, 0, 0
+    speed = np.abs(np.diff(joints, axis=0)) * float(rate_hz)
+    step, joint = np.unravel_index(int(np.argmax(speed)), speed.shape)
+    return float(speed[step, joint]), int(joint), int(step) + 1
+
+
+def solve_ideal(kin, collision_model, ideal, seed_joints, collision_stride=1,
+                max_joint_speed=config.PLAN_MAX_JOINT_SPEED_RADS):
+    """Ideale Bahn per IK loesen und gegen das Kollisionsmodell pruefen.
+
+    Schlaegt DAS fehl, sind die Wegpunkte selbst unbrauchbar -- ein neues
+    Rauschsample hilft nicht (:class:`PlanRejected`).
+    """
+    try:
+        joints_ideal = kin.solve_path(
+            ideal.poses_quat, seed_joints, fixed_joints=ideal.joints
+        )
+    except IKFailure as exc:
+        raise PlanRejected(
+            "Bereits die IDEALE Bahn ist nicht loesbar (Schritt %s: %s) -- "
+            "Wegpunkte pruefen." % (exc.index, exc),
+            reasons=[("ideal_ik", exc)],
+        ) from exc
+    speed, joint, step = joint_speed(joints_ideal, ideal.rate_hz)
+    if max_joint_speed and speed > max_joint_speed:
+        raise PlanRejected(
+            "Bereits die IDEALE Bahn ist zu schnell: Gelenk %d %.2f rad/s bei "
+            "Schritt %d (Grenze %.2f) -- Wegpunkte in Singularitaetsnaehe? "
+            "Planer-Tempo senken oder Punkte pruefen."
+            % (joint + 1, speed, step, max_joint_speed),
+            reasons=[("ideal_speed", speed)],
+        )
+    ideal_violations = collision_model.check_path(
+        kin.robot, joints_ideal, stride=collision_stride
+    )
+    if ideal_violations:
+        raise PlanRejected(
+            "Bereits die IDEALE Bahn verletzt das Kollisionsmodell -- "
+            "Wegpunkte pruefen: %s" % ideal_violations[0],
+            reasons=[("ideal_collision", ideal_violations)],
+        )
+    return joints_ideal
+
+
 def generate_plan(
     kin,
     collision_model,
@@ -279,6 +332,8 @@ def generate_plan(
     limits=None,
     collision_stride=1,
     noise_scale=1.0,
+    joints_ideal=None,
+    max_joint_speed=config.PLAN_MAX_JOINT_SPEED_RADS,
 ):
     """Vollstaendige Episodengenerierung mit Rejection Sampling (AP 2.4).
 
@@ -293,28 +348,20 @@ def generate_plan(
     ``noise_scale``: Faktor auf beide Rauschamplituden -- 0 ergibt eine
     Referenzfahrt exakt auf der idealen Bahn (Diagnose, z. B. Folgeverhalten
     des Controllers ohne Rauscheinfluss).
+    ``max_joint_speed``: verrauschte Bahnen, deren Gelenke schneller
+    wuerden, werden verworfen (``config.PLAN_MAX_JOINT_SPEED_RADS``, unter
+    dem ServoGuard) -- None schaltet ab.
+    ``joints_ideal``: Ergebnis von :func:`solve_ideal` fuer dieselbe ``ideal``
+    -- dann entfaellt Schritt 1. Fuer Wiederholungen derselben Lage: die
+    ideale Bahn ist jedes Mal dieselbe, und an der Anlage kostet jeder
+    IK/FK-Schritt einen Aufruf an die Steuerung.
     """
     rng = rng if rng is not None else np.random.default_rng()
 
-    try:
-        joints_ideal = kin.solve_path(
-            ideal.poses_quat, seed_joints, fixed_joints=ideal.joints
-        )
-    except IKFailure as exc:
-        raise PlanRejected(
-            "Bereits die IDEALE Bahn ist nicht loesbar (Schritt %s: %s) -- "
-            "Wegpunkte pruefen." % (exc.index, exc),
-            reasons=[("ideal_ik", exc)],
-        ) from exc
-    ideal_violations = collision_model.check_path(
-        kin.robot, joints_ideal, stride=collision_stride
-    )
-    if ideal_violations:
-        raise PlanRejected(
-            "Bereits die IDEALE Bahn verletzt das Kollisionsmodell -- "
-            "Wegpunkte pruefen: %s" % ideal_violations[0],
-            reasons=[("ideal_collision", ideal_violations)],
-        )
+    if joints_ideal is None:
+        joints_ideal = solve_ideal(kin, collision_model, ideal, seed_joints,
+                                   collision_stride=collision_stride,
+                                   max_joint_speed=max_joint_speed)
 
     reasons = []
     for attempt in range(max_rejects):
@@ -330,6 +377,14 @@ def generate_plan(
         except IKFailure as exc:
             reasons.append(("ik", exc))
             continue
+
+        # Vor der Kollisionspruefung: kostet keinen Aufruf an die Steuerung
+        if max_joint_speed:
+            speed, joint, step = joint_speed(joints_noisy, ideal.rate_hz)
+            if speed > max_joint_speed:
+                reasons.append(("speed", "Gelenk %d %.2f rad/s bei Schritt %d"
+                                % (joint + 1, speed, step)))
+                continue
 
         violations = collision_model.check_path(
             kin.robot, joints_noisy, stride=collision_stride
@@ -351,6 +406,6 @@ def generate_plan(
 
     raise PlanRejected(
         "Keine gueltige verrauschte Bahn nach %d Versuchen. Letzte Gruende: %s"
-        % (max_rejects, [r[0] for r in reasons[-3:]]),
+        % (max_rejects, ["%s (%s)" % (r[0], str(r[1])[:80]) for r in reasons[-3:]]),
         reasons=reasons,
     )

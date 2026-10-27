@@ -38,10 +38,23 @@ DATA_ROOTS = {"sim": "data_sim", "neura": "data_vm"}
 # -- Ablaufdateien ---------------------------------------------------------
 
 def find_sequences(workdir, root=SEQUENCE_ROOT):
+    """Ablaufdateien in ``sequences/`` -- nur, was wirklich ein Ablauf ist.
+
+    Dort liegen auch Punkt-Sicherungen (``points_*.json``); als Ablauf
+    gewaehlt ergaben sie eine leere Punkte-Liste.
+    """
     base = Path(workdir) / root
     if not base.is_dir():
         return []
-    return [relative(p, workdir) for p in sorted(base.glob("*.json"))]
+    found = []
+    for path in sorted(base.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict) and isinstance(data.get("sequence"), list):
+            found.append(relative(path, workdir))
+    return found
 
 
 def describe_sequence(path):
@@ -62,6 +75,7 @@ def describe_sequence(path):
     blends = []
     optional = []
     gripper = []
+    computed = []
     for step in steps:
         if not isinstance(step, dict):
             continue
@@ -73,6 +87,8 @@ def describe_sequence(path):
             optional.append(name)
         if step.get("gripper"):
             gripper.append("%s: %s" % (name, step["gripper"]))
+        if step.get("above") and step.get("dz"):
+            computed.append("%s = %s + %.0f mm" % (name, step["above"], 1e3 * float(step["dz"])))
     return {
         "path": Path(path),
         "name": data.get("name") or Path(path).stem,
@@ -80,6 +96,7 @@ def describe_sequence(path):
         "blends": blends,
         "optional": optional,
         "gripper": gripper,
+        "computed": computed,
         "gripper_start": data.get("gripper_start"),
         "error": None,
     }
@@ -99,8 +116,11 @@ def sequence_summary(described):
         bits.append("Greifer — Start %s, %s"
                     % (described["gripper_start"] or "?",
                        ", ".join(described["gripper"])))
-    bits.append("Koordinaten kommen je Episode frisch aus der Steuerung — "
-                "ein Touch-up wirkt sofort.")
+    if described.get("computed"):
+        bits.append("berechnet (nicht teachen): " + ", ".join(described["computed"]))
+    bits.append("Koordinaten kommen beim Start aus der Steuerung, geplant wird "
+                "einmal für alle Episoden — ein Touch-up während des Laufs "
+                "beendet ihn.")
     return "\n".join(bits)
 
 
@@ -123,7 +143,8 @@ def record_argv(out, robot_kind="sim", episodes=1, sequence=None,
                 ask_label=False, preview=None, preview_hz=None,
                 real_robot=False, servo_rate=None, transit_speed=None,
                 approach_speed=None, ptp_speed=None, no_gripper=False,
-                execution=None):
+                execution=None, put_back=True, probe=True, teach_after=False,
+                lagen=1, drehung=None, stop_file=None, regrip=None, margin=None):
     """Kommandozeile fuer apps/record.py (ohne das Python-Programm)."""
     if not out:
         raise ValueError("Kein Zielordner angegeben.")
@@ -152,6 +173,29 @@ def record_argv(out, robot_kind="sim", episodes=1, sequence=None,
     if execution and execution != config.EXECUTION_MODE:
         argv += ["--ausfuehrung", str(execution)]
     argv += ["--episodes", str(int(episodes)), "--out", str(out)]
+    # Zuruecklegen ist in record.py Standard (mit Ablaufdatei) -- nur das
+    # Abschalten gehoert in die Kommandozeile.
+    if sequence and not put_back:
+        argv.append("--ohne-zuruecklegen")
+    # Probefahrt ebenso Standard (record.py, bc/probe.py) -- gegen den
+    # SimRobot laesst record.py sie von selbst aus.
+    if not probe:
+        argv.append("--ohne-probefahrt")
+    # Nach dem Lauf in Teach (Wunsch Anwender 2026-10-26) -- nur an einer
+    # Steuerung; der SimRobot kennt keinen Teach-Modus.
+    if teach_after and robot_kind == "neura":
+        argv.append("--nach-ende-teach")
+    if sequence and put_back and regrip and regrip != config.PUT_BACK_REGRIP_DEFAULT:
+        argv += ["--nachgreifen", str(regrip)]
+    # Automatische Lagen (bc/auto_layout.py) -- nur mit Zuruecklegen
+    if sequence and put_back and int(lagen) > 1:
+        argv += ["--lagen", str(int(lagen))]
+        if drehung is not None and abs(float(drehung) - config.AUTO_YAW_RANGE_DEG) > 1e-9:
+            argv += ["--drehung", "%g" % float(drehung)]
+        if margin is not None and abs(float(margin) - config.AUTO_EDGE_MARGIN_M) > 1e-9:
+            argv += ["--randabstand", "%g" % float(margin)]
+        if stop_file:
+            argv += ["--stopp-datei", str(stop_file)]
     if seed is not None:
         argv += ["--seed", str(int(seed))]
     # Metadaten AP 5.2 -- an der Anlage ist --block Pflicht.
@@ -173,20 +217,95 @@ def record_argv(out, robot_kind="sim", episodes=1, sequence=None,
     return argv
 
 
-def episode_advice(is_real_plant, episodes):
+#: "Naechster freier Block: B05" -- record.py am Ende (automatische Lagen
+#: verbrauchen mehrere Bloecke)
+_NEXT_BLOCK = re.compile(r"^Naechster freier Block:\s*(?P<block>.+?)\s*$")
+
+
+def estimate_duration_s(episodes, lagen=1, probe=True):
+    """Grobe Dauer eines Laufs in s (config.ESTIMATE_*, gemessen 26.10.)."""
+    lagen = max(1, int(lagen))
+    total = config.ESTIMATE_START_S + lagen * config.ESTIMATE_PLAN_LAGE_S
+    total += int(episodes) * lagen * config.ESTIMATE_CYCLE_S
+    total += (lagen - 1) * config.ESTIMATE_TRANSFER_S
+    if probe:
+        total += config.ESTIMATE_PROBE_S
+    return total
+
+
+def format_duration(seconds):
+    """"8 min", "1 h 25 min"."""
+    minutes = int(round(seconds / 60.0))
+    if minutes < 1:
+        return "%d s" % int(round(seconds))
+    if minutes < 60:
+        return "%d min" % minutes
+    return "%d h %02d min" % (minutes // 60, minutes % 60)
+
+
+def duration_table(episodes, probe=True, counts=(1, 10, 50, 100, 150)):
+    """Zeilen "10 Lagen: ca. 15 min" fuer den Tooltip des Feldes "Lagen"."""
+    return ["%d Lage%s: ca. %s" % (n, "" if n == 1 else "n",
+                                   format_duration(estimate_duration_s(episodes, n, probe)))
+            for n in counts]
+
+
+#: "Geschaetzte Dauer: ca. 8 min (...)" -- record.py nach der Planung
+_DURATION = re.compile(r"^Geschaetzte Dauer:\s*(?P<text>.+)$")
+
+
+def duration_estimate(line):
+    """Text aus der Dauer-Zeile von record.py, sonst None."""
+    match = _DURATION.match((line or "").strip())
+    return match.group("text") if match else None
+
+
+def next_free_block(line):
+    """Block aus der Schlusszeile von record.py, sonst None."""
+    match = _NEXT_BLOCK.match((line or "").strip())
+    return match.group("block") if match else None
+
+
+def next_block(text):
+    """Naechste Block-ID: Zahl am Ende hochzaehlen, Stellen bleiben.
+
+    "B07" -> "B08", "Lage 9" -> "Lage 10", "Erste Daten" -> "Erste Daten 2",
+    leer -> "B01". Ein Block = eine Objektlage (AP 5.2).
+    """
+    text = (text or "").strip()
+    if not text:
+        return "B01"
+    match = re.search(r"(\d+)$", text)
+    if not match:
+        return text + " 2"
+    digits = match.group(1)
+    return text[:match.start()] + str(int(digits) + 1).zfill(len(digits))
+
+
+def episode_advice(is_real_plant, episodes, put_back=True):
     """Wie viele Episoden je Aufruf sinnvoll sind -- und warum.
 
-    An der realen Anlage ist die Antwort EINE (Anwender, 2026-09-29), und
-    der Grund steckt im Ablauf: Die Bahn endet am Uebergabepunkt, der Arm
-    haelt dort das Objekt. Zu Beginn JEDER Episode sendet der Recorder den
-    Greifer-Startzustand ("auf", ``bc/recorder.py``) -- Episode 2 wuerde das
-    Objekt also an PRE_PLACE fallen lassen und danach einen Griff ins Leere
-    aufzeichnen. Mehrere Episoden je Aufruf ergeben nur dort Sinn, wo kein
-    physisches Objekt im Spiel ist (SimRobot, virtuelle Steuerung).
+    Standard ist Zuruecklegen (``record.py``, Anwender 2026-10-23): Der Arm
+    legt das Objekt nach JEDER Episode am Greifpunkt ab und faehrt an den
+    Start. Mehrere Fahrten derselben Lage sind dann gewollt, empfohlen 2-4
+    (Nutzen danach gering, bc/put_back.py); auch eine einzelne ist in
+    Ordnung.
 
-    Ein Block ist damit an der Anlage: Objekt hinlegen, PRE_GRASP/PICK per
-    Touch-up, EINE Episode, wiederholen.
+    Abgeschaltet (``--ohne-zuruecklegen``) ist die Antwort an der realen
+    Anlage EINE (Anwender,
+    2026-09-29), und der Grund steckt im Ablauf: Die Bahn endet am
+    Uebergabepunkt, der Arm haelt dort das Objekt. Zu Beginn JEDER Episode
+    sendet der Recorder den Greifer-Startzustand ("auf", ``bc/recorder.py``)
+    -- Episode 2 wuerde das Objekt also an PRE_PLACE fallen lassen und
+    danach einen Griff ins Leere aufzeichnen. Mehrere Episoden je Aufruf
+    ergeben dann nur dort Sinn, wo kein physisches Objekt im Spiel ist
+    (SimRobot, virtuelle Steuerung).
     """
+    if put_back:
+        if episodes > 4:
+            return ("Mehr als 4 Fahrten derselben Lage bringen kaum noch neue "
+                    "Abdeckung — besser eine neue Objektlage.")
+        return None
     if not is_real_plant:
         return None
     if episodes > 1:
@@ -194,7 +313,9 @@ def episode_advice(is_real_plant, episodes):
                 "Episode: Die Bahn endet am Übergabepunkt, und zu Beginn "
                 "der nächsten Episode öffnet der Greifer dort — das Objekt "
                 "läge dann nicht mehr am Greifpunkt. Objekt neu hinlegen, "
-                "Punkte neu teachen, erneut aufnehmen.")
+                "Punkte neu teachen, erneut aufnehmen — oder „Zurücklegen“ "
+                "wieder einschalten, dann legt der Arm das Objekt nach jeder "
+                "Episode selbst am Greifpunkt ab.")
     return None
 
 
@@ -256,6 +377,20 @@ def label_question(line):
     if not match:
         return None
     return int(match.group("episode")), int(match.group("steps"))
+
+
+#: "PROBEFAHRT beendet -- Aufnahme starten? [j]a / [n]ein" -- nach der
+#: Probefahrt wartet apps/record.py auf die Freigabe (bc/probe.py).
+PROBE_PROMPT = "PROBEFAHRT"
+_PROBE = re.compile(r"^PROBEFAHRT\s+beendet")
+
+#: Antwort -> Zeichen fuer stdin (muss zu record.run_probe passen)
+PROBE_ANSWERS = {"weiter": "j", "abbrechen": "n"}
+
+
+def probe_question(line):
+    """Bittet diese Zeile nach der Probefahrt um Freigabe?"""
+    return bool(_PROBE.match((line or "").strip()))
 
 
 #: "  Takt   90 von 129  Versatz   0 ms  ausserhalb Budget 0"
@@ -464,11 +599,21 @@ def read_steps(path):
             "optional": bool(raw.get("optional", False)),
             "approach": bool(raw.get("approach", False)),
             "gripper": raw.get("gripper"),
+            # Berechneter Punkt (bc/sequence.py): Bezugspunkt und Abstand in m
+            "above": raw.get("above") or None,
+            "dz": float(raw.get("dz", 0.0) or 0.0),
         })
     return data.get("name") or Path(path).stem, data.get("gripper_start", "open"), steps
 
 
-def steps_to_data(name, gripper_start, steps):
+def read_table(path):
+    """``"table"``-Angabe einer Ablaufdatei (Tischpunkte, Greifhoehe) oder None."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    table = data.get("table")
+    return dict(table) if isinstance(table, dict) else None
+
+
+def steps_to_data(name, gripper_start, steps, table=None):
     """Schritte -> dict fuer die JSON, ohne Vorgabewerte auszuschreiben.
 
     Nur was vom Standard abweicht, landet in der Datei -- so bleibt sie so
@@ -486,11 +631,19 @@ def steps_to_data(name, gripper_start, steps):
             entry["gripper"] = step["gripper"]
         if float(step.get("blend") or 0.0) > 0:
             entry["blend"] = round(float(step["blend"]), 4)
+        if step.get("above"):
+            entry["above"] = str(step["above"]).strip()
+            entry["dz"] = round(float(step.get("dz") or 0.0), 4)
         out.append(entry)
-    return {"name": name, "gripper_start": gripper_start, "sequence": out}
+    data = {"name": name, "gripper_start": gripper_start}
+    if table:
+        # Tischpunkte und Greifhoehe bleiben beim Speichern erhalten
+        data["table"] = table
+    data["sequence"] = out
+    return data
 
 
-def validate_steps(name, gripper_start, steps):
+def validate_steps(name, gripper_start, steps, table=None):
     """Pruefen, OHNE zu schreiben. Liefert eine Liste von Klartext-Fehlern.
 
     Geprueft wird mit ``bc.sequence.parse_sequence`` -- also genau dem, was
@@ -506,26 +659,26 @@ def validate_steps(name, gripper_start, steps):
     if problems:
         return problems
     try:
-        parse_sequence(steps_to_data(name, gripper_start, steps))
+        parse_sequence(steps_to_data(name, gripper_start, steps, table))
     except SequenceError as exc:
         problems.append(str(exc))
     return problems
 
 
-def write_steps(path, name, gripper_start, steps):
+def write_steps(path, name, gripper_start, steps, table=None):
     """Arbeitskopie schreiben -- nur, wenn sie gueltig ist.
 
     Eine ungueltige Ablaufdatei wuerde erst beim Start auffallen, und dann
     steht jemand an der Anlage davor. Deshalb hier dieselbe Pruefung wie in
     record.py, bevor etwas auf die Platte geht.
     """
-    problems = validate_steps(name, gripper_start, steps)
+    problems = validate_steps(name, gripper_start, steps, table)
     if problems:
         raise ValueError("\n".join(problems))
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(steps_to_data(name, gripper_start, steps),
+        json.dumps(steps_to_data(name, gripper_start, steps, table),
                    indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8")
     return path

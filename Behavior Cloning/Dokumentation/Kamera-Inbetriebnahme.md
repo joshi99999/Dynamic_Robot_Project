@@ -171,6 +171,50 @@ Kameras mit 61 fps und vollem Sensor wären zusammen rund 190 MB/s. Nominell
 machbar, aber knapp. Alternativ `DeviceLinkThroughputLimit` setzen; nach
 Möglichkeit auf getrennte Controller verteilen.
 
+#### Befund Anlage 2026-10-26: Adapter drosselt, Begrenzung bleibt in der Kamera
+
+Erste Datensatzaufnahme: alle drei Episoden verworfen, 20–24 % der Frames
+über dem 30-ms-Budget. Ursache war die Bildrate der Wrist-Kamera.
+
+**Gemessene Bildraten (Anzeige in der Oberfläche):**
+
+| Anschluss | Wrist | Szene |
+|---|---|---|
+| USB-Adapter (4 × USB + EtherCAT), Port 1 (USB 3.0) + Port 2 | 23 fps bzw. 30 fps | 30 fps bzw. 23 fps |
+| Adapter, Port 2 und 3 (USB 2.0) | 12–14 fps | 12–14 fps |
+| **direkt am Laptop** | **61 fps** (nativ) | **30 fps** (Vorgabe) |
+| direkt am Laptop, nach Tauschen der Plätze in der Oberfläche (hin und zurück) | 30 fps | 30 fps |
+
+**Warum 23 fps reichen, um zu verwerfen:** Der Recorder greift mit 15 Hz das
+neueste Bild ab. Bei 23 fps ist es bis 43 ms alt, im Wechsel frisch und alt.
+Nachgerechnet ergibt das 17–26 % Frames über dem Budget, in Serien „jeder
+zweite Takt“ mit Pausen von 7–11 Takten. Genau dieses Muster stand in den
+Daten. Bei 61 fps: 0 %, bei 30 fps: 0–6 % (Grenzfall, verworfen wird ab 5 %).
+Mit Bewegung im Bild hing es nicht zusammen.
+
+**Warum nach dem Tauschen beide bei 30 blieben:** Wie der ROI ist auch die
+Bildratenbegrenzung in der Kamera **gespeichert**. Auf dem Szenenplatz
+bekam die Wrist-Kamera 30 fps gesetzt. Zurück auf dem Wrist-Platz („nativ“)
+wurde bis dahin nichts gesetzt — die 30 blieben stehen. Abgestimmt wird
+zwischen den Kameras nichts. **Behoben:** „nativ“ schaltet
+`AcquisitionFrameRateMode` jetzt aktiv aus (`bc/adapters/cam_daheng.py`).
+
+**Daraus:**
+
+* Kameras **direkt** an die USB-3-Ports des Laptops, nicht über den
+  Adapter/Hub.
+* Die Oberfläche hat je Kamera ein Feld **Bildrate** (Vorgabe, nativ, 60,
+  45, 30, …). Auf der Kommandozeile: `--camera wrist=daheng:SN@nativ` bzw.
+  `@30`.
+* Beim Öffnen werden die **wirksamen** Einstellungen zurückgelesen und
+  angezeigt (Belichtung, Gain, Bildratenbegrenzung, von der Kamera für
+  möglich gehaltene Rate, USB-Durchsatz). Sie stehen auch in den
+  Metadaten jeder Episode (`camera_fps`, `camera_settings`).
+* Die Vorschau im Reiter „Aufnahme“ und der Systemcheck *Kameras: Rate
+  und Versatz* (`tools/check_cameras.py`) warnen, wenn eine Kamera ihre
+  Rate nicht erreicht oder unter etwa 33 fps liegt (dann ist das Bild schon
+  älter als das Budget). Ab etwa 45 fps ist Reserve.
+
 ### ⚠️ Offen: Auto-Regelungen festnageln
 
 Beides verändert die Bildstatistik, auf die trainiert wird, und muss **vor

@@ -1,0 +1,24 @@
+{
+  "light": [
+    "Decke an",
+    "Decke aus",
+    "Decke an + Fensterlicht",
+    "Lampe weiß",
+    "Lampe warmweiß",
+    "Lampe rot",
+    "Lampe grün",
+    "Lampe blau",
+    "Decke aus + Fensterlicht"
+  ],
+  "camera_pose": [
+    "nominal",
+    "+2 cm x",
+    "-2 cm x",
+    "+2 cm y",
+    "-2 cm y",
+    "+5° gedreht"
+  ],
+  "object_note": [
+    "Lila-Objekt"
+  ]
+}

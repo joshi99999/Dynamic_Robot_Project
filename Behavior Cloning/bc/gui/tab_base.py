@@ -38,6 +38,17 @@ class ModeTab(QWidget):
         """Wird beim Reiterwechsel aufgerufen (eigene GUI und Plugin)."""
         self.requirement_view.refresh()
 
+    def busy_reason(self):
+        """Laeuft hier etwas, das ein Neustart der Oberflaeche abbraeche?
+
+        None = frei. Standard: ein Unterprozess (Aufnahme, Training,
+        Pruefung, Fahrt). Reiter mit mehr Zustand ergaenzen das.
+        """
+        process = getattr(self, "process", None)
+        if process is not None and process.running:
+            return "ein Prozess läuft"
+        return None
+
     def shutdown(self):
         """Wird beim Schliessen aufgerufen -- Threads, Kameras, Prozesse beenden.
 

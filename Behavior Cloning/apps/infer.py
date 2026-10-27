@@ -343,7 +343,7 @@ def parse_args():
     parser.add_argument("--uvc-device", type=int, default=None,
                         help="OpenCV-Index der Webcam bei --cameras wrist-uvc (wie apps/record.py)")
     parser.add_argument("--camera", action="append", default=None,
-                        metavar="NAME=BACKEND[:GERAET]",
+                        metavar="NAME=BACKEND[:GERAET][@FPS]",
                         help="einzelnen Kameraplatz abweichend besetzen, z. B. 'scene=uvc:1' oder 'wrist=sim'; mehrfach angebbar. Ergaenzt --cameras, das den Ausgangspunkt setzt (Geraete auflisten: tools/check_cameras.py --list)")
     parser.add_argument("--real-robot", action="store_true")
     parser.add_argument("--override", type=float, default=None,

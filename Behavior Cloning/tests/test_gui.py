@@ -859,20 +859,20 @@ def test_the_target_folder_follows_the_robot(tmp_path):
 # -- Episoden je Aufruf ----------------------------------------------------
 
 def test_more_than_one_episode_at_the_plant_is_named():
-    # Grund: Die Bahn endet am Uebergabepunkt, und zu Beginn der naechsten
-    # Episode sendet der Recorder den Greifer-Startzustand ("auf") -- das
-    # Objekt laege dann nicht mehr am Greifpunkt.
-    advice = recording.episode_advice(True, 3)
+    # Nur OHNE Zuruecklegen: Die Bahn endet am Uebergabepunkt, und zu Beginn
+    # der naechsten Episode sendet der Recorder den Greifer-Startzustand
+    # ("auf") -- das Objekt laege dann nicht mehr am Greifpunkt.
+    advice = recording.episode_advice(True, 3, put_back=False)
     assert advice and "EINE" in advice
 
 
 def test_one_episode_at_the_plant_needs_no_hint():
-    assert recording.episode_advice(True, 1) is None
+    assert recording.episode_advice(True, 1, put_back=False) is None
 
 
 def test_several_episodes_are_fine_without_a_physical_object():
     # SimRobot und virtuelle Steuerung: kein Objekt im Spiel.
-    assert recording.episode_advice(False, 20) is None
+    assert recording.episode_advice(False, 20, put_back=False) is None
 
 
 # -- Bewertung je Episode (AP 5.2) ----------------------------------------

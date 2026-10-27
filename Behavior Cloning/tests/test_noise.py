@@ -271,3 +271,60 @@ def test_generate_plan_rejection_sampling_on_tight_corridor():
     # Der enge Korridor muss sich bemerkbar machen: mindestens ein Lauf
     # mit Resampling oder Ablehnung.
     assert any(o == "rejected" or (isinstance(o, int) and o > 0) for o in outcomes)
+
+
+def _speed_setup():
+    from bc.noise import generate_plan
+
+    robot = _fixtures.make_robot("sim")
+    kin = Kinematics(robot)
+    home = robot.read_state().joints
+    start = np.asarray(robot.fk(home), dtype=float)
+    wps = []
+    for dx, dz in ((0, 0), (0.06, -0.02), (0.06, -0.05)):
+        pose = start.copy()
+        pose[0] += dx
+        pose[2] += dz
+        wps.append(Waypoint(pose))
+    ideal = build_ideal_trajectory(wps)
+    workspace = default_workspace(table_height_m=float(start[2]) - 0.30)
+    return generate_plan, kin, workspace, ideal, home
+
+
+def test_planner_rejects_paths_the_servo_guard_would_stop():
+    # Anlage 2026-10-26: verrauschte Bahn mit 1,47 rad/s kam durch die
+    # Planung und wurde erst beim Fahren gestoppt.
+    from bc.noise import PlanRejected, joint_speed
+
+    generate_plan, kin, workspace, ideal, home = _speed_setup()
+    plan = generate_plan(kin, workspace, ideal, home, rng=np.random.default_rng(5))
+    assert config.PLAN_MAX_JOINT_SPEED_RADS < config.SERVO_MAX_JOINT_SPEED_RADS
+    assert joint_speed(plan.joints_noisy, plan.rate_hz)[0] <= config.PLAN_MAX_JOINT_SPEED_RADS
+    ideal_speed = joint_speed(plan.joints_ideal, plan.rate_hz)[0]
+    # Grenze zwischen ideal und verrauscht: Rauschsamples werden verworfen
+    noisy_speed = joint_speed(plan.joints_noisy, plan.rate_hz)[0]
+    if noisy_speed > ideal_speed * 1.05:
+        limit = (ideal_speed * 1.01 + noisy_speed) / 2
+        try:
+            generate_plan(kin, workspace, ideal, home, rng=np.random.default_rng(5),
+                          max_joint_speed=limit, max_rejects=3,
+                          joints_ideal=plan.joints_ideal)
+        except PlanRejected as exc:
+            assert any(r[0] == "speed" for r in exc.reasons)
+    # schon die ideale Bahn zu schnell: sofort abgelehnt, mit Gelenk und Schritt
+    try:
+        generate_plan(kin, workspace, ideal, home, rng=np.random.default_rng(5),
+                      max_joint_speed=ideal_speed / 2)
+        assert False, "PlanRejected erwartet"
+    except PlanRejected as exc:
+        assert "zu schnell" in str(exc) and exc.reasons[0][0] == "ideal_speed"
+
+
+def test_joint_speed_reports_joint_and_step():
+    from bc.noise import joint_speed
+
+    q = np.zeros((4, 6))
+    q[2, 1] = 0.1  # Schritt 1 -> 2: 0.1 rad in 1/15 s
+    speed, joint, step = joint_speed(q, 15.0)
+    assert np.isclose(speed, 1.5) and joint == 1 and step == 2
+    assert joint_speed(q[:1], 15.0) == (0.0, 0, 0)

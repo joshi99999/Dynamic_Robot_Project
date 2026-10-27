@@ -94,6 +94,26 @@ GRIPPER_UNAVAILABLE = "unavailable"  # reale Anlage ohne Greifer -> Fehler
 GRIPPER_DRY_RUN = "dry_run"
 
 
+def _check_gripper_outputs(outputs):
+    """(Ausgang zu, Ausgang auf, Enable) pruefen; ``None`` = keine.
+
+    Namen wie in der Steuerung ("DO_1"); Enable darf ``None`` sein. Nur ein
+    Ausgang oder zweimal derselbe waere ein Greifer, der nur in eine
+    Richtung schaltet -- das faellt sonst erst ueber dem Teil auf.
+    """
+    if outputs is None or all(name is None for name in outputs):
+        return None
+    names = tuple(outputs)
+    used = [name for name in names if name is not None]
+    if (len(names) != 3 or names[0] is None or names[1] is None
+            or any(not isinstance(name, str) or not name for name in used)
+            or len(set(used)) != len(used)):
+        raise ValueError(
+            "Greifer-Ausgaenge: (zu, auf, enable) als verschiedene Namen wie "
+            "'DO_1' erwartet, enable darf None sein -- erhalten %r" % (outputs,))
+    return names
+
+
 def _unwrap_neurapy_error(exc, function_name):
     """Uebersetzt den bekannten NeuraPy-Bug in eine verstaendliche Meldung.
 
@@ -126,7 +146,9 @@ class NeuraRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
     def __init__(
         self, robot=None, override=config.DEFAULT_OVERRIDE, allow_real=False,
         servo_guard=None, local_fk=config.NEURA_LOCAL_FK,
-        allow_dry_gripper=False
+        allow_dry_gripper=False,
+        gripper_outputs=(config.NEURA_GRIPPER_DO_CLOSE, config.NEURA_GRIPPER_DO_OPEN,
+                         config.NEURA_GRIPPER_DO_ENABLE)
     ):
         self._robot = robot
         #: Sprung-/Geschwindigkeitsfilter fuer jeden servo_j-Sollwert
@@ -138,6 +160,12 @@ class NeuraRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
         #: werden (Trockenlauf)? Nur fuer Testfahrten, und nur ausdruecklich
         #: gesetzt -- siehe GRIPPER_DRY_RUN.
         self._allow_dry_gripper = bool(allow_dry_gripper)
+        #: (zu, auf, enable) der Control-Box-Digitalausgaenge oder None:
+        #: Greifer an der Anlage ohne Greifereintrag in der Steuerung
+        #: (config.NEURA_GRIPPER_DO_CLOSE/_OPEN/_ENABLE).
+        self._gripper_outputs = _check_gripper_outputs(gripper_outputs)
+        #: Enable-Ausgang in dieser Verbindung schon gesetzt?
+        self._gripper_enabled = False
         self._in_simulation = None
         self._motion_allowed = False
         self._gripper_mode = None
@@ -241,6 +269,7 @@ class NeuraRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
 
         self.tool_name = self._call_safe("get_selected_tool_name")
         self._gripper_mode = self._detect_gripper_mode()
+        self._gripper_enabled = False
         self._check_local_fk()
         return self
 
@@ -253,6 +282,51 @@ class NeuraRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
             self._servo_active = False
         self._program_ready = False
         self._call_safe("stop")
+
+    def switch_to_teach(self):
+        """Steuerung in den Teach-Modus schalten (Wunsch Anwender 2026-10-26).
+
+        Nach einer Aufnahme wird oft gleich der naechste PICK geteacht; am
+        Pendant dafuer erst anzumelden kostet jedes Mal Zeit. Zurueck in
+        Automatik schaltet ``connect(ensure_automatic=True)`` beim naechsten
+        Start (VM 2026-10-02: ``switch_to_automatic_mode`` 156 ms -> True).
+        Nur mit Bewegungsfreigabe -- derselbe Schutz wie fuers Bewegen, die
+        VM und die Anlage teilen eine Adresse. Vorher ``close()``: kein
+        Servo-Interface, kein laufendes Programm.
+
+        Rueckgabe: ``is_robot_in_teach_mode()`` danach (None = nicht abfragbar).
+        UNGEPRUEFT an der Anlage -- ob die Steuerung den Wechsel per RPC
+        annimmt, ohne Anmeldung am Pendant, zeigt erst der Versuch.
+        """
+        self._require_motion("switch_to_teach_mode")
+        self.close()
+        if self.in_teach_mode() is True:
+            return True
+        self._call("switch_to_teach_mode")
+        time.sleep(0.5)
+        return self.in_teach_mode()
+
+    def prepare_motion(self):
+        """Fuer eine Fahrt aus der Oberflaeche: Automatik, Programm, Strom an.
+
+        Dasselbe, was ``connect(power_on=True, ensure_automatic=True)`` bei
+        der Aufnahme tut -- die Oberflaeche verbindet aber nur lesend
+        (gui/session.py) und braucht es erst fuer "Anfahren" (Wunsch
+        Anwender 2026-10-26). Ein vorher ausgeloester Stopp wird dabei
+        quittiert: der Aufrufer hat die neue Fahrt ausdruecklich bestaetigt.
+        """
+        self._require_motion("prepare_motion")
+        if self.stop_requested:
+            self._stop_requested.clear()
+            self._program_ready = False
+        if self.in_teach_mode() is True:
+            self._call("switch_to_automatic_mode")
+            time.sleep(1.0)
+            self._program_ready = False
+        self._ensure_program()
+        self._call("power_on")
+        if self._override is not None:
+            self._call("set_override", self._override)
 
     def _query_simulation(self):
         try:
@@ -401,6 +475,12 @@ class NeuraRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
         Trockenlauf statt in den Fehler: Die Bahn wird vollstaendig gefahren,
         nur der Greifer schaltet nicht. Episoden daraus sind fuer den
         Datensatz gesperrt (siehe GRIPPER_DRY_RUN).
+
+        Mit ``gripper_outputs`` (config.NEURA_GRIPPER_DO_CLOSE/_OPEN) gilt
+        die reale Anlage auch ohne ``gripper_name`` als Greifer-Hardware:
+        geschaltet wird dann ueber die Digitalausgaenge der Control-Box,
+        weil grasp()/release() auf der Steuerung ohne Greifereintrag werfen
+        (Anlage 2026-10-23). Der ausdrueckliche Trockenlauf geht vor.
         """
         if getattr(self.robot, "gripper_name", None):
             return GRIPPER_HARDWARE
@@ -408,7 +488,17 @@ class NeuraRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
             return GRIPPER_LOGGED
         if self._allow_dry_gripper:
             return GRIPPER_DRY_RUN
+        if self._gripper_outputs is not None:
+            return GRIPPER_HARDWARE
         return GRIPPER_UNAVAILABLE
+
+    @property
+    def gripper_via_outputs(self):
+        """True, wenn der Greifer ueber Digitalausgaenge schaltet (nicht
+        grasp()/release()) -- fuer die Metadaten der Aufnahme."""
+        return (self._gripper_mode == GRIPPER_HARDWARE
+                and not getattr(self.robot, "gripper_name", None)
+                and self._gripper_outputs is not None)
 
     # -- Aufruf-Helfer -----------------------------------------------------
 
@@ -798,6 +888,15 @@ class NeuraRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
         result = self._call_safe("is_robot_in_teach_mode")
         return None if result is None else bool(result)
 
+    def free_drive_enabled(self):
+        """Zero-G (FREE am Arm) an? None, wenn nicht abfragbar.
+
+        Anlage 21.10.: FREE schaltet Zero-G nur EIN; "Z hoch" schaltet es
+        aus, und in Zero-G laesst sich nicht auf Automatik wechseln. Die
+        Teach-Serie zeigt den Zustand deshalb an (nur lesend)."""
+        result = self._call_safe("is_free_drive_mode_enabled")
+        return None if result is None else bool(result)
+
     def jog_start(self, velocity, jog_type="Cartesian"):
         """``turn_on_jog`` -- nur mit Bewegungsfreigabe und im Teach-Modus.
 
@@ -964,19 +1063,36 @@ class NeuraRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
         wurde ausdruecklich freigegeben (GRIPPER_DRY_RUN): dann wird wie in
         der Simulation nur protokolliert, und die Episode ist fuer den
         Datensatz gesperrt.
+
+        Ueber Digitalausgaenge (``gripper_via_outputs``) geht beim ersten
+        Befehl der Verbindung Enable an; dann immer erst der Gegen-Ausgang
+        aus und der Ziel-Ausgang an -- nie beide gleichzeitig an.
         """
         close = bool(close)
         mode = self._gripper_mode
         if mode == GRIPPER_HARDWARE:
             self._require_motion("gripper_command")
             self._ensure_program()
-            self._call("grasp" if close else "release")
+            if self.gripper_via_outputs:
+                out_close, out_open, out_enable = self._gripper_outputs
+                on, off = (out_close, out_open) if close else (out_open, out_close)
+                steps = [(off, False), (on, True)]
+                if out_enable is not None and not self._gripper_enabled:
+                    steps.insert(0, (out_enable, True))
+                for name, value in steps:
+                    self._set_output(name, value)
+                    if name == out_enable:
+                        self._gripper_enabled = True
+            else:
+                self._call("grasp" if close else "release")
         elif mode in (GRIPPER_LOGGED, GRIPPER_DRY_RUN):
             self.gripper_log.append((host_time(), close))
         elif mode == GRIPPER_UNAVAILABLE:
             raise RobotError(
                 "Kein Greifer konfiguriert (Tool %r) und keine Simulation -- "
-                "Greiferbefehl nicht ausfuehrbar. Fuer eine reine Testfahrt "
+                "Greiferbefehl nicht ausfuehrbar. Schaltet er ueber "
+                "Digitalausgaenge: config.NEURA_GRIPPER_DO_CLOSE/_OPEN "
+                "eintragen. Fuer eine reine Testfahrt "
                 "ohne Greifer: apps/record.py --no-gripper (die Episode wird "
                 "dann verworfen und ist nicht exportierbar)."
                 % (self.tool_name,)
@@ -984,6 +1100,18 @@ class NeuraRobot(RobotPort, PointSourcePort, PointStorePort, JogPort):
         else:
             raise NotConnectedError("connect() wurde noch nicht aufgerufen")
         self._gripper_closed = close
+
+    @property
+    def gripper_outputs(self):
+        """(zu, auf, enable) der Digitalausgaenge oder None."""
+        return self._gripper_outputs
+
+    def _set_output(self, name, value):
+        """Einen Control-Box-Ausgang ueber seinen Namen setzen."""
+        if self._call("io", "set", io_name=name, target_value=value) is False:
+            raise RobotError(
+                "io('set', %r, %r) abgelehnt -- Greifer nicht geschaltet "
+                "(Belegung in config.NEURA_GRIPPER_DO_* pruefen)." % (name, value))
 
     # -- Sicherheit --------------------------------------------------------
 

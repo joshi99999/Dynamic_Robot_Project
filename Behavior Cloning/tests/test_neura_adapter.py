@@ -104,6 +104,13 @@ class FakeNeuraClient(object):
     def release(self):
         self._log("release")
 
+    #: Rueckgabe von io("set", ...) (Steuerung: False = abgelehnt).
+    output_result = True
+
+    def io(self, operation_type, io_name, target_value=None):
+        self._log("io", operation_type, io_name, target_value)
+        return self.output_result
+
 
 def _names(client):
     return [c[0] for c in client.calls]
@@ -217,7 +224,8 @@ def test_gripper_hardware_and_unavailable_modes():
     robot.gripper_command(True)
     assert _names(client)[-1] == "grasp"
 
-    real = NeuraRobot(robot=FakeNeuraClient(in_simulation=False)).connect()
+    real = NeuraRobot(robot=FakeNeuraClient(in_simulation=False),
+                      gripper_outputs=None).connect()
     assert real.gripper_mode == GRIPPER_UNAVAILABLE
     try:
         real.gripper_command(True)
@@ -243,8 +251,85 @@ def test_dry_run_gripper_only_with_explicit_release():
 
     # Ohne die Freigabe bleibt es beim Fehler -- der Trockenlauf darf sich
     # nicht aus Versehen einschalten.
-    strict = NeuraRobot(robot=FakeNeuraClient(in_simulation=False)).connect()
+    strict = NeuraRobot(robot=FakeNeuraClient(in_simulation=False),
+                        gripper_outputs=None).connect()
     assert strict.gripper_mode == GRIPPER_UNAVAILABLE
+
+    # Auch ueber Digitalausgaenge schaltet der Trockenlauf nichts.
+    direct = FakeNeuraClient(in_simulation=False)
+    robot = NeuraRobot(robot=direct, allow_dry_gripper=True,
+                       gripper_outputs=ZIMMER).connect()
+    assert robot.gripper_mode == GRIPPER_DRY_RUN
+    robot.gripper_command(True)
+    assert "io" not in _names(direct)
+
+
+#: Belegung Zimmer LWR50 an der Anlage (zu, auf, enable), config.py.
+ZIMMER = ("DO_1", "DO_0", "DO_3")
+
+
+def _outputs(client):
+    return [c[1][1:] for c in client.calls if c[0] == "io" and c[1][0] == "set"]
+
+
+def test_gripper_via_digital_outputs_without_gripper_name():
+    """Anlage 2026-10-23: Greifer ueber Control-Box-Ausgaenge schaltbar, am
+    Pendant aber nicht als Greifer spezifizierbar -- ``gripper_name`` leer,
+    grasp() wirft auf der Steuerung. Dann ueber die Ausgaenge schalten:
+    einmal Enable an, dann erst Gegen-Ausgang aus, dann Ziel-Ausgang an."""
+    assert (config.NEURA_GRIPPER_DO_CLOSE, config.NEURA_GRIPPER_DO_OPEN,
+            config.NEURA_GRIPPER_DO_ENABLE) == ZIMMER
+    client = FakeNeuraClient(in_simulation=False, gripper=False)
+    robot = NeuraRobot(robot=client, allow_real=True).connect()
+    assert robot.gripper_mode == GRIPPER_HARDWARE and robot.gripper_via_outputs
+    robot.gripper_command(True)
+    robot.gripper_command(False)
+    assert _outputs(client) == [("DO_3", True),
+                                ("DO_0", False), ("DO_1", True),
+                                ("DO_1", False), ("DO_0", True)]
+    assert "grasp" not in _names(client) and "release" not in _names(client)
+    assert "DO_2" not in [name for name, _ in _outputs(client)]  # Reset nie
+    assert robot.gripper_closed is False
+
+    # Neue Verbindung: Enable wird erneut gesetzt.
+    robot.connect()
+    robot.gripper_command(True)
+    assert _outputs(client)[-3:] == [("DO_3", True), ("DO_0", False), ("DO_1", True)]
+
+    # Lehnt die Steuerung ab, ist der Greifer nicht geschaltet -- Fehler,
+    # und der kommandierte Zustand bleibt unveraendert.
+    client.output_result = False
+    try:
+        robot.gripper_command(True)
+        assert False, "RobotError erwartet (io set abgelehnt)"
+    except RobotError:
+        pass
+    assert robot.gripper_closed is True  # vorher geschlossen, nicht geaendert
+
+    # In der Simulation bleibt es beim Protokoll.
+    sim = NeuraRobot(robot=FakeNeuraClient(in_simulation=True),
+                     gripper_outputs=ZIMMER).connect()
+    assert sim.gripper_mode == GRIPPER_LOGGED and not sim.gripper_via_outputs
+
+    # Ist ein Greifer in der Steuerung eingetragen, bleibt es bei grasp().
+    named = FakeNeuraClient(in_simulation=False, gripper=True)
+    robot = NeuraRobot(robot=named, allow_real=True, gripper_outputs=ZIMMER).connect()
+    assert not robot.gripper_via_outputs
+    robot.gripper_command(True)
+    assert _names(named)[-1] == "grasp"
+
+
+def test_gripper_outputs_need_distinct_names():
+    assert NeuraRobot(robot=FakeNeuraClient(),
+                      gripper_outputs=("DO_1", "DO_0", None)).gripper_outputs \
+        == ("DO_1", "DO_0", None)
+    for bad in (("DO_1", None, None), (None, "DO_0", "DO_3"), ("DO_1", "DO_1", None),
+                ("DO_1", "DO_0", "DO_0"), (1, 0, 3), ("DO_1", "DO_0")):
+        try:
+            NeuraRobot(robot=FakeNeuraClient(), gripper_outputs=bad)
+            assert False, "ValueError erwartet fuer %r" % (bad,)
+        except ValueError:
+            pass
 
 
 def test_dry_run_never_overrides_a_real_gripper():

@@ -367,7 +367,7 @@ class OperationTab(ModeTab):
                 self.checkpoint.currentData(),
                 robot_kind=self._robot_kind(),
                 episodes=self.episodes.value(),
-                camera_specs=cameras_module.to_specs(assignment),
+                camera_specs=cameras_module.to_specs(assignment, self.cameras.fps()),
                 override=(self.session.override
                           if self._robot_kind() == "neura" else None),
                 max_steps=self.max_steps.value() or None,
@@ -459,7 +459,7 @@ class OperationTab(ModeTab):
             self.checkpoint.currentData(),
             robot_kind=self._robot_kind(),
             episodes=self.episodes.value(),
-            camera_specs=cameras_module.to_specs(assignment),
+            camera_specs=cameras_module.to_specs(assignment, self.cameras.fps()),
             override=(self.session.override
                       if self._robot_kind() == "neura" else None),
             max_steps=self.max_steps.value() or None,

@@ -157,7 +157,14 @@ class CollisionModel(object):
                     "(vorhanden: %s)" % (point.frame, sorted(positions))
                 )
             for box in self.boxes:
-                clearance = box.clearance(pos, point.radius) - self.margin
+                if hasattr(box, "clearance_for"):
+                    # eigene Regel je Stuetzpunkt (bc/table.TableSurface)
+                    raw = box.clearance_for(point.frame, pos, point.radius)
+                    if raw is None:
+                        continue
+                    clearance = raw - box.margin
+                else:
+                    clearance = box.clearance(pos, point.radius) - self.margin
                 if clearance < 0.0:
                     violations.append(
                         Violation(index, point.frame, box.name, clearance, pos)

@@ -131,7 +131,14 @@ class RequirementView(QGroupBox):
 
 
 class ImageView(QLabel):
-    """Zeigt ein BGR-Bild, auf die Widgetgroesse skaliert, Seitenverhaeltnis erhalten."""
+    """Zeigt ein BGR-Bild, auf die Widgetgroesse skaliert, Seitenverhaeltnis erhalten.
+
+    ``double_clicked(x)``: Doppelklick, ``x`` = waagerechte Lage im Bild
+    (0..1) -- der Reiter "Aufnahme" macht daraus die Kamera, die gross
+    gezeigt wird (Wunsch Anwender 2026-10-26).
+    """
+
+    double_clicked = Signal(float)
 
     def __init__(self, placeholder="kein Bild", parent=None):
         super().__init__(placeholder, parent)
@@ -166,6 +173,14 @@ class ImageView(QLabel):
     def resizeEvent(self, event):                    # noqa: N802 (Qt-API)
         super().resizeEvent(event)
         self._rescale()
+
+    def mouseDoubleClickEvent(self, event):          # noqa: N802 (Qt-API)
+        shown = self.pixmap()
+        if shown is None or shown.isNull() or shown.width() <= 0:
+            return
+        left = (self.width() - shown.width()) / 2.0
+        x = (event.position().x() - left) / float(shown.width())
+        self.double_clicked.emit(min(1.0, max(0.0, x)))
 
 
 class LogView(QPlainTextEdit):
@@ -245,12 +260,35 @@ class CameraAssignmentView(QGroupBox):
         layout = QVBoxLayout(self)
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        self._rates = {}
         for slot in cameras_module.SLOTS:
             box = QComboBox()
+            # Lange Geraetenamen nicht die ganze Spalte verbreitern lassen
+            box.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            box.setMinimumContentsLength(24)
             box.setToolTip(cameras_module.SLOT_HINTS.get(slot, ""))
             box.currentIndexChanged.connect(self._on_changed)
             self._boxes[slot] = box
-            form.addRow(cameras_module.SLOT_LABELS.get(slot, slot), box)
+            # Bildrate je Platz (Anlage 2026-10-26): wird beim Oeffnen in
+            # der Kamera gesetzt -- auch "nativ", sonst bliebe eine fruehere
+            # Begrenzung in der Kamera stehen.
+            rate = QComboBox()
+            for value in cameras_module.FPS_CHOICES:
+                rate.addItem(cameras_module.fps_choice_label(slot, value), value)
+            rate.setToolTip(
+                "Bildrate dieser Kamera. Das neueste Bild ist beim Abgreifen bis "
+                "1/fps alt: 30 fps = bis 33 ms, mehr als das Latenzbudget von "
+                "30 ms. Ab etwa 45 fps ist Reserve. Platzhalter haben keine Rate.")
+            # 60 fps vorausgewaehlt (Anlage 2026-10-26: beide Daheng schaffen
+            # 60 direkt am Laptop) -- steht so auch in der Kommandozeile
+            rate.setCurrentIndex(max(0, rate.findData(60.0)))
+            rate.currentIndexChanged.connect(self._on_changed)
+            self._rates[slot] = rate
+            row = QHBoxLayout()
+            row.addWidget(box, 1)
+            row.addWidget(rate)
+            form.addRow(cameras_module.SLOT_LABELS.get(slot, slot), row)
         layout.addLayout(form)
 
         row = QHBoxLayout()
@@ -382,6 +420,10 @@ class CameraAssignmentView(QGroupBox):
 
     def set_assignment(self, assignment):
         self._fill(assignment)
+
+    def fps(self):
+        """Gewaehlte Bildrate je Platz: ``{Platz: None | "nativ" | Zahl}``."""
+        return dict((slot, box.currentData()) for slot, box in self._rates.items())
 
     def _on_changed(self):
         self.changed.emit()

@@ -50,18 +50,28 @@ def _deltas(robot, old_joints, new_joints):
 def plan_touch_up(robot, name, clock, in_simulation, tool_name,
                   required_tool=config.TOUCHUP_TOOL_NAME,
                   still_wait_s=config.TOUCHUP_STILL_WAIT_S,
-                  still_tol_rad=config.TOUCHUP_STILL_TOL_RAD):
+                  still_tol_rad=config.TOUCHUP_STILL_TOL_RAD,
+                  joints=None):
     """Was wuerde ein Touch-up von ``name`` aendern? Schreibt nichts.
 
     ``in_simulation``/``tool_name``: was die Steuerung beim Verbinden
     gemeldet hat (``NeuraRobot.in_simulation``/``tool_name``; SimRobot:
     True/None). Rueckgabe: dict mit ``problems`` (blockierend) und
     ``warnings`` (Rueckfrage), dazu Stellung und Aenderung.
+
+    ``joints``: Stellung von aussen statt der aktuellen -- die Teach-Serie
+    (bc/teach_series.py) uebergibt die Gelenke des Punkts, den der
+    POINT-Knopf am Arm angelegt hat. Dann entfaellt die Stillstandspruefung:
+    die Steuerung hat die Stellung im Moment des Drueckens festgehalten,
+    der Arm darf inzwischen schon weiterbewegt sein.
     """
     name = (name or "").strip()
     plan = {"name": name, "exists": False, "joints": None, "old_joints": None,
             "move_mm": None, "turn_deg": None, "tool": tool_name,
-            "in_simulation": in_simulation, "problems": [], "warnings": []}
+            "in_simulation": in_simulation, "problems": [], "warnings": [],
+            # Fuer die Teach-Serie: nur diese Hinweise verlangen eine
+            # Rueckfrage, "neu angelegt" allein nicht.
+            "large_change": False, "old_tool_mismatch": False}
     if not name:
         plan["problems"].append("Die Zeile hat keinen Punktnamen.")
         return plan
@@ -69,15 +79,19 @@ def plan_touch_up(robot, name, clock, in_simulation, tool_name,
         plan["problems"].append("Namen mit '_' am Anfang sind Hilfspunkten vorbehalten.")
         return plan
 
-    first = np.asarray(robot.read_state().joints, dtype=float)
-    clock.sleep(still_wait_s)
-    joints = np.asarray(robot.read_state().joints, dtype=float)
-    plan["joints"] = [float(v) for v in joints]
-    moving = float(np.max(np.abs(joints - first)))
-    if moving > still_tol_rad:
-        plan["problems"].append(
-            "Der Arm bewegt sich noch (%.4f rad in %.1f s) -- erst anhalten."
-            % (moving, still_wait_s))
+    if joints is not None:
+        joints = np.asarray(joints, dtype=float)
+        plan["joints"] = [float(v) for v in joints]
+    else:
+        first = np.asarray(robot.read_state().joints, dtype=float)
+        clock.sleep(still_wait_s)
+        joints = np.asarray(robot.read_state().joints, dtype=float)
+        plan["joints"] = [float(v) for v in joints]
+        moving = float(np.max(np.abs(joints - first)))
+        if moving > still_tol_rad:
+            plan["problems"].append(
+                "Der Arm bewegt sich noch (%.4f rad in %.1f s) -- erst anhalten."
+                % (moving, still_wait_s))
 
     if in_simulation is not True:
         if not tool_name or tool_name == "NoTool" or (required_tool and tool_name != required_tool):
@@ -99,12 +113,14 @@ def plan_touch_up(robot, name, clock, in_simulation, tool_name,
             # Der Touch-up rechnet ihn mit dem aktiven neu -- das ist dann
             # gerade die Korrektur, aber es soll bewusst geschehen.
             old_joints = robot.point_record(name)["jointAngles"]
+            plan["old_tool_mismatch"] = True
             plan["warnings"].append(
                 "Der bisherige Punkt passt nicht zum aktiven Werkzeug (%s). Der "
                 "Touch-up speichert ihn mit %r neu." % (exc, tool_name))
         plan["old_joints"] = [float(v) for v in old_joints]
         plan["move_mm"], plan["turn_deg"] = _deltas(robot, old_joints, joints)
         if plan["move_mm"] > config.TOUCHUP_WARN_MM or plan["turn_deg"] > config.TOUCHUP_WARN_DEG:
+            plan["large_change"] = True
             plan["warnings"].append(
                 "Grosse Aenderung: %.0f mm / %.0f Grad -- richtige Zeile?"
                 % (plan["move_mm"], plan["turn_deg"]))

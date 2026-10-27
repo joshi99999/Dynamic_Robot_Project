@@ -84,12 +84,27 @@ def connect_readonly():
 
 
 def names_from_sequence(path):
-    """Punktnamen aus einer Ablaufdatei -- Reihenfolge erhalten, ohne Dubletten."""
+    """Geteachte Punktnamen einer Ablaufdatei -- Reihenfolge erhalten, ohne Dubletten.
+
+    Berechnete Punkte (``"above"``, z. B. ANFLUG/PRE_PICK) stehen nicht in der
+    Datenbank und fehlen deshalb; die Tischpunkte (``"table"``, ID0-ID3)
+    gehoeren dazu (bc/sequence.py, 2026-10-26).
+    """
     data = json.loads(Path(path).read_text(encoding="utf-8"))
+    steps = data.get("sequence", [])
+    computed = {s.get("point") for s in steps if s.get("above")}
     out = []
-    for step in data.get("sequence", []):
+    for step in steps:
         name = step.get("point")
-        if name and name not in out:
+        if name and name not in computed and name not in out:
+            out.append(name)
+        ref = step.get("above")
+        if ref and ref not in computed and ref not in out:
+            out.append(ref)
+    table = data.get("table") or {}
+    keepout = [e.get("point") if isinstance(e, dict) else e for e in table.get("keepout") or []]
+    for name in list(table.get("points") or []) + keepout:
+        if name not in out:
             out.append(name)
     return out
 

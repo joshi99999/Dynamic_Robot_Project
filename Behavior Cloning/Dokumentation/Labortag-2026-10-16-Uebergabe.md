@@ -422,3 +422,70 @@ gebaut werden — die `.bat` nimmt immer den aktuellen Code.
 
 **Offen an der Anlage:** „Z hoch“ im Teach-Modus testen. Dabei klären, ob die Steuerung für externes Tippen den
 Zustimmtaster am Pendant verlangt und wie schnell es dort mit Anteil 0,3 fährt.
+
+### 7.11 Teach-Serie mit FREE/POINT am Arm, Tastenkürzel (gebaut 21.10., Anlage offen)
+
+**Befund:** Die Meldung „no option is selected for this“ beim Drücken von FREE/POINT kommt aus der Steuerung.
+In der Sicherung (`10_Neura/.../collections/hmis.json`) stehen `freeButton: "noAction"` und
+`pointButton: "noAction"`. Die Belegung erfolgt am Pendant in den Einstellungen der Arm-Knöpfe. Laut
+Sicherung gibt es dort unter anderem „ZeroG On/Off“ und „Save Point“.
+
+**Vorgesehene Belegung:** FREE = Zero-G (läuft ganz in der Steuerung), POINT = „Save Point“.
+Anlage 21.10.: FREE schaltet Zero-G nur **ein**; zum Ausschalten braucht es einen anderen Weg (Pendant). POINT
+auf „Save Point“ legte `GP35` an. Deshalb gilt `TEACH_SERIES_POINT_PATTERN = r"GP\d+"`: Die Serie verbraucht nur
+`GP<n>`-Punkte und löscht sie sofort wieder. Ohne laufende Serie bleibt jeder Druck als `GP<n>` in der Datenbank
+stehen.
+
+**Teach-Serie** (Aufnahme → Ablauf, Knopf **Teach-Serie (POINT am Arm)** oder **F6**): Die Startzeile markieren
+und die Serie einschalten. Danach arbeitet man nur noch am Arm: FREE halten und führen, dann POINT drücken.
+- Die Oberfläche sieht alle 0,3 s in der Punktliste nach (`config.TEACH_SERIES_POLL_MS`). Der Punkt, den
+  „Save Point“ anlegt, wird per Touch-up mit **seinen** Gelenken in die markierte Zeile übernommen und
+  danach gelöscht. Dann springt die Markierung zur nächsten Zeile. Nach der letzten Zeile endet die Serie.
+- **Keine Rückfrage je Punkt** (Anlage 21.10.: das ständige Bestätigen am Laptop war lästig). Stattdessen
+  zeigt eine **große Anzeige**, welcher Punkt gerade gesetzt wurde (✔), was als Nächstes kommt und ob Zero-G
+  an ist. Bei großer Änderung (> 50 mm / 15°) oder einem alten Punkt mit anderem Werkzeug erscheint ⚠ mit
+  Warnton, die Serie läuft trotzdem weiter.
+- **Schlussabfrage:** Wer die Serie beendet (F6/Knopf) oder die letzte Zeile erreicht, bekommt eine Liste aller
+  gesetzten Punkte, ⚠ markiert. Zur Wahl stehen **Behalten** oder **Alle zurücknehmen**. Die Rücknahme läuft
+  rückwärts, damit der zweimal gesetzte PRE_GRASP auf dem Stand vor der Serie landet. Endet die Serie
+  durch Reiterwechsel, Aufnahmestart, Verbindungswechsel oder Beenden, bleiben die Punkte ohne Frage stehen
+  und das Protokoll nennt sie.
+- Sperren (Werkzeug `ZimmerLWR50` an der Anlage, leerer Name) erscheinen als ✘ in der Anzeige, mit Warnton und
+  im Protokoll. Der Druck ist dann verworfen, also einfach noch einmal drücken. Die Stillstandsprüfung entfällt
+  hier, weil die Steuerung die Stellung im Moment des Drückens festhält.
+- **Zero-G** (`is_free_drive_mode_enabled`, nur lesend): Anlage 21.10. ergab zwei Befunde. „Z hoch“ schaltet
+  Zero-G aus, und wer dann den Arm führt, löst einen Not-Halt aus. In Zero-G lässt sich außerdem nicht auf
+  Automatik wechseln. Die Anzeige meldet deshalb „Zero-G AUS — erst FREE drücken“ (mit Warnton) bzw.
+  „Zero-G an — vor Automatik am Pendant ausschalten“.
+- Nicht als Knopfdruck gelten Hilfspunkte (`_…`) und Namen aus der Ablauftabelle. Ist
+  `config.TEACH_SERIES_POINT_PATTERN` gesetzt, zählt zusätzlich nur, was auf das Muster passt.
+- Die Serie endet bei Reiterwechsel, beim Start einer Aufnahme und beim Wechsel der Verbindung.
+  „Touch-up rückgängig“ springt zur zurückgenommenen Zeile zurück.
+- PICK/PRE_GRASP: Es gibt keine Sonderregel. Den ersten PRE_GRASP grob setzen oder mit Bild↓ überspringen,
+  dann PICK, dann F7 bzw. „Z hoch“ halten. Der zweite PRE_GRASP überschreibt den Punkt dann senkrecht über PICK.
+
+**Tasten** (nur im sichtbaren Reiter „Aufnahme“, nicht während einer Aufnahme):
+| Taste | Wirkung |
+|---|---|
+| F6 | Teach-Serie an/aus |
+| F8 | Touch-up der markierten Zeile mit der **aktuellen** Stellung, dann nächste Zeile. Läuft die Serie, gelten deren Regeln, sonst gibt es die normale Rückfrage. |
+| Bild↓ / Bild↑ | Zeile weiter/zurück (überspringen) |
+| F7 halten | „Z hoch“. Es gelten dieselben Sperren wie beim Knopf. Hält an beim Loslassen, wenn das Fenster den Fokus verliert, und bei Reiterwechsel. |
+
+Code: `bc/teach_series.py` (Qt-frei), `bc/touchup.py` (`plan_touch_up(..., joints=...)`),
+`bc/gui/tab_recording.py`. Tests: `tests/test_teach_series.py`. Zusätzlich wurde die GUI offscreen gegen den
+SimRobot geprüft (sieben Zeilen per „POINT“, F8, Bild↑/↓, F7, Rücknahme).
+
+**Offen an der Anlage:** zuerst `python tools/probe_arm_buttons.py --log Berichte/knoepfe_anlage.txt`. Das
+Skript liest nur. Danach FREE kurz drücken, FREE halten, POINT einmal und POINT zweimal schnell drücken. Zu
+klären ist:
+1. Wirkt FREE als Halten oder als Umschalter?
+2. Legt „Save Point“ einen Punkt an, den `get_point_names` sieht? Unter welchem Namen? Den Namen bzw. das
+   Muster in `TEACH_SERIES_POINT_PATTERN` eintragen.
+3. Erscheint der Druck in `get_io_status`? Dann ginge es auch ohne den Umweg über den Punkt.
+4. Lässt sich „Z hoch“ bei aktivem Zero-G benutzen?
+
+**Anlage 21.10. nachmittags:** Die Serie mit POINT hat funktioniert. Die Punkte wurden geändert, es blieben keine
+GP-Punkte stehen. Danach umgebaut: keine Rückfrage je Punkt, Schlussabfrage, große Anzeige, Anzeige des Zero-G-
+Zustands. Geprüft sind die Tests (392, nur ArUco rot) und die Offscreen-GUI gegen den SimRobot (Behalten und Alle
+zurücknehmen). An der Anlage noch nicht.

@@ -256,9 +256,57 @@ class DahengCamera(CameraPort):
         # 61 fps frei durch, obwohl nur mit 15 Hz abgetastet wird. Native
         # Rate = frischere Frames (kleineres Alter im Latenzbudget, AP 1.3),
         # gedrosselte Rate = weniger CPU-Last durchs Debayering.
+        # "Nativ" muss AKTIV ausgeschaltet werden -- wie der ROI ist die
+        # Begrenzung in der Kamera gespeichert. Befund 2026-10-26: Wrist und
+        # Szene in der Oberflaeche getauscht, die Wrist-Kamera bekam dabei
+        # die 30 fps des Szenenplatzes und behielt sie nach dem
+        # Zuruecktauschen, weil "nativ" bis dahin nichts gesetzt hat.
         if self.cfg.fps:
             _try(lambda: cam.AcquisitionFrameRateMode.set(gx.GxSwitchEntry.ON))
             _try(lambda: cam.AcquisitionFrameRate.set(float(self.cfg.fps)))
+        else:
+            _try(lambda: cam.AcquisitionFrameRateMode.set(gx.GxSwitchEntry.OFF))
+
+    def settings(self):
+        """Tatsaechlich wirksame Einstellungen, aus der Kamera zurueckgelesen.
+
+        Gesetzt wird mit :func:`_try` -- was nicht angenommen wird, ist nur
+        ein Hinweis im Terminal. Hier steht, was die Kamera WIRKLICH tut
+        (Befund 2026-10-26: Wrist lief mit 23 statt 61 fps, ohne dass es
+        irgendwo stand). ``rate_possible_fps`` ist die Rate, die die Kamera
+        mit diesen Einstellungen selbst fuer erreichbar haelt; schafft die
+        Kette weniger, liegt es dahinter (USB-Port, Hub, Rechner).
+        Fehlende Werte sind None.
+        """
+        if self._cam is None:
+            return {}
+        cam = self._cam
+
+        def value(feature):
+            try:
+                v = feature.get()
+            except Exception:
+                return None
+            if isinstance(v, tuple):  # Enum: (Wert, Name)
+                return str(v[1])
+            return v
+
+        out = {
+            "exposure_auto": value(cam.ExposureAuto),
+            "exposure_us": value(cam.ExposureTime),
+            "gain_auto": value(cam.GainAuto),
+            "gain_db": value(cam.Gain),
+            "rate_limit": value(cam.AcquisitionFrameRateMode),
+            "rate_set_fps": value(cam.AcquisitionFrameRate),
+            "rate_possible_fps": value(cam.CurrentAcquisitionFrameRate),
+            "link_limit_mode": value(cam.DeviceLinkThroughputLimitMode),
+            "link_limit_bps": value(cam.DeviceLinkThroughputLimit),
+            "link_throughput_bps": value(cam.DeviceLinkCurrentThroughput),
+        }
+        for key in ("exposure_us", "gain_db", "rate_set_fps", "rate_possible_fps"):
+            if out[key] is not None:
+                out[key] = round(float(out[key]), 2)
+        return out
 
     def _configure_roi(self):
         """Setzt den ROI -- und zwar ZENTRIERT.
