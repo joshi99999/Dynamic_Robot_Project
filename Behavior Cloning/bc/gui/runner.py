@@ -137,7 +137,8 @@ class ProcessRunner(QObject):
         self._buffer = []
         self._tail = ""
 
-        command = [sys.executable, "-u"] + list(argv)
+        # Als Reiter in fremder GUI: das Python der BC-Umgebung (BC_PYTHON).
+        command = [requirements_module.bc_python(), "-u"] + list(argv)
         process = QProcess(self)
         process.setProgram(command[0])
         process.setArguments(command[1:])

@@ -10,6 +10,7 @@ Start ueber ``python bc/gui/__main__.py`` und fuer ``neurapy`` aus dem
 Nachbarordner "Robot Controller".
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -18,10 +19,14 @@ _BC_DIR = _GUI_DIR.parent.parent      # "Behavior Cloning" -> enthaelt bc/
 _REPO_ROOT = _BC_DIR.parent           # Repo-Wurzel
 
 #: ``neurapy`` liegt im Nachbarordner "Robot Controller" (Fremdcode von
-#: Neura). Dieselbe Suche wie in apps/_bootstrap.py und tools/_bootstrap.py.
+#: Neura). Dieselbe Suche wie in apps/_bootstrap.py und tools/_bootstrap.py
+#: (dort begruendet).
 _NEURAPY_DIRS = [
     p
-    for p in (_REPO_ROOT / "Robot Controller", _REPO_ROOT)
+    for p in (*(Path(d) for d in (os.environ.get("BC_NEURAPY_DIR"),) if d),
+              _REPO_ROOT / "Robot Controller",
+              _REPO_ROOT / "code" / "m2_robot_control" / "vendor",
+              _REPO_ROOT)
     if (p / "neurapy" / "__init__.py").is_file()
 ]
 

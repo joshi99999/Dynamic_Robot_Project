@@ -33,7 +33,7 @@ from PySide6.QtGui import QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox,
                                QComboBox, QDoubleSpinBox, QFormLayout,
                                QGroupBox, QHBoxLayout, QHeaderView, QLabel,
-                               QLineEdit, QMessageBox, QProgressBar,
+                               QLineEdit, QMenu, QMessageBox, QProgressBar,
                                QPushButton, QScrollArea, QSpinBox, QSplitter,
                                QDialog, QTableWidget, QTableWidgetItem,
                                QToolButton, QTreeWidget, QTreeWidgetItem,
@@ -79,6 +79,8 @@ class RecordingTab(ModeTab):
         self.process.finished.connect(self._on_finished)
         self.process.started.connect(self._on_started)
         self._progress = None
+        #: Ausgabeordner des letzten Laufs (fuer _episode_menu)
+        self._run_out = None
         self._captures = None
         #: Abbruchsignal eines laufenden Oeffnens der Vorschau, sonst None
         #: (Muster wie widgets.CameraAssignment.search).
@@ -2135,6 +2137,12 @@ class RecordingTab(ModeTab):
         self.episode_list.setMaximumHeight(110)
         for column, width in enumerate((70, 130, 80, 240)):
             self.episode_list.setColumnWidth(column, width)
+        self.episode_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.episode_list.customContextMenuRequested.connect(self._episode_menu)
+        self.episode_list.setToolTip(
+            "Episoden dieses Laufs. Rechtsklick: nachträglich als fehlgeschlagen "
+            "markieren, verwerfen oder wieder als erfolgreich werten — auch "
+            "während der Lauf weiterfährt.")
         progress_layout.addWidget(self.episode_list)
         layout.addWidget(progress_box)
 
@@ -2710,12 +2718,16 @@ class RecordingTab(ModeTab):
             self.image.setText("Livebild aus — während der Aufnahme gehören "
                                "die Kameras apps/record.py")
 
+        argv = self._argv()
+        # Fuer das nachtraegliche Bewerten (_episode_menu): wohin dieser Lauf
+        # schreibt. Relativ zum Arbeitsordner, wie record.py es aufloest.
+        self._run_out = self.workdir / argv[argv.index("--out") + 1]
         try:
             # stdin bleibt offen, solange nach jeder Episode oder nach der
             # Probefahrt gefragt wird -- sonst bekommt record.py EOF, laesst
             # alles unbewertet bzw. bricht nach der Probefahrt ab.
             self.process.start(
-                self._argv(),
+                argv,
                 stdin_text="ANLAGE\n" if status.is_real_plant else None,
                 keep_stdin=self.ask_label.isChecked() or self.probe.isChecked())
         except Exception as exc:
@@ -2854,7 +2866,8 @@ class RecordingTab(ModeTab):
         unbewertet -- nichts wird stillschweigend weggeworfen.
         """
         if self._labels_off:
-            # Leere Antwort = unbewertet (record.ask_label), ohne zu warten
+            # Leere Antwort = erfolgreich (record.ask_label), ohne zu warten.
+            # Fehlschlaege setzt man dann in der Episodenliste (Rechtsklick).
             self.process.send("")
             return
         box = QMessageBox(self)
@@ -2870,18 +2883,60 @@ class RecordingTab(ModeTab):
         bad = box.addButton("Fehlgeschlagen", QMessageBox.ButtonRole.DestructiveRole)
         drop = box.addButton("Verwerfen", QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(good)
-        silence = QCheckBox("nicht erneut anzeigen (restliche Episoden dieses Laufs "
-                            "bleiben unbewertet)")
+        silence = QCheckBox("nicht erneut fragen — restliche Episoden dieses Laufs "
+                            "als erfolgreich werten")
+        silence.setToolTip(
+            "Der Lauf hält dann nicht mehr an. Einen Fehlschlag markierst du "
+            "danach in der Episodenliste unter dem Fortschritt (Rechtsklick).")
         box.setCheckBox(silence)
         box.exec()
         clicked = box.clickedButton()
         answer = {good: "erfolg", bad: "fehler", drop: "verwerfen"}.get(clicked, "fehler")
         if silence.isChecked():
             self._labels_off = True
-            self.output.append_record("Bewertung für den Rest des Laufs abgeschaltet -- "
-                                      "Episoden bleiben unbewertet.")
+            self.output.append_record("Keine Rückfrage mehr -- restliche Episoden dieses "
+                                      "Laufs gelten als erfolgreich. Fehlschläge per "
+                                      "Rechtsklick in der Episodenliste markieren.")
         if not self.process.send(recording_module.LABEL_ANSWERS[answer]):
             log.warning("Bewertung konnte nicht gesendet werden -- laeuft der Prozess noch?")
+
+    def _episode_menu(self, position):
+        """Rechtsklick in der Episodenliste: Bewertung nachtraeglich aendern.
+
+        Gegenstueck zu "Standard erfolgreich": Der Lauf muss fuer einen
+        Fehlschlag nicht anhalten, man markiert ihn hier, sobald man ihn
+        gesehen hat. Geaendert wird die meta.json (dataset.relabel).
+        """
+        item = self.episode_list.itemAt(position)
+        if item is None or self._run_out is None:
+            return
+        from .. import dataset as dataset_module
+
+        menu = QMenu(self)
+        actions = {
+            menu.addAction("Als fehlgeschlagen markieren"): "fehler",
+            menu.addAction("Verwerfen (nicht in den Datensatz)"): "verwerfen",
+            menu.addAction("Als erfolgreich werten"): "erfolg",
+        }
+        chosen = menu.exec(self.episode_list.viewport().mapToGlobal(position))
+        label = actions.get(chosen)
+        if label is None:
+            return
+        folder = item.text(1)
+        try:
+            dataset_module.relabel(self._run_out, folder, label,
+                                   reason="vom Bedienenden nachträglich verworfen")
+        except Exception as exc:
+            QMessageBox.warning(self, "Bewertung nicht geändert",
+                                "%s/%s: %s" % (self._run_out, folder, exc))
+            return
+        text = {"erfolg": "erfolgreich (nachträglich)",
+                "fehler": "FEHLGESCHLAGEN (nachträglich)",
+                "verwerfen": "VERWORFEN (nachträglich)"}[label]
+        item.setText(3, text)
+        for column in range(4):
+            item.setForeground(column, _brush(GOOD if label == "erfolg" else WARN))
+        self.output.append_record("%s -> %s" % (folder, text))
 
     def _on_finished(self, code, text):
         self._set_running(False)

@@ -6,6 +6,7 @@ einer Diffusion Policy, Live-Inferenz.
 
 * **Anforderungen und Entscheidungen:** [Requierments/requierments.md](Requierments/requierments.md)
 * **Kameras — Inbetriebnahme, Hardware, Mechanik:** [Dokumentation/Kamera-Inbetriebnahme.md](Dokumentation/Kamera-Inbetriebnahme.md)
+* **Übernahme ins Repo der Gruppe, Reiter in deren GUI:** [INTEGRATION.md](INTEGRATION.md)
 
 ## Architektur (AP 0)
 

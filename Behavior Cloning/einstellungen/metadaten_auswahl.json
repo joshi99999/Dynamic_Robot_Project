@@ -16,7 +16,8 @@
     "-2 cm x",
     "+2 cm y",
     "-2 cm y",
-    "+5° gedreht"
+    "+5° gedreht",
+    "nominal + Roboter Hinten"
   ],
   "object_note": [
     "Lila-Objekt"

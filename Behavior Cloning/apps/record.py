@@ -124,21 +124,30 @@ PROBE_PROMPT = "PROBEFAHRT"
 def ask_label(episode_index, steps):
     """Erfolgs-Label und Verwerfen abfragen (AP 5.2, AP 1.2).
 
-    Rueckgabe ``(success, discard)``. Ohne Eingabe (geschlossenes stdin)
-    bleibt die Episode UNBEWERTET und wird behalten -- nichts wird
-    stillschweigend weggeworfen, und ``export.py --require-success`` laesst
-    sie dann spaeter bewusst aussen vor.
+    Rueckgabe ``(success, discard)``. Eine LEERE Zeile (nur Enter) heisst
+    erfolgreich -- aufgenommen werden praktisch nur gelungene Griffe,
+    Fehlschlaege werden bewusst gesetzt (Festlegung Anwender 28.10.2026).
+    Ohne Eingabe (geschlossenes stdin, Lauf abgebrochen) bleibt die Episode
+    dagegen UNBEWERTET und wird behalten -- ein Abbruch ist keine
+    Zustimmung, und ``export.py --require-success`` laesst sie bewusst
+    aussen vor.
     """
     # Die Frage als VOLLSTAENDIGE Zeile ausgeben, nicht als input()-Prompt:
     # Die Bedienoberflaeche liest die Ausgabe zeilenweise mit, und ein
     # Prompt ohne Zeilenumbruch kaeme dort nie an.
-    print("%s Episode %d (%d Schritte) -- [e]rfolgreich, [f]ehlgeschlagen, "
-          "[v]erwerfen" % (LABEL_PROMPT, episode_index, steps))
+    print("%s Episode %d (%d Schritte) -- [e]rfolgreich (Enter), "
+          "[f]ehlgeschlagen, [v]erwerfen" % (LABEL_PROMPT, episode_index, steps))
     # Ohne Prompt-Text: Ein Prompt ohne Zeilenumbruch bleibt im Puffer
     # haengen und klebt an der NAECHSTEN Ausgabezeile -- die Oberflaeche
     # las dann "> Episode 0 -> ep_00000: ..." und erkannte die Episode
     # nicht mehr. Die Frage steht ohnehin schon in der Zeile darueber.
-    answer = ask("", "").strip().lower()[:1]
+    # Nicht ueber ask(): dort ist EOF dasselbe wie eine leere Zeile.
+    try:
+        answer = input("")
+    except EOFError:
+        print("[keine Eingabe moeglich -> Episode bleibt unbewertet]")
+        return None, False
+    answer = answer.strip().lower()[:1] or "e"
     if answer not in LABEL_ANSWERS:
         if answer:
             print("   '%s' nicht verstanden -- Episode bleibt unbewertet." % answer)
@@ -629,8 +638,9 @@ def parse_args():
     )
     parser.add_argument(
         "--ask-label", action="store_true",
-        help="nach jeder Episode nach Erfolg/Verwerfen fragen (AP 5.2). Ohne "
-             "das bleibt die Episode unbewertet (ausser gegen den SimRobot)",
+        help="nach jeder Episode nach Erfolg/Verwerfen fragen (AP 5.2), Enter = "
+             "erfolgreich. Ohne das bleibt die Episode unbewertet (ausser gegen "
+             "den SimRobot)",
     )
     parser.add_argument(
         "--preview", default=None, metavar="DATEI",
@@ -993,6 +1003,9 @@ def main():
 
     kin = Kinematics(robot)
     writer = DatasetWriter(args.out, camera_names=[c.name for c in cam_cfgs])
+    for old, new in writer.set_aside:
+        print("!! %s stand nicht im Index (Rest eines abgebrochenen Laufs) -> "
+              "umbenannt in %s, nichts geloescht" % (old, new))
     # Livebild nur auf ausdruecklichen Wunsch (--preview): es kostet Zeit
     # in der 15-Hz-Schleife, und die Datenqualitaet geht vor (bc/preview.py).
     preview_writer = None

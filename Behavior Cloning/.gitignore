@@ -13,3 +13,4 @@ waypoints*.json
 datasets/
 rollouts/
 sequences/arbeitskopien/
+einstellungen/*.local.json

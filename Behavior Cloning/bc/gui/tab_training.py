@@ -67,6 +67,8 @@ class TrainingTab(ModeTab):
         self._devices = []
         #: Datensatzordner, der nicht unter datasets/ liegt (von woanders).
         self._external_dataset = None
+        #: Wo Aufnahmen gesucht und Datensaetze/Laeufe abgelegt werden.
+        self._locations = training_module.load_locations(self.workdir)
 
         left = self._build_controls()
         right = self._build_output()
@@ -97,6 +99,7 @@ class TrainingTab(ModeTab):
         page = QWidget()
         column = QVBoxLayout(page)
         column.setContentsMargins(0, 0, 0, 0)
+        column.addWidget(self._build_locations_box())
         column.addWidget(self._build_data_box())
         column.addWidget(self._build_hardware_box())
         column.addWidget(self._build_parameter_box())
@@ -124,8 +127,21 @@ class TrainingTab(ModeTab):
             "Konsistenzprüfung der markierten Aufnahmen: Schema, Rate, "
             "Override, Planer-Tempo, Kameras. Schreibt nichts.")
         self.btn_export = QPushButton("Exportieren")
+        self.btn_export.setToolTip(
+            "Fasst die markierten Aufnahmen zu EINEM Datensatz (LeRobotDataset) "
+            "im Feld „Ziel“ zusammen: Bilder werden zu Videos kodiert (ca. 1–2 s "
+            "je Episode), verworfene und fehlgeschlagene Episoden bleiben "
+            "draußen. Das Training liest nur exportierte Datensätze.")
         self.btn_train = QPushButton("Training starten")
+        self.btn_train.setToolTip(
+            "Trainiert die Diffusion Policy auf dem unter „Datensatz“ gewählten "
+            "Ordner und schreibt den Lauf nach „4. Lauf → Ziel“. Train/Val wird "
+            "dabei automatisch geteilt (Lagen bleiben zusammen). Braucht CUDA; "
+            "auf der CPU nur zum Ausprobieren.")
         self.btn_cancel = QPushButton("Abbrechen")
+        self.btn_cancel.setToolTip(
+            "Bricht Prüfung, Export oder Training ab. Ein Training lässt sich "
+            "danach mit „fortsetzen“ ab dem letzten Checkpoint weiterführen.")
         self.btn_cancel.setEnabled(False)
         self.btn_check.clicked.connect(self.check_sources)
         self.btn_export.clicked.connect(self.export_dataset)
@@ -137,6 +153,114 @@ class TrainingTab(ModeTab):
         layout.addStretch(1)
         return bar
 
+    def _build_locations_box(self):
+        """Ablageorte: wo Aufnahmen gesucht und Ergebnisse abgelegt werden.
+
+        Der Arbeitsordner selbst bleibt fest (dort liegen apps/ und bc/);
+        waehlbar sind die DATEN-Ordner, damit sie z. B. auf einer anderen
+        Platte liegen koennen. Gespeichert je Rechner, siehe
+        training.LOCATIONS_FILE.
+        """
+        box = QGroupBox("Ablageorte")
+        box.setToolTip(
+            "Wo dieser Reiter Aufnahmen sucht und Datensätze und Läufe ablegt. "
+            "Gilt nur auf diesem Rechner (%s, nicht eingecheckt). Relative "
+            "Pfade beziehen sich auf den Arbeitsordner %s."
+            % (training_module.LOCATIONS_FILE, self.workdir))
+        form = QFormLayout(box)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.loc_recordings = QLineEdit()
+        self.loc_recordings.setReadOnly(True)
+        self.loc_recordings.setToolTip(
+            "Ordner, in denen nach Aufnahmen (mit index.json) gesucht wird — "
+            "zwei Ebenen tief, also z. B. data_vm/<Datum>/. Mehrere möglich.")
+        add = QPushButton("Hinzufügen…")
+        add.setToolTip("Einen weiteren Ordner mit Aufnahmen einbinden.")
+        add.clicked.connect(self._add_recording_root)
+        row = QHBoxLayout()
+        row.addWidget(self.loc_recordings, 1)
+        row.addWidget(add)
+        form.addRow("Aufnahmen", row)
+
+        self.loc_datasets = QLineEdit()
+        self.loc_datasets.setReadOnly(True)
+        self.loc_datasets.setToolTip(
+            "Hierhin exportiert „Exportieren“, und hier sucht die Auswahl "
+            "„Datensatz“. Datensätze werden schnell groß (Videos).")
+        pick = QPushButton("Ordner…")
+        pick.setToolTip("Ordner für exportierte Datensätze wählen.")
+        pick.clicked.connect(lambda: self._pick_location("datasets"))
+        row = QHBoxLayout()
+        row.addWidget(self.loc_datasets, 1)
+        row.addWidget(pick)
+        form.addRow("Datensätze", row)
+
+        self.loc_checkpoints = QLineEdit()
+        self.loc_checkpoints.setReadOnly(True)
+        self.loc_checkpoints.setToolTip(
+            "Hierhin schreibt „Training starten“ seine Läufe (Checkpoints), und "
+            "hier suchen die Auswahl „Lauf“ und der Reiter Betrieb.")
+        pick = QPushButton("Ordner…")
+        pick.setToolTip("Ordner für Trainingsläufe wählen.")
+        pick.clicked.connect(lambda: self._pick_location("checkpoints"))
+        row = QHBoxLayout()
+        row.addWidget(self.loc_checkpoints, 1)
+        row.addWidget(pick)
+        form.addRow("Läufe", row)
+
+        reset = QPushButton("Standard")
+        reset.setToolTip("Zurück auf data_vm/data_sim, datasets/ und checkpoints/ "
+                         "im Arbeitsordner.")
+        reset.clicked.connect(self._reset_locations)
+        form.addRow("", reset)
+        self._show_locations()
+        return box
+
+    def _show_locations(self):
+        self.loc_recordings.setText("; ".join(self._locations["recordings"]))
+        self.loc_datasets.setText(self._locations["datasets"])
+        self.loc_checkpoints.setText(self._locations["checkpoints"])
+
+    def _location_path(self, value):
+        path = Path(value)
+        return path if path.is_absolute() else self.workdir / path
+
+    def _store_locations(self):
+        try:
+            training_module.save_locations(self.workdir, self._locations)
+        except OSError as exc:
+            QMessageBox.warning(self, "Ablageorte nicht gespeichert", str(exc))
+        self._show_locations()
+        # Vorschlaege fuer die Zielordner passen sonst nicht mehr.
+        self.export_target.clear()
+        self.train_target.clear()
+        self.refresh()
+
+    def _add_recording_root(self):
+        folder = QFileDialog.getExistingDirectory(
+            self, "Ordner mit Aufnahmen wählen", str(self.workdir))
+        if not folder:
+            return
+        value = str(training_module.relative(folder, self.workdir))
+        if value not in self._locations["recordings"]:
+            self._locations["recordings"].append(value)
+            self._store_locations()
+
+    def _pick_location(self, key):
+        title = {"datasets": "Ordner für Datensätze wählen",
+                 "checkpoints": "Ordner für Trainingsläufe wählen"}[key]
+        folder = QFileDialog.getExistingDirectory(
+            self, title, str(self._location_path(self._locations[key])))
+        if not folder:
+            return
+        self._locations[key] = str(training_module.relative(folder, self.workdir))
+        self._store_locations()
+
+    def _reset_locations(self):
+        self._locations = training_module.default_locations()
+        self._store_locations()
+
     def _build_data_box(self):
         box = QGroupBox("1. Datensatz")
         layout = QVBoxLayout(box)
@@ -147,19 +271,26 @@ class TrainingTab(ModeTab):
         self.recordings.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection)
         self.recordings.setMinimumHeight(130)
+        self.recordings.setToolTip(
+            "Gefundene Aufnahmen (je Zeile ein Ordner mit index.json). Mehrere "
+            "mit Strg/Umschalt markieren — sie werden zu EINEM Datensatz "
+            "exportiert. Rot: unlesbar, orange: andere Schema-Version.")
         self.recordings.itemSelectionChanged.connect(self._on_sources_changed)
         layout.addWidget(self.recordings)
 
         self.require_success = QCheckBox("nur Episoden mit Erfolgs-Label")
         self.require_success.setToolTip(
             "Ohne Haken kommen auch unbewertete Episoden in den Datensatz "
-            "(AP 5.2).")
+            "(AP 5.2). Fehlgeschlagene und verworfene bleiben immer draußen.")
         self.require_success.toggled.connect(self._update_commands)
         layout.addWidget(self.require_success)
 
         target = QHBoxLayout()
         target.addWidget(QLabel("Ziel"))
         self.export_target = QLineEdit()
+        self.export_target.setToolTip(
+            "Ordner, in den exportiert wird. Wird aus den markierten Aufnahmen "
+            "vorgeschlagen; ein vorhandener Ordner wird nie überschrieben.")
         self.export_target.textChanged.connect(self._update_commands)
         target.addWidget(self.export_target, 1)
         layout.addLayout(target)
@@ -168,6 +299,9 @@ class TrainingTab(ModeTab):
         row = QHBoxLayout()
         row.addWidget(QLabel("Datensatz"))
         self.dataset = block_wheel(QComboBox())
+        self.dataset.setToolTip(
+            "Der exportierte Datensatz, auf dem trainiert wird. Ein schon "
+            "exportierter Datensatz braucht keinen neuen Export.")
         self.dataset.currentIndexChanged.connect(self._on_dataset_changed)
         row.addWidget(self.dataset, 1)
         self.btn_import = QPushButton("Ordner…")
@@ -188,6 +322,9 @@ class TrainingTab(ModeTab):
         row = QHBoxLayout()
         row.addWidget(QLabel("Gerät"))
         self.device = block_wheel(QComboBox())
+        self.device.setToolTip(
+            "Rechengerät fürs Training. „automatisch“ nimmt CUDA, wenn vorhanden. "
+            "Auf der CPU dauert ein Lauf um ein Vielfaches länger.")
         self.device.currentIndexChanged.connect(self._on_device_changed)
         row.addWidget(self.device, 1)
         layout.addLayout(row)
@@ -218,10 +355,13 @@ class TrainingTab(ModeTab):
             label = QLabel(param.label)
             if param.help_text:
                 widget.setToolTip(param.help_text)
+                label.setToolTip(param.help_text)
             if param.is_locked_down:
                 label.setStyleSheet("color:%s" % NEUTRAL)
-                label.setToolTip("Festlegung aus bc/config.py — nicht "
-                                 "stillschweigend ändern (Arbeitsanweisung 5).")
+                label.setToolTip(
+                    ((param.help_text + "\n\n") if param.help_text else "")
+                    + "Festlegung aus bc/config.py — nicht stillschweigend "
+                    "ändern (Arbeitsanweisung 5).")
                 settled_form.addRow(label, widget)
             else:
                 free_form.addRow(label, widget)
@@ -241,6 +381,7 @@ class TrainingTab(ModeTab):
         layout.addWidget(self.deviation_label)
 
         self.btn_defaults = QPushButton("Vorgaben wiederherstellen")
+        self.btn_defaults.setToolTip("Alle Einstellungen zurück auf die Vorgaben.")
         self.btn_defaults.clicked.connect(self.reset_parameters)
         layout.addWidget(self.btn_defaults, 0, Qt.AlignmentFlag.AlignLeft)
         return box
@@ -275,6 +416,9 @@ class TrainingTab(ModeTab):
         row = QHBoxLayout()
         row.addWidget(QLabel("Ziel"))
         self.train_target = QLineEdit()
+        self.train_target.setToolTip(
+            "Ordner des Trainingslaufs (Checkpoints, Policy, Validierung). "
+            "Vorgeschlagen unter „Ablageorte → Läufe“.")
         self.train_target.textChanged.connect(self._update_commands)
         row.addWidget(self.train_target, 1)
         layout.addLayout(row)
@@ -302,6 +446,9 @@ class TrainingTab(ModeTab):
         row = QHBoxLayout()
         row.addWidget(QLabel("Lauf"))
         self.checkpoint = block_wheel(QComboBox())
+        self.checkpoint.setToolTip(
+            "Vorhandene Trainingsläufe — zum Ansehen, Kopieren oder (mit "
+            "„fortsetzen“) Weitertrainieren.")
         self.checkpoint.currentIndexChanged.connect(self._on_checkpoint_changed)
         row.addWidget(self.checkpoint, 1)
         self.btn_copy_run = QPushButton("Kopieren…")
@@ -351,6 +498,17 @@ class TrainingTab(ModeTab):
             ["Schritt", "Gelenk-MAE (rad)", "p95 (rad)", "Greifer", "Loss"])
         self.validation.setRootIsDecorated(False)
         self.validation.setMaximumHeight(150)
+        header = self.validation.headerItem()
+        for column, tip in enumerate((
+                "Trainingsschritt der Validierung.",
+                "Mittlerer Gelenkfehler auf den Validierungs-Lagen (ungesehene "
+                "Lagen). 0,01 rad ≈ 0,6°. Die wichtigste Zahl.",
+                "95 % aller Gelenkfehler liegen darunter — zeigt Ausreißer, z. B. "
+                "am Greifmoment. Typisch 2–3× der MAE.",
+                "Anteil der Schritte mit richtiger Greiferentscheidung (auf/zu).",
+                "Diffusions-Loss auf der Validierung. Wird typisch sehr klein; "
+                "für die Bahngüte zählt der Gelenkfehler.")):
+            header.setToolTip(column, tip)
         for column in range(5):
             self.validation.setColumnWidth(column, 120)
         progress_layout.addWidget(QLabel("Validierung"))
@@ -377,7 +535,8 @@ class TrainingTab(ModeTab):
     def _reload_recordings(self):
         selected = set(self._selected_sources())
         self.recordings.clear()
-        for path in training_module.find_recordings(self.workdir):
+        for path in training_module.find_recordings(
+                self.workdir, self._locations["recordings"]):
             described = training_module.describe_recording(path)
             item = QListWidgetItem(training_module.recording_label(described))
             item.setData(Qt.ItemDataRole.UserRole, str(path))
@@ -394,7 +553,8 @@ class TrainingTab(ModeTab):
         self.dataset.blockSignals(True)
         self.dataset.clear()
         self.dataset.addItem("— keiner —", None)
-        for path in training_module.find_datasets(self.workdir):
+        for path in training_module.find_datasets(
+                self.workdir, self._locations["datasets"]):
             self.dataset.addItem(str(path), str(path))
         if self._external_dataset:
             self.dataset.addItem(str(self._external_dataset), str(self._external_dataset))
@@ -420,7 +580,8 @@ class TrainingTab(ModeTab):
         self.checkpoint.blockSignals(True)
         self.checkpoint.clear()
         self.checkpoint.addItem("— keiner —", None)
-        for path in training_module.find_checkpoints(self.workdir):
+        for path in training_module.find_checkpoints(
+                self.workdir, self._locations["checkpoints"]):
             self.checkpoint.addItem(str(path), str(path))
         index = find_data(self.checkpoint, current)
         self.checkpoint.setCurrentIndex(index if index >= 0 else 0)
@@ -437,7 +598,8 @@ class TrainingTab(ModeTab):
         sources = self._selected_sources()
         if sources and not self.export_target.text().strip():
             self.export_target.setText(
-                str(training_module.suggest_dataset_name(self.workdir, sources)))
+                str(training_module.suggest_dataset_name(
+                    self.workdir, sources, self._locations["datasets"])))
         self._update_commands()
 
     def _on_dataset_changed(self):
@@ -467,7 +629,8 @@ class TrainingTab(ModeTab):
         self.dataset_info.setText(text)
         if not self.train_target.text().strip():
             self.train_target.setText(
-                str(training_module.suggest_output(self.workdir, path)))
+                str(training_module.suggest_output(
+                    self.workdir, path, self._locations["checkpoints"])))
         self._update_commands()
 
     def _on_device_changed(self):
@@ -782,7 +945,7 @@ class TrainingTab(ModeTab):
         desselben Datensatzes herum.
         """
         folder = QFileDialog.getExistingDirectory(
-            self, "LeRobotDataset-Ordner wählen", str(self.workdir / "datasets"))
+            self, "LeRobotDataset-Ordner wählen", str(self._location_path(self._locations["datasets"])))
         if not folder:
             return
         path = Path(folder)

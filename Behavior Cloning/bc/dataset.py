@@ -13,6 +13,8 @@ Format ist im Test ohne lerobot pruefbar.
 """
 
 import json
+import shutil
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -193,6 +195,15 @@ class DatasetWriter(object):
           index.json            Schema, Rate, Episodenliste
           ep_00000/arrays.npz   alle Features als Arrays
           ep_00000/meta.json    Metadaten, Erfolg, Verwerf-Status
+
+    Eine Episode wird erst unter ``ep_XXXXX.partial`` geschrieben, dann
+    umbenannt und zuletzt in den Index eingetragen. Bricht ein Lauf
+    dazwischen ab, bleibt ein Ordner ohne Indexeintrag zurueck. Frueher
+    scheiterte der NAECHSTE Lauf daran (FileExistsError beim ersten
+    ``append``, Befund 27.10.2026) -- nach der ersten, fertig gefahrenen
+    Episode. Solche Reste schiebt der Konstruktor jetzt beiseite
+    (``*.verwaist_<Zeit>``, nichts wird geloescht) und listet sie in
+    :attr:`set_aside`.
     """
 
     def __init__(self, root, camera_names=("wrist", "scene")):
@@ -217,6 +228,21 @@ class DatasetWriter(object):
                 "episodes": [],
             }
             self._write_index()
+        #: (alter Name, neuer Name) der beim Oeffnen beiseitegelegten Reste
+        self.set_aside = self._set_aside_orphans()
+
+    def _set_aside_orphans(self):
+        """Episodenordner ohne Indexeintrag umbenennen (siehe Klassendoku)."""
+        known = {entry["dir"] for entry in self._index["episodes"]}
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        moved = []
+        for path in sorted(self.root.glob("ep_*")):
+            if not path.is_dir() or path.name in known or ".verwaist_" in path.name:
+                continue
+            target = path.with_name("%s.verwaist_%s" % (path.name, stamp))
+            path.rename(target)
+            moved.append((path.name, target.name))
+        return moved
 
     def _write_index(self):
         self._index_path.write_text(
@@ -228,11 +254,20 @@ class DatasetWriter(object):
         episode.validate(self.camera_names)
         idx = len(self._index["episodes"])
         ep_dir = self.root / ("ep_%05d" % idx)
-        ep_dir.mkdir(parents=True, exist_ok=False)
+        if ep_dir.exists():
+            # Nur moeglich, wenn waehrend des Laufs jemand anderes in
+            # denselben Ordner schreibt -- dann nichts ueberschreiben.
+            raise FileExistsError(
+                "%s existiert schon, steht aber nicht im Index -- schreibt ein "
+                "zweiter Lauf in denselben Ordner?" % ep_dir)
+        partial = ep_dir.with_name(ep_dir.name + ".partial")
+        if partial.exists():
+            shutil.rmtree(partial)
+        partial.mkdir(parents=True)
 
         # npz erlaubt keine Punkte in Schluesseln ohne Weiteres -> ersetzen
         np.savez_compressed(
-            ep_dir / "arrays.npz",
+            partial / "arrays.npz",
             **{k.replace(".", "__"): v for k, v in episode.arrays.items()}
         )
         meta = {
@@ -242,15 +277,49 @@ class DatasetWriter(object):
             "discard_reason": episode.discard_reason,
             "metadata": episode.metadata,
         }
-        (ep_dir / "meta.json").write_text(
+        (partial / "meta.json").write_text(
             json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
         )
+        partial.rename(ep_dir)
 
         self._index["episodes"].append(
             {"dir": ep_dir.name, "length": len(episode), "discarded": episode.discarded}
         )
         self._write_index()
         return idx
+
+
+#: Nachtraegliche Bewertung -> (success, discarded)
+RELABEL = {
+    "erfolg": (True, False),
+    "fehler": (False, False),
+    "verwerfen": (None, True),
+}
+
+
+def relabel(root, folder, label, reason="nachtraeglich verworfen"):
+    """Bewertung einer abgelegten Episode aendern (``label`` aus RELABEL).
+
+    Fuer "Standard erfolgreich, Fehlschlag bewusst setzen": Fehlschlaege
+    werden nach der Fahrt in der Episodenliste markiert, ohne den Lauf
+    anzuhalten. Geschrieben wird NUR die meta.json -- danach richtet sich
+    der Export (bc/lerobot_io.scan_sources). Der Merker ``discarded`` im
+    index.json bleibt stehen: den schreibt ein noch laufendes record.py
+    bei jeder Episode aus seinem Speicher neu, eine Aenderung dort waere
+    sofort wieder weg. Die vorherige Bewertung steht danach unter
+    ``relabeled_from`` in der meta.json.
+    """
+    success, discarded = RELABEL[label]
+    path = Path(root) / folder / "meta.json"
+    meta = json.loads(path.read_text(encoding="utf-8"))
+    meta.setdefault("relabeled_from", {
+        "success": meta["success"], "discarded": meta["discarded"],
+        "discard_reason": meta["discard_reason"]})
+    meta["success"] = success
+    meta["discarded"] = discarded
+    meta["discard_reason"] = reason if discarded else ""
+    path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    return meta
 
 
 def load_episode(root, index):

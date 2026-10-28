@@ -5,6 +5,7 @@ Am Anfang jedes App-Skripts::
     import _bootstrap  # noqa: F401
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -14,10 +15,13 @@ _REPO_ROOT = _BC_DIR.parent          # Repo-Wurzel
 
 #: ``neurapy`` liegt im Nachbarordner "Robot Controller" (Fremdcode von
 #: Neura). Ohne diesen Pfad scheitert ``--robot neura`` schon beim Import.
-#: Dieselbe Suche wie in tools/_bootstrap.py.
+#: Dieselbe Suche wie in tools/_bootstrap.py (dort begruendet).
 _NEURAPY_DIRS = [
     p
-    for p in (_REPO_ROOT / "Robot Controller", _REPO_ROOT)
+    for p in (*(Path(d) for d in (os.environ.get("BC_NEURAPY_DIR"),) if d),
+              _REPO_ROOT / "Robot Controller",
+              _REPO_ROOT / "code" / "m2_robot_control" / "vendor",
+              _REPO_ROOT)
     if (p / "neurapy" / "__init__.py").is_file()
 ]
 

@@ -115,3 +115,54 @@ def test_writer_rejects_other_schema_version(tmp_path):
         assert False, "ValueError erwartet (Schema-Version)"
     except ValueError:
         pass
+
+
+def test_writer_sets_aside_a_left_over_episode_folder(tmp_path):
+    # Befund 27.10.2026: ein abgebrochener Lauf hinterliess ep_00000 ohne
+    # Indexeintrag, der naechste Lauf scheiterte nach der ersten Episode
+    # mit FileExistsError.
+    root = tmp_path / "ds"
+    dataset.DatasetWriter(root)
+    (root / "ep_00000").mkdir()
+    (root / "ep_00000" / "arrays.npz").write_bytes(b"halb")
+    (root / "ep_00001.partial").mkdir()
+
+    writer = dataset.DatasetWriter(root)
+    assert [old for old, _new in writer.set_aside] == ["ep_00000", "ep_00001.partial"]
+    for _old, new in writer.set_aside:
+        assert (root / new).is_dir()      # beiseitegelegt, nicht geloescht
+
+    ep = _dummy_episode()
+    ep.success = True
+    assert writer.append(ep) == 0
+    assert dataset.load_episode(root, 0).success is True
+    assert not list(root.glob("*.partial"))
+
+
+def test_writer_keeps_known_episodes(tmp_path):
+    root = tmp_path / "ds"
+    dataset.DatasetWriter(root).append(_dummy_episode())
+    writer = dataset.DatasetWriter(root)
+    assert writer.set_aside == []
+    assert writer.append(_dummy_episode()) == 1
+
+
+def test_relabel_changes_only_the_meta_file(tmp_path):
+    import json
+
+    root = tmp_path / "ds"
+    ep = _dummy_episode()
+    ep.success = True
+    dataset.DatasetWriter(root).append(ep)
+
+    dataset.relabel(root, "ep_00000", "fehler")
+    loaded = dataset.load_episode(root, 0)
+    assert loaded.success is False and loaded.discarded is False
+
+    meta = dataset.relabel(root, "ep_00000", "verwerfen", reason="Objekt verrutscht")
+    assert meta["discarded"] is True and meta["success"] is None
+    assert meta["discard_reason"] == "Objekt verrutscht"
+    # Die erste Bewertung bleibt nachvollziehbar.
+    assert meta["relabeled_from"]["success"] is True
+    index = json.loads((root / "index.json").read_text(encoding="utf-8"))
+    assert index["episodes"][0]["discarded"] is False

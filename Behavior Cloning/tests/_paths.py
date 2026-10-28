@@ -1,6 +1,7 @@
 """Pfad-Setup fuer die Tests (Ordnername enthaelt ein Leerzeichen,
 deshalb kein regulaeres Paket -- wie tools/_bootstrap.py)."""
 
+import os
 import sys
 from pathlib import Path
 
@@ -13,7 +14,10 @@ _REPO_ROOT = _BC_DIR.parent
 #: tools/_bootstrap.py, das dieselbe Suche macht.
 _NEURAPY_DIRS = [
     p
-    for p in (_REPO_ROOT / "Robot Controller", _REPO_ROOT)
+    for p in (*(Path(d) for d in (os.environ.get("BC_NEURAPY_DIR"),) if d),
+              _REPO_ROOT / "Robot Controller",
+              _REPO_ROOT / "code" / "m2_robot_control" / "vendor",
+              _REPO_ROOT)
     if (p / "neurapy" / "__init__.py").is_file()
 ]
 

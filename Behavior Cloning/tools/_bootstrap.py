@@ -9,6 +9,7 @@ Am Anfang jedes Tool-Skripts::
     import _bootstrap  # noqa: F401
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -19,9 +20,17 @@ _REPO_ROOT = _BC_DIR.parent          # Repo-Wurzel
 #: Kandidaten fuer den Ordner, der das ``neurapy``-Paket enthaelt. Es liegt
 #: im Nachbarordner "Robot Controller" (Fremdcode von Neura, wird von hier
 #: aus nicht veraendert) -- frueher lag es in der Repo-Wurzel, deshalb
-#: bleibt sie als Kandidat stehen. Eingehaengt wird nur, was existiert; ist
-#: neurapy regulaer installiert, greift ohnehin sys.path.
-_NEURAPY_CANDIDATES = (_REPO_ROOT / "Robot Controller", _REPO_ROOT)
+#: bleibt sie als Kandidat stehen. Im Repo der anderen Gruppe liegt es
+#: unter code/m2_robot_control/vendor (siehe INTEGRATION.md). Vorrang hat
+#: die Umgebungsvariable BC_NEURAPY_DIR. Eingehaengt wird nur, was
+#: existiert; ist neurapy regulaer installiert, greift ohnehin sys.path.
+_NEURAPY_CANDIDATES = tuple(
+    Path(p) for p in (os.environ.get("BC_NEURAPY_DIR"),) if p
+) + (
+    _REPO_ROOT / "Robot Controller",
+    _REPO_ROOT / "code" / "m2_robot_control" / "vendor",
+    _REPO_ROOT,
+)
 
 
 def _neurapy_dirs():

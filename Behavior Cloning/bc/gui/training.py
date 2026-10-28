@@ -36,6 +36,43 @@ RECORDING_ROOTS = ("data_vm", "data_sim")
 DATASET_ROOT = "datasets"
 CHECKPOINT_ROOT = "checkpoints"
 
+#: Abweichende Ablageorte dieses Rechners (Wunsch Anwender 28.10.2026: Daten
+#: liegen z. B. auf einer anderen Platte). Bewusst NICHT eingecheckt
+#: (.gitignore) -- ein Pfad wie D:\bc_daten gilt nur auf diesem Rechner.
+LOCATIONS_FILE = "einstellungen/ablageorte.local.json"
+
+
+def default_locations():
+    return {"recordings": list(RECORDING_ROOTS), "datasets": DATASET_ROOT,
+            "checkpoints": CHECKPOINT_ROOT}
+
+
+def load_locations(workdir):
+    """Ablageorte: Vorgaben, ueberschrieben von :data:`LOCATIONS_FILE`.
+
+    Pfade duerfen relativ (zum Arbeitsordner) oder absolut sein. Eine
+    kaputte Datei fuehrt zu den Vorgaben, nicht zu einer GUI, die nicht
+    startet.
+    """
+    locations = default_locations()
+    stored = _read_json(Path(workdir) / LOCATIONS_FILE)
+    if not isinstance(stored, dict):
+        return locations
+    if isinstance(stored.get("recordings"), list) and stored["recordings"]:
+        locations["recordings"] = [str(p) for p in stored["recordings"]]
+    for key in ("datasets", "checkpoints"):
+        if isinstance(stored.get(key), str) and stored[key].strip():
+            locations[key] = stored[key].strip()
+    return locations
+
+
+def save_locations(workdir, locations):
+    path = Path(workdir) / LOCATIONS_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(locations, indent=2, ensure_ascii=False),
+                    encoding="utf-8")
+    return path
+
 
 def relative(path, workdir):
     """Pfad relativ zum Arbeitsordner -- so steht er auch in der Dokumentation.
@@ -319,9 +356,13 @@ def parameters():
                   "Effektive Batch = dieser Wert x Batchgroesse. Auf einer "
                   "kleineren Karte Batch halbieren und diesen Wert verdoppeln -- "
                   "Lernrate und Ergebnis bleiben vergleichbar."),
-        Parameter("--lr", "Lernrate", 1e-4, "float", 1e-6, 1e-2, 1e-5),
+        Parameter("--lr", "Lernrate", 1e-4, "float", 1e-6, 1e-2, 1e-5,
+                  "Schrittweite des Optimierers. 1e-4 ist die Vorgabe der Diffusion "
+                  "Policy; groesser lernt schneller, kann aber instabil werden."),
         Parameter("--val-fraction", "Validierungsanteil", 0.1, "float", 0.0, 0.5, 0.05,
-                  "Episodenweise geteilt -- nie Frames einer Episode auf beiden Seiten."),
+                  "Anteil der Lagen, die nur zur Validierung dienen. Geteilt wird nach "
+                  "Lagen: die Wiederholungen einer Lage (Zuruecklegen) landen immer "
+                  "zusammen auf einer Seite, nie Frames einer Episode auf beiden."),
         Parameter("--eval-every", "Validierung alle", 2000, "int", 100, 100000, 500,
                   "Schritte zwischen zwei Validierungen (Gelenkfehler in rad)."),
         Parameter("--save-every", "Checkpoint alle", 10000, "int", 500, 100000, 500,
@@ -335,12 +376,17 @@ def parameters():
                   source="bc/config.py"),
         Parameter("--n-action-steps", "nutzbare Schritte",
                   config.POLICY_N_ACTION_STEPS, "int", 1, 64, 1,
+                  "Wie viele der vorhergesagten Schritte abgefahren werden, bevor "
+                  "neu vorhergesagt wird. Puffer gegen die Rechenzeit der Vorhersage.",
                   source="bc/config.py"),
         Parameter("--n-obs-steps", "Beobachtungsschritte",
                   config.POLICY_N_OBS_STEPS, "int", 1, 8, 1,
+                  "Wie viele vergangene Takte (Bilder + Gelenke) die Policy sieht.",
                   source="bc/config.py"),
         Parameter("--inference-steps", "DDIM-Schritte",
                   config.POLICY_INFERENCE_STEPS, "int", 1, 100, 1,
+                  "Entrausch-Schritte je Vorhersage beim Fahren. Mehr = genauer, "
+                  "aber langsamer (bestimmt die Rechenzeit je Vorhersage).",
                   source="bc/config.py"),
         Parameter("--prediction-type", "Vorhersageart",
                   config.POLICY_PREDICTION_TYPE, "choice",

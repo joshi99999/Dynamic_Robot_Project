@@ -1267,3 +1267,59 @@ def test_jogger_refused_outside_teach_mode():
     except Exception as exc:
         assert "Teach" in str(exc)
     assert not jog.active
+
+
+def test_enter_means_success_but_no_input_stays_unlabeled():
+    # Festlegung 28.10.2026: Standard erfolgreich, Fehlschlag bewusst setzen.
+    # Ein Abbruch (EOF) ist aber keine Zustimmung.
+    import builtins
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    apps = str(_Path(__file__).resolve().parent.parent / "apps")
+    if apps not in _sys.path:
+        _sys.path.insert(0, apps)
+    import record
+
+    answers = iter(["", "f", "v", "e"])
+
+    def eof(prompt=""):
+        raise EOFError
+
+    original = builtins.input
+    try:
+        builtins.input = lambda prompt="": next(answers)
+        assert record.ask_label(0, 10) == (True, False)
+        assert record.ask_label(1, 10) == (False, False)
+        assert record.ask_label(2, 10) == (None, True)
+        assert record.ask_label(3, 10) == (True, False)
+        builtins.input = eof
+        assert record.ask_label(4, 10) == (None, False)
+    finally:
+        builtins.input = original
+
+
+def test_locations_default_and_round_trip(tmp_path):
+    assert training.load_locations(tmp_path) == training.default_locations()
+    chosen = {"recordings": ["data_vm", "D:/bc_daten/aufnahmen"],
+              "datasets": "D:/bc_daten/datasets", "checkpoints": "checkpoints"}
+    training.save_locations(tmp_path, chosen)
+    assert training.load_locations(tmp_path) == chosen
+
+
+def test_broken_locations_file_falls_back_to_defaults(tmp_path):
+    path = tmp_path / training.LOCATIONS_FILE
+    path.parent.mkdir(parents=True)
+    path.write_text("[1, 2", encoding="utf-8")
+    assert training.load_locations(tmp_path) == training.default_locations()
+
+
+def test_recordings_are_found_in_an_absolute_extra_root(tmp_path):
+    other = tmp_path / "andere_platte"
+    (other / "2026-10-27").mkdir(parents=True)
+    (other / "2026-10-27" / "index.json").write_text("{}", encoding="utf-8")
+    work = tmp_path / "work"
+    work.mkdir()
+    found = training.find_recordings(work, ["data_vm", str(other)])
+    assert [p.name for p in found] == ["2026-10-27"]
+    assert training.suggest_output(work, "x", str(other)).parent == other

@@ -302,7 +302,9 @@ class OperationTab(ModeTab):
         self.checkpoint.blockSignals(True)
         self.checkpoint.clear()
         self.checkpoint.addItem("— keines —", None)
-        for path in operation_module.find_policies(self.workdir):
+        # Derselbe Ablageort wie im Reiter Training ("Ablageorte -> Laeufe").
+        root = training_module.load_locations(self.workdir)["checkpoints"]
+        for path in operation_module.find_policies(self.workdir, root):
             self.checkpoint.addItem(str(path), str(path))
         index = find_data(self.checkpoint, current)
         self.checkpoint.setCurrentIndex(index if index >= 0 else 0)

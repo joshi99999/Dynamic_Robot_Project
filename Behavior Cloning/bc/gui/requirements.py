@@ -111,10 +111,85 @@ class Report(object):
 
 # -- Sonden ---------------------------------------------------------------
 
+def bc_python():
+    """Interpreter fuer die Unterprozesse (Pruefungen, Export, Training ...).
+
+    Normalerweise der eigene (``sys.executable``). Als Reiter in der GUI der
+    anderen Gruppe laeuft die Oberflaeche aber in DEREN Umgebung, in der
+    torch und lerobot fehlen -- dann zeigt die Umgebungsvariable
+    ``BC_PYTHON`` auf das Python der BC-Umgebung (INTEGRATION.md).
+    """
+    configured = os.environ.get("BC_PYTHON")
+    if configured and Path(configured).is_file():
+        return configured
+    return sys.executable
+
+
+def separate_python():
+    """True, wenn die Unterprozesse in einer ANDEREN Umgebung laufen."""
+    return Path(bc_python()).resolve() != Path(sys.executable).resolve()
+
+
+#: Module, die NUR in den Unterprozessen gebraucht werden (Export, Training,
+#: Inferenz). Bei getrennter Umgebung werden sie dort geprueft; alles andere
+#: (numpy, OpenCV, neurapy, gxipy) braucht auch die Oberflaeche selbst.
+SUBPROCESS_ONLY = frozenset(("torch", "lerobot", "diffusers", "torchcodec"))
+
+#: Ergebnisse der Sonden im fremden Interpreter. Ein Start dort kostet mit
+#: torch einige Sekunden; neu geprueft wird nach einem Neustart der GUI.
+_SEPARATE_CACHE = {}
+
+_SEPARATE_SCRIPT = (
+    "import sys\n"
+    "kind, name, attr = sys.argv[1:4]\n"
+    "if kind == 'cuda':\n"
+    "    import torch\n"
+    "    if not torch.cuda.is_available():\n"
+    "        print('NOCUDA torch %s ohne CUDA (CPU-Betrieb)' % torch.__version__)\n"
+    "    else:\n"
+    "        print('OK %s (torch %s)' % (torch.cuda.get_device_name(0), torch.__version__))\n"
+    "else:\n"
+    "    import importlib\n"
+    "    m = importlib.import_module(name)\n"
+    "    print('OK %s %s' % (name, getattr(m, attr, '?')))\n"
+)
+
+
+def _probe_separate(kind, name="", version_attr="__version__"):
+    """Sonde im Interpreter aus :func:`bc_python` statt im eigenen Prozess."""
+    import subprocess
+
+    key = (kind, name)
+    if key not in _SEPARATE_CACHE:
+        try:
+            done = subprocess.run(
+                [bc_python(), "-c", _SEPARATE_SCRIPT, kind, name, version_attr],
+                capture_output=True, text=True, timeout=120)
+        except Exception as exc:
+            _SEPARATE_CACHE[key] = (False, "%s: %s" % (type(exc).__name__, exc))
+        else:
+            lines = done.stdout.strip().splitlines()
+            last = lines[-1] if lines else ""
+            if done.returncode == 0 and last.startswith("OK "):
+                _SEPARATE_CACHE[key] = (True, last[3:])
+            elif done.returncode == 0 and last.startswith("NOCUDA "):
+                _SEPARATE_CACHE[key] = (False, last[7:])
+            else:
+                error = (done.stderr.strip().splitlines() or ["?"])[-1]
+                _SEPARATE_CACHE[key] = (False, "%s (in %s)" % (error, bc_python()))
+    return _SEPARATE_CACHE[key]
+
+
 def module_probe(name, version_attr="__version__"):
-    """Sonde: Modul importierbar? Liefert die Version als Detailtext."""
+    """Sonde: Modul importierbar? Liefert die Version als Detailtext.
+
+    Module aus :data:`SUBPROCESS_ONLY` werden bei getrennter Umgebung
+    (:func:`bc_python`) dort geprueft, wo sie gebraucht werden.
+    """
 
     def probe():
+        if name in SUBPROCESS_ONLY and separate_python():
+            return _probe_separate("module", name, version_attr)
         try:
             module = importlib.import_module(name)
         except Exception as exc:
@@ -126,6 +201,8 @@ def module_probe(name, version_attr="__version__"):
 
 def cuda_probe():
     def probe():
+        if separate_python():
+            return _probe_separate("cuda")
         try:
             import torch
         except Exception as exc:
@@ -147,7 +224,7 @@ def interpreter_tool_dirs():
     "fehlt" melden, obwohl das Programm daliegt; die Unterprozesse haetten
     dasselbe Problem (siehe runner.ProcessRunner).
     """
-    base = Path(sys.executable).resolve().parent
+    base = Path(bc_python()).resolve().parent
     return [d for d in (base, base / "Library" / "bin", base / "Scripts",
                         base / "bin") if d.is_dir()]
 
